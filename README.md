@@ -65,6 +65,10 @@ A workflow is included at `.github/workflows/deploy.yml`. In your repo's **Setti
 
 Basemap © OpenStreetMap contributors © CARTO. Terrain tiles: Mapzen / AWS Open Data.
 
+## Roadmap
+
+Planned additions (hospital access, future climate, logging history, sea level, story mode and more) and a suggested build order are in [ROADMAP.md](ROADMAP.md).
+
 ## Caveats
 
 This is an exploration tool, not professional advice. Property-transfer medians include all property types (so they run below single-family listing prices); river-gauge ratios describe high water, not flooded area; hazard counts describe history, not risk forecasts. For a specific property, check official floodplain, tsunami and wildfire-interface maps.
