@@ -88,8 +88,9 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
       if (vals.length)
         lineChart(el.querySelector('#tr-price')!, { height: 110, xDomain: [vals[0].x, vals.at(-1)!.x], yZero: false, yFormat: (v) => `$${d3.format('~s')(v)}`, valueFormat: fmt.money, series: [{ key: 'p', label: '6-mo median', color: '#b388ff', values: vals }] });
     }
+    // the chart box is only there when the series is recent enough for a crime figure
     const c = data.crime?.munis[key]?.csi;
-    if (c) {
+    if (c && el.querySelector('#tr-crime')) {
       const vals = Object.entries(c).map(([y, v]) => ({ x: +y, y: v }));
       const bc = Object.entries(data.crime?.bc?.csi ?? {}).map(([y, v]) => ({ x: +y, y: v }));
       lineChart(el.querySelector('#tr-crime')!, { height: 110, xDomain: [vals[0].x, vals.at(-1)!.x], series: [{ key: 'c', label: m.name, color: '#ff4d8d', values: vals }, { key: 'bc', label: 'BC', color: '#ffffff', dashed: true, width: 1.5, values: bc }] });

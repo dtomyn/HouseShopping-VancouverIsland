@@ -63,6 +63,27 @@ npm run data fires crime  # just some
 
 A workflow is included at `.github/workflows/deploy.yml`. In your repo's **Settings → Pages**, set the source to **GitHub Actions**, then push to `main`.
 
+### The explainer video
+
+A narrated YouTube explainer is filmed from the real app by script, so it can be re-rendered after any change to the app or the data. The scenes, narration, camera moves and sounds are in `video/storyboard.py`; `video/render.py` plays them against the built app inside a framed "stage" (`video/stage/`) with a virtual clock stepped one frame at a time. It adds a moving cursor with click sounds, Screen Studio–style zooms, titles, chapter tags and fact chips, and a synthesized music bed that ducks under the voice. The narration is read by [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) running locally, and the numbers in it are taken from the data.
+
+One-time setup (needs Microsoft Edge for GPU rendering):
+
+```bash
+uv venv .venv --python 3.12
+uv pip install --python .venv/Scripts/python.exe playwright imageio-ffmpeg kokoro-onnx soundfile numpy
+```
+
+Put `kokoro-v1.0.onnx` and `voices-v1.0.bin` from the kokoro-onnx releases in `.venv/kokoro`. Then:
+
+```bash
+.venv/Scripts/python.exe video/render.py --storyboard   # storyboard page with real frames, script, captions, YouTube text
+.venv/Scripts/python.exe video/render.py --preview      # quick 960×540 cut with sound
+.venv/Scripts/python.exe video/render.py                # 2560×1440 master + 1080p copy
+```
+
+Everything lands in `video/out/`: `island-atlas-explainer.mp4` (1440p), `-1080p.mp4`, `storyboard.html`, `script.md`, `.srt` captions and `youtube.txt`. `--only finder` renders one scene, `--stills 10,60` saves test frames, `--url` puts the site's address on the end card. A line's voice is only regenerated when its text changes; drop a real recording at `video/out/vo/recorded/<line-id>.wav` and the picture retimes to fit it. The app exposes `window.atlas` for the renderer only when loaded with `?film`.
+
 ## Data sources
 
 | Layer | Source | Licence |

@@ -350,6 +350,8 @@ export function openSources(data: Data, opts: { onShow: (layerId: string) => voi
 
   function resize() {
     const box = canvas.parentElement!.getBoundingClientRect();
+    // closing (or a hidden parent) reports an empty box; keep the last size rather than draw with negative radii
+    if (Math.min(box.width, box.height || box.width) < 80) return;
     S = Math.floor(Math.min(box.width, box.height || box.width));
     dpr = Math.min(2, devicePixelRatio || 1);
     for (const k of [canvas, wood, glow]) { k.width = S * dpr; k.height = S * dpr; }

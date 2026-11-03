@@ -644,6 +644,9 @@ async function boot() {
   focus('fires');
   requestAnimationFrame(frame);
   if (location.hash === '#sources') showSources();
+  // The explainer video (video/render.py) drives the atlas through this handle; only set with ?film.
+  if (new URLSearchParams(location.search).has('film'))
+    (window as any).atlas = { map, state, data, layers, focus, openTown, openFinder, setPlaying, setTime, setPanelOpen, setMenu, showSources, HOME };
 }
 
 boot();

@@ -172,6 +172,7 @@ a { color: #9cc7ff; }
 /* a static layer is focused: the timeline still drives other visible layers, but steps back */
 .timeline.static > :not(.static-note) { opacity: .16; filter: grayscale(.8); pointer-events: none; transition: opacity .3s; }
 .static-note { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 4px; padding: 0 16px; font-size: 13.5px; color: var(--ink); pointer-events: none; }
+.static-note[hidden] { display: none; }
 .static-note b { color: var(--accent); }
 .static-note span { display: block; font-size: 11.5px; color: var(--ink-3); }
 .static-note i { font-style: normal; font-family: var(--mono); color: var(--ink-2); }
