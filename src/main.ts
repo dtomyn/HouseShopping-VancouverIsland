@@ -7,7 +7,8 @@ import type { Layer, PickingInfo } from '@deck.gl/core';
 import * as d3 from 'd3';
 import { Data, MONTHS, clamp, loadAll } from './data';
 import { AtlasEvent, AtlasLayer, CURATED_EVENTS, Ctx, PanelHandle, buildLayers } from './layers';
-import { loadWeights, renderAbout, renderFinder, renderTownReport } from './panels';
+import { loadWeights, renderFinder, renderTownReport } from './panels';
+import { openSources, sourcesOpen } from './sources';
 import { Ranked } from './metrics';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -608,13 +609,13 @@ function bindControls() {
   scrub().addEventListener('pointerdown', () => setPlaying(false));
   $<HTMLSelectElement>('speed-sel').addEventListener('change', (e) => { state.speed = +(e.target as HTMLSelectElement).value; });
   $('finder-btn').addEventListener('click', () => (state.mode === 'finder' ? closeFinder() : openFinder()));
-  $('about-btn').addEventListener('click', () => renderAbout(data));
+  $('about-btn').addEventListener('click', showSources);
   $('layers-btn').addEventListener('click', () => setMenu(!menuOpen()));
   $('panel-btn').addEventListener('click', () => setPanelOpen($('panel').classList.contains('collapsed')));
   document.addEventListener('pointerdown', (e) => { if (menuOpen() && !(e.target as HTMLElement).closest('.layer-picker')) setMenu(false); });
   window.addEventListener('resize', () => { drawSpark(); });
   window.addEventListener('keydown', (e) => {
-    if ((e.target as HTMLElement).matches('input, select, textarea')) return;
+    if (sourcesOpen() || (e.target as HTMLElement).matches('input, select, textarea')) return;
     if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); }
     const step = timeLayer().monthly ? 1 / 12 : 1;
     if (e.key === 'ArrowRight') { setPlaying(false); setTime(Math.floor(state.time / step + 1e-6) * step + step); }
@@ -622,7 +623,14 @@ function bindControls() {
     if (e.key === 'Escape') { if (menuOpen()) { setMenu(false); $('layers-btn').focus(); } else $('modal').hidden = true; }
     if (e.key === 'l' || e.key === 'L') setMenu(!menuOpen());
     if (e.key === 'p' || e.key === 'P') setPanelOpen($('panel').classList.contains('collapsed'));
+    if (e.key === 's' || e.key === 'S') showSources();
   });
+}
+
+function showSources() {
+  setPlaying(false);
+  setMenu(false);
+  openSources(data, { onShow: focus });
 }
 
 async function boot() {
@@ -635,6 +643,7 @@ async function boot() {
   bindControls();
   focus('fires');
   requestAnimationFrame(frame);
+  if (location.hash === '#sources') showSources();
 }
 
 boot();
