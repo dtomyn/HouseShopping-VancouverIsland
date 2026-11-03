@@ -1,0 +1,57 @@
+// Incorporated municipalities on Vancouver Island, with approximate town-centre coordinates.
+// `key` is the normalized name used to join BC Stats, BC Property Transfer Tax and StatCan tables.
+export const MUNICIPALITIES = [
+  { key: 'victoria', name: 'Victoria', rd: 'Capital', lon: -123.3656, lat: 48.4284 },
+  { key: 'saanich', name: 'Saanich', rd: 'Capital', lon: -123.381, lat: 48.484 },
+  { key: 'oak bay', name: 'Oak Bay', rd: 'Capital', lon: -123.317, lat: 48.4265 },
+  { key: 'esquimalt', name: 'Esquimalt', rd: 'Capital', lon: -123.413, lat: 48.432 },
+  { key: 'central saanich', name: 'Central Saanich', rd: 'Capital', lon: -123.418, lat: 48.585 },
+  { key: 'north saanich', name: 'North Saanich', rd: 'Capital', lon: -123.418, lat: 48.665 },
+  { key: 'sidney', name: 'Sidney', rd: 'Capital', lon: -123.399, lat: 48.65 },
+  { key: 'view royal', name: 'View Royal', rd: 'Capital', lon: -123.433, lat: 48.452 },
+  { key: 'colwood', name: 'Colwood', rd: 'Capital', lon: -123.495, lat: 48.4235 },
+  { key: 'langford', name: 'Langford', rd: 'Capital', lon: -123.505, lat: 48.45 },
+  { key: 'metchosin', name: 'Metchosin', rd: 'Capital', lon: -123.537, lat: 48.382 },
+  { key: 'highlands', name: 'Highlands', rd: 'Capital', lon: -123.505, lat: 48.513 },
+  { key: 'sooke', name: 'Sooke', rd: 'Capital', lon: -123.727, lat: 48.374 },
+  { key: 'duncan', name: 'Duncan', rd: 'Cowichan Valley', lon: -123.7079, lat: 48.7787 },
+  { key: 'north cowichan', name: 'North Cowichan', rd: 'Cowichan Valley', lon: -123.72, lat: 48.82 },
+  { key: 'lake cowichan', name: 'Lake Cowichan', rd: 'Cowichan Valley', lon: -124.054, lat: 48.825 },
+  { key: 'ladysmith', name: 'Ladysmith', rd: 'Cowichan Valley', lon: -123.818, lat: 48.9975 },
+  { key: 'nanaimo', name: 'Nanaimo', rd: 'Nanaimo', lon: -123.9401, lat: 49.1659 },
+  { key: 'lantzville', name: 'Lantzville', rd: 'Nanaimo', lon: -124.075, lat: 49.25 },
+  { key: 'parksville', name: 'Parksville', rd: 'Nanaimo', lon: -124.312, lat: 49.319 },
+  { key: 'qualicum beach', name: 'Qualicum Beach', rd: 'Nanaimo', lon: -124.443, lat: 49.348 },
+  { key: 'port alberni', name: 'Port Alberni', rd: 'Alberni-Clayoquot', lon: -124.8055, lat: 49.2339 },
+  { key: 'tofino', name: 'Tofino', rd: 'Alberni-Clayoquot', lon: -125.9066, lat: 49.153 },
+  { key: 'ucluelet', name: 'Ucluelet', rd: 'Alberni-Clayoquot', lon: -125.546, lat: 48.942 },
+  { key: 'courtenay', name: 'Courtenay', rd: 'Comox Valley', lon: -124.9936, lat: 49.6866 },
+  { key: 'comox', name: 'Comox', rd: 'Comox Valley', lon: -124.9022, lat: 49.6733 },
+  { key: 'cumberland', name: 'Cumberland', rd: 'Comox Valley', lon: -125.026, lat: 49.619 },
+  { key: 'campbell river', name: 'Campbell River', rd: 'Strathcona', lon: -125.2733, lat: 50.0331 },
+  { key: 'gold river', name: 'Gold River', rd: 'Strathcona', lon: -126.051, lat: 49.779 },
+  { key: 'sayward', name: 'Sayward', rd: 'Strathcona', lon: -125.96, lat: 50.383 },
+  { key: 'tahsis', name: 'Tahsis', rd: 'Strathcona', lon: -126.658, lat: 49.917 },
+  { key: 'zeballos', name: 'Zeballos', rd: 'Strathcona', lon: -126.845, lat: 49.98 },
+  { key: 'port hardy', name: 'Port Hardy', rd: 'Mount Waddington', lon: -127.497, lat: 50.724 },
+  { key: 'port mcneill', name: 'Port McNeill', rd: 'Mount Waddington', lon: -127.085, lat: 50.59 },
+  { key: 'port alice', name: 'Port Alice', rd: 'Mount Waddington', lon: -127.455, lat: 50.386 },
+  { key: 'alert bay', name: 'Alert Bay', rd: 'Mount Waddington', lon: -126.931, lat: 50.585 },
+];
+
+const PREFIX = /^(the\s+)?(corporation of the\s+)?(city|district|town|township|village|resort municipality|district municipality)\s+of\s+/i;
+
+/** "234 - City of Victoria", "District of Saanich (SD61)", "Victoria (CY)" -> "victoria" */
+export function normalizeMuniName(raw) {
+  return String(raw)
+    .replace(/^\s*\d+\s*-\s*/, '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/\[.*?\]/g, '')
+    .replace(PREFIX, '')
+    .replace(/[^a-z ]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+export const MUNI_BY_KEY = new Map(MUNICIPALITIES.map((m) => [m.key, m]));

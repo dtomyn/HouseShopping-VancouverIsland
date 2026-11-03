@@ -1,0 +1,34 @@
+{
+  "island": {
+    "ok": true,
+    "updated": "2026-11-03T16:32:11.433Z"
+  },
+  "quakes": {
+    "ok": true,
+    "updated": "2026-11-03T16:32:12.336Z"
+  },
+  "fires": {
+    "ok": true,
+    "updated": "2026-11-03T16:32:26.993Z"
+  },
+  "rivers": {
+    "ok": true,
+    "updated": "2026-11-03T16:45:15.845Z"
+  },
+  "climate": {
+    "ok": true,
+    "updated": "2026-11-03T16:32:33.209Z"
+  },
+  "population": {
+    "ok": true,
+    "updated": "2026-11-03T16:32:34.682Z"
+  },
+  "housing": {
+    "ok": true,
+    "updated": "2026-11-03T16:48:12.931Z"
+  },
+  "crime": {
+    "ok": true,
+    "updated": "2026-11-03T16:49:18.990Z"
+  }
+}

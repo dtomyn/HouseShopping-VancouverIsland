@@ -1,0 +1,559 @@
+import 'maplibre-gl/dist/maplibre-gl.css';
+import './style.css';
+import maplibregl from 'maplibre-gl';
+import { MapboxOverlay } from '@deck.gl/mapbox';
+import { ColumnLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
+import type { Layer, PickingInfo } from '@deck.gl/core';
+import * as d3 from 'd3';
+import { Data, MONTHS, clamp, loadAll } from './data';
+import { AtlasEvent, AtlasLayer, CURATED_EVENTS, Ctx, PanelHandle, buildLayers } from './layers';
+import { loadWeights, renderAbout, renderFinder, renderTownReport } from './panels';
+import { Ranked } from './metrics';
+
+const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
+
+const INTRO_FROM = { center: [-126.2, 50.4] as [number, number], zoom: 5.1, pitch: 0, bearing: 0 };
+const HOME = { center: [-125.25, 49.55] as [number, number], zoom: 7.15, pitch: 48, bearing: -18 };
+const MUNI_LAYERS = new Set(['population', 'housing', 'crime']);
+
+type Mode = 'layer' | 'town' | 'finder';
+
+const state = {
+  time: 1919,
+  playing: false,
+  speed: 2,
+  focused: 'fires',
+  visible: new Set<string>(['fires']),
+  selected: null as string | null,
+  mode: 'layer' as Mode,
+  ranked: null as Ranked[] | null,
+  beacons: [] as { ev: AtlasEvent; born: number }[],
+};
+
+let data: Data;
+let layers: AtlasLayer[] = [];
+let byId: Record<string, AtlasLayer> = {};
+let events: AtlasEvent[] = [];
+let map: maplibregl.Map;
+let overlay: MapboxOverlay;
+let panelHandle: PanelHandle | null = null;
+let firstLabelLayer: string | undefined;
+
+const ctx = (): Ctx => ({ time: state.time, speed: state.speed, data, selected: state.selected, focusedId: state.focused, clock: performance.now() });
+const focusedLayer = () => byId[state.focused];
+
+// ---------------------------------------------------------------------------------------------
+// map
+
+function initMap() {
+  map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+    ...INTRO_FROM,
+    maxPitch: 75,
+    attributionControl: { compact: true },
+    canvasContextAttributes: { antialias: true },
+  } as any);
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+
+  map.on('load', () => {
+    const style = map.getStyle();
+    firstLabelLayer = style.layers.find((l) => l.type === 'symbol')?.id;
+    const waterLayer = style.layers.find((l) => /water/.test(l.id) && l.type === 'fill')?.id;
+
+    // shaded relief from open terrain tiles, tucked under the water so the sea stays flat
+    map.addSource('dem', {
+      type: 'raster-dem',
+      tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      encoding: 'terrarium',
+      maxzoom: 12,
+      attribution: 'Terrain: Mapzen / AWS Terrain Tiles',
+    });
+    map.addLayer(
+      {
+        id: 'hillshade',
+        type: 'hillshade',
+        source: 'dem',
+        paint: {
+          'hillshade-exaggeration': 0.55,
+          'hillshade-shadow-color': '#02040a',
+          'hillshade-highlight-color': 'rgba(150,175,215,0.22)',
+          'hillshade-accent-color': '#0b1424',
+          'hillshade-illumination-direction': 315,
+        },
+      },
+      waterLayer,
+    );
+
+    if (data.island) {
+      map.addSource('island', { type: 'geojson', data: data.island });
+      map.addLayer({ id: 'coast-glow', type: 'line', source: 'island', paint: { 'line-color': '#4cc9f0', 'line-width': 10, 'line-blur': 10, 'line-opacity': 0.16 } }, firstLabelLayer);
+      map.addLayer({ id: 'coast-line', type: 'line', source: 'island', paint: { 'line-color': '#8fdcff', 'line-width': 0.8, 'line-opacity': 0.5 } }, firstLabelLayer);
+    }
+    try {
+      (map as any).setSky?.({ 'sky-color': '#060a12', 'horizon-color': '#12233d', 'fog-color': '#060a12', 'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.85 });
+    } catch { /* older renderers */ }
+
+    overlay = new MapboxOverlay({
+      interleaved: true,
+      layers: [],
+      onHover,
+      onClick,
+      getCursor: ({ isHovering, isDragging }) => (isDragging ? 'grabbing' : isHovering ? 'pointer' : 'grab'),
+    } as any);
+    map.addControl(overlay as any);
+
+    $('loader').classList.add('done');
+    setTimeout(() => {
+      map.flyTo({ ...HOME, duration: 4200, curve: 1.6, essential: true });
+      setTimeout(() => setPlaying(true), 3200);
+    }, 300);
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// deck layers per frame
+
+function render() {
+  if (!overlay) return;
+  const c = ctx();
+  const out: Layer[] = [];
+  for (const l of layers) {
+    if (!l.available || !state.visible.has(l.id)) continue;
+    for (const dl of l.build(c)) {
+      // flat layers go under the basemap labels; 3D columns stay on top
+      const flat = /scars|embers|base|stems/.test(dl.id);
+      out.push(flat && firstLabelLayer ? dl.clone({ beforeId: firstLabelLayer } as any) : dl);
+    }
+  }
+
+  const anyMuni = [...state.visible].some((id) => MUNI_LAYERS.has(id) && byId[id]?.available);
+  if (state.mode === 'finder' && state.ranked) {
+    const ramp = d3.scaleSequential(d3.interpolateRgb('#2b1f6b', '#7dffc4')).domain([0.2, 0.85]).clamp(true);
+    const rk = state.ranked.map((r, i) => ({ ...r, i }));
+    out.push(
+      new ColumnLayer<any>({
+        id: 'finder-cols',
+        data: rk,
+        getPosition: (r) => [r.t.muni.lon, r.t.muni.lat],
+        radius: 1900,
+        diskResolution: 32,
+        extruded: true,
+        getElevation: (r) => 800 + r.score ** 1.6 * 45000,
+        getFillColor: (r) => { const c2 = d3.rgb(ramp(r.score)); return [c2.r, c2.g, c2.b, r.i < 5 ? 250 : 170]; },
+        material: { ambient: 0.6, diffuse: 0.6, shininess: 80 },
+        pickable: true,
+        transitions: { getElevation: { duration: 600, easing: d3.easeCubicOut }, getFillColor: 600 },
+        updateTriggers: { getElevation: state.ranked, getFillColor: state.ranked },
+      }),
+      new TextLayer<any>({
+        id: 'finder-labels',
+        data: rk.slice(0, 10),
+        getPosition: (r) => [r.t.muni.lon, r.t.muni.lat, 800 + r.score ** 1.6 * 45000 + 3000],
+        getText: (r) => `${r.i + 1} · ${r.t.muni.name}`,
+        getSize: (r) => (r.i < 3 ? 15 : 12),
+        getColor: [240, 244, 252, 255],
+        fontFamily: 'Inter, sans-serif',
+        fontWeight: 700,
+        outlineWidth: 3,
+        outlineColor: [6, 10, 18, 230],
+        fontSettings: { sdf: true },
+        getTextAnchor: 'middle',
+        getAlignmentBaseline: 'bottom',
+        updateTriggers: { getPosition: state.ranked, getText: state.ranked },
+        parameters: { depthCompare: 'always' },
+      } as any),
+    );
+  } else if (!anyMuni) {
+    // clickable town pins whenever no municipal layer is showing
+    out.push(
+      new ScatterplotLayer<any>({
+        id: 'towns-pins',
+        data: data.munis,
+        getPosition: (m) => [m.lon, m.lat],
+        getRadius: 650,
+        radiusMinPixels: 3.5,
+        radiusMaxPixels: 7,
+        getFillColor: [235, 242, 255, 210],
+        stroked: true,
+        getLineColor: [6, 10, 18, 255],
+        lineWidthMinPixels: 1.2,
+        pickable: true,
+        parameters: { depthCompare: 'always' },
+      } as any),
+    );
+  }
+
+  // pulsing ring on the selected town
+  if (state.selected) {
+    const m = data.munis.find((x) => x.key === state.selected);
+    if (m) {
+      const p = (performance.now() % 1600) / 1600;
+      out.push(
+        new ScatterplotLayer<any>({
+          id: 'selected-ring',
+          data: [m],
+          getPosition: (d) => [d.lon, d.lat],
+          getRadius: 2500 + p * 7000,
+          stroked: true,
+          filled: false,
+          lineWidthMinPixels: 2,
+          getLineColor: [255, 255, 255, 255 * (1 - p)],
+          updateTriggers: { getRadius: p, getLineColor: p },
+          parameters: { depthCompare: 'always' },
+        } as any),
+      );
+    }
+  }
+
+  // event beacons: a shockwave where a historic event happened
+  const now = performance.now();
+  state.beacons = state.beacons.filter((b) => now - b.born < 3500);
+  if (state.beacons.length)
+    out.push(
+      new ScatterplotLayer<any>({
+        id: 'beacons',
+        data: state.beacons.flatMap((b) => [0, 0.33, 0.66].map((o) => ({ b, o }))),
+        getPosition: (d) => [d.b.ev.lon, d.b.ev.lat],
+        getRadius: (d) => { const a = ((now - d.b.born) / 3500 + d.o) % 1; return 2000 + a * 40000; },
+        stroked: true,
+        filled: false,
+        lineWidthMinPixels: 2,
+        getLineColor: (d) => { const a = ((now - d.b.born) / 3500 + d.o) % 1; return [255, 255, 255, 220 * (1 - a) * (1 - (now - d.b.born) / 3500)]; },
+        updateTriggers: { getRadius: now, getLineColor: now },
+        parameters: { depthCompare: 'always' },
+      } as any),
+    );
+
+  overlay.setProps({ layers: out });
+}
+
+// ---------------------------------------------------------------------------------------------
+// interaction
+
+const tooltipEl = () => $('tooltip');
+
+function onHover(info: PickingInfo) {
+  const t = tooltipEl();
+  if (!info.object || !info.layer) { t.hidden = true; return; }
+  let html: string | null = null;
+  const id = info.layer.id;
+  if (id.startsWith('finder')) {
+    const r = info.object as Ranked & { i: number };
+    html = `<b>#${r.i + 1} ${r.t.muni.name}</b><br><span class="tk">Score</span> <span class="tv">${Math.round(r.score * 100)}</span><br><span class="tk">Click for town report</span>`;
+  } else if (id.startsWith('towns')) {
+    html = `<b>${info.object.name}</b><br><span class="tk">Click for town report</span>`;
+  } else {
+    const owner = layers.find((l) => id.startsWith(l.id));
+    html = owner?.tooltip(info) ?? null;
+  }
+  if (!html) { t.hidden = true; return; }
+  t.innerHTML = html;
+  t.hidden = false;
+  const r = t.getBoundingClientRect();
+  t.style.left = `${Math.min(info.x, window.innerWidth - r.width - 30)}px`;
+  t.style.top = `${Math.min(info.y, window.innerHeight - r.height - 30)}px`;
+}
+
+function onClick(info: PickingInfo) {
+  const o: any = info.object;
+  if (!o) return;
+  const key = o.m?.key ?? o.t?.muni?.key ?? (info.layer?.id.startsWith('towns') ? o.key : null);
+  if (key) openTown(key);
+}
+
+function openTown(key: string) {
+  state.selected = key;
+  const m = data.munis.find((x) => x.key === key)!;
+  const prevMode = state.mode === 'town' ? 'layer' : state.mode;
+  state.mode = 'town';
+  let rank: { pos: number; of: number; score: number } | undefined;
+  if (state.ranked) {
+    const i = state.ranked.findIndex((r) => r.t.muni.key === key);
+    if (i >= 0) rank = { pos: i + 1, of: state.ranked.length, score: state.ranked[i].score };
+  }
+  swapPanel(() => {
+    panelHandle = null;
+    renderTownReport($('panel'), data, key, {
+      rank,
+      onClose: () => { state.selected = null; prevMode === 'finder' ? openFinder() : showLayerPanel(); },
+    });
+  });
+  map.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 9.2), pitch: 55, duration: 1600, essential: true });
+}
+
+function openFinder() {
+  state.mode = 'finder';
+  $('finder-btn').classList.add('active');
+  const weights = loadWeights();
+  swapPanel(() => {
+    panelHandle = null;
+    renderFinder($('panel'), data, weights, {
+      onChange: (ranked) => { state.ranked = ranked; },
+      onPick: (key) => openTown(key),
+      onClose: () => closeFinder(),
+    });
+  });
+  if (map.getZoom() > 8.5) map.flyTo({ ...HOME, duration: 1400 });
+}
+
+function closeFinder() {
+  state.mode = 'layer';
+  state.ranked = null;
+  state.selected = null;
+  $('finder-btn').classList.remove('active');
+  showLayerPanel();
+}
+
+function swapPanel(fill: () => void) {
+  const p = $('panel');
+  p.classList.add('swap');
+  setTimeout(() => {
+    p.scrollTop = 0;
+    fill();
+    p.classList.remove('swap');
+  }, 160);
+}
+
+function showLayerPanel() {
+  state.mode = state.mode === 'finder' ? 'finder' : 'layer';
+  if (state.mode === 'finder') return;
+  const l = focusedLayer();
+  swapPanel(() => {
+    const p = $('panel');
+    p.style.setProperty('--c', l.color);
+    panelHandle = l.panel(p, ctx());
+    panelHandle.update(ctx());
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// rail
+
+function renderRail() {
+  const rail = $('rail');
+  rail.innerHTML = '';
+  for (const l of layers) {
+    const card = document.createElement('div');
+    card.className = `layer-card${l.id === state.focused ? ' focused' : ''}${l.available ? '' : ' unavailable'}`;
+    card.style.setProperty('--c', l.color);
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+    const [a, b] = l.range;
+    card.innerHTML = `<div class="ic">${l.icon}</div><div><div class="nm">${l.name}</div><div class="rg">${l.available ? `${Math.floor(a)}–${Math.floor(b)}` : 'data unavailable'}</div></div><button class="eye${state.visible.has(l.id) ? ' on' : ''}" aria-label="Show ${l.name} on map" title="Show / hide on map"></button>`;
+    card.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).classList.contains('eye')) {
+        if (state.visible.has(l.id)) state.visible.delete(l.id);
+        else state.visible.add(l.id);
+        renderRail();
+        return;
+      }
+      focus(l.id);
+    });
+    card.addEventListener('keydown', (e) => { if (e.key === 'Enter') focus(l.id); });
+    rail.appendChild(card);
+  }
+  rail.insertAdjacentHTML('beforeend', `<div class="rail-hint">Click a layer to explore its story. Use the switch to overlay several at once. Click any town for its report card.</div>`);
+}
+
+function focus(id: string) {
+  const l = byId[id];
+  const changed = state.focused !== id;
+  state.focused = id;
+  // Focusing shows the layer; other layers stay on only if the user turned them on themselves.
+  state.visible.add(id);
+  if (changed) {
+    const [a, b] = l.range;
+    if (state.time < a || state.time > b) state.time = a;
+    if (state.mode !== 'finder') { state.mode = 'layer'; state.selected = null; }
+  }
+  document.documentElement.style.setProperty('--accent', l.color);
+  renderRail();
+  setupTimeline();
+  if (state.mode !== 'finder') showLayerPanel();
+}
+
+// ---------------------------------------------------------------------------------------------
+// timeline
+
+const scrub = () => $<HTMLInputElement>('scrub');
+
+function setupTimeline() {
+  const l = focusedLayer();
+  const [a, b] = l.range;
+  const s = scrub();
+  s.min = String(a);
+  s.max = String(b);
+  s.step = l.monthly ? String(1 / 12) : '0.01';
+  $('t-min').textContent = String(Math.floor(a));
+  $('t-max').textContent = String(Math.floor(b));
+  $('t-label').textContent = l.name;
+  drawSpark();
+  drawEvents();
+}
+
+function drawSpark() {
+  const l = focusedLayer();
+  const cv = $<HTMLCanvasElement>('spark');
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * dpr;
+  cv.height = h * dpr;
+  const g = cv.getContext('2d')!;
+  g.scale(dpr, dpr);
+  g.clearRect(0, 0, w, h);
+  if (!l.available) return;
+  const pts = l.spark();
+  if (!pts.length) return;
+  const [a, b] = l.range;
+  const x = (v: number) => ((v - a) / (b - a)) * w;
+  const max = Math.max(...pts.map((p) => Math.abs(p.y))) || 1;
+  const diverging = pts.some((p) => p.y < 0);
+  const step = l.monthly ? 1 / 12 : 1;
+  const bw = Math.max(1, (w / ((b - a) / step)) - (l.monthly ? 0.3 : 1));
+  for (const p of pts) {
+    const past = p.x <= state.time;
+    g.fillStyle = p.color ?? l.color;
+    g.globalAlpha = past ? 0.95 : 0.3;
+    if (diverging) {
+      const mid = h / 2 + 1;
+      const hh = (Math.abs(p.y) / max) * (h / 2 - 2);
+      g.fillRect(x(p.x), p.y >= 0 ? mid - hh : mid, bw, Math.max(1, hh));
+    } else {
+      const hh = (p.y / max) * (h - 4);
+      g.fillRect(x(p.x), h - hh, bw, Math.max(p.y > 0 ? 1 : 0, hh));
+    }
+  }
+  g.globalAlpha = 1;
+}
+
+function drawEvents() {
+  const l = focusedLayer();
+  const [a, b] = l.range;
+  const el = $('events');
+  el.innerHTML = '';
+  for (const ev of events) {
+    if (ev.t < a || ev.t > b || (ev.layer !== '*' && ev.layer !== l.id)) continue;
+    const d = document.createElement('div');
+    d.className = 'ev';
+    d.style.left = `${((ev.t - a) / (b - a)) * 100}%`;
+    d.style.background = ev.layer === '*' ? '#fff' : byId[ev.layer].color;
+    d.title = ev.title;
+    d.addEventListener('click', () => {
+      setTime(ev.t - 0.02);
+      setPlaying(false);
+      toast(ev);
+      if (ev.lon != null) map.flyTo({ center: [ev.lon, ev.lat!], zoom: ev.zoom ?? 8.5, duration: 1500 });
+      setTimeout(() => setTime(ev.t + 0.01), 50);
+    });
+    el.appendChild(d);
+  }
+}
+
+function setTime(t: number) {
+  const [a, b] = focusedLayer().range;
+  state.time = clamp(t, a, b);
+}
+
+function setPlaying(p: boolean) {
+  state.playing = p;
+  $('play').classList.toggle('playing', p);
+  $('play').setAttribute('aria-label', p ? 'Pause' : 'Play');
+  if (p) {
+    const [a, b] = focusedLayer().range;
+    if (state.time >= b - 0.01) state.time = a;
+  }
+}
+
+let lastSparkYear = -1;
+function syncTimelineUI() {
+  const l = focusedLayer();
+  const [a, b] = l.range;
+  const s = scrub();
+  if (document.activeElement !== s || state.playing) s.value = String(state.time);
+  s.style.setProperty('--p', `${((state.time - a) / (b - a)) * 100}%`);
+  $('year').textContent = String(Math.floor(state.time));
+  $('month').textContent = l.monthly || state.speed <= 1 ? MONTHS[Math.floor((state.time % 1) * 12)] : '';
+  const y = Math.floor(state.time * (l.monthly ? 12 : 1));
+  if (y !== lastSparkYear) { lastSparkYear = y; drawSpark(); }
+}
+
+// ---------------------------------------------------------------------------------------------
+// historic event toasts
+
+function toast(ev: AtlasEvent) {
+  const stack = $('toast-stack');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.style.setProperty('--c', ev.layer === '*' ? '#ffffff' : byId[ev.layer]?.color ?? '#fff');
+  const yr = Math.floor(ev.t);
+  const mo = MONTHS[Math.floor((ev.t % 1) * 12)];
+  el.innerHTML = `<div class="td">${mo} ${yr}</div><div class="tt">${ev.title}</div><div class="tb">${ev.body}</div>`;
+  stack.prepend(el);
+  while (stack.children.length > 3) stack.lastElementChild!.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 6500);
+  if (ev.lon != null) state.beacons.push({ ev, born: performance.now() });
+}
+
+function fireCrossedEvents(prev: number, now: number) {
+  if (now <= prev || now - prev > 1.5) return;
+  for (const ev of events) {
+    if (ev.t > prev && ev.t <= now && (ev.layer === '*' || state.visible.has(ev.layer))) toast(ev);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// main loop
+
+let lastFrame = performance.now();
+let lastPanel = 0;
+function frame(now: number) {
+  const dt = Math.min(0.1, (now - lastFrame) / 1000);
+  lastFrame = now;
+  if (state.playing) {
+    const prev = state.time;
+    const [, b] = focusedLayer().range;
+    state.time = Math.min(b, state.time + dt * state.speed);
+    fireCrossedEvents(prev, state.time);
+    if (state.time >= b) setPlaying(false);
+  }
+  render();
+  syncTimelineUI();
+  if (panelHandle && now - lastPanel > 90) { lastPanel = now; panelHandle.update(ctx()); }
+  requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------------------------------------
+
+function bindControls() {
+  $('play').addEventListener('click', () => setPlaying(!state.playing));
+  scrub().addEventListener('input', () => { state.time = +scrub().value; });
+  scrub().addEventListener('pointerdown', () => setPlaying(false));
+  $<HTMLSelectElement>('speed-sel').addEventListener('change', (e) => { state.speed = +(e.target as HTMLSelectElement).value; });
+  $('finder-btn').addEventListener('click', () => (state.mode === 'finder' ? closeFinder() : openFinder()));
+  $('about-btn').addEventListener('click', () => renderAbout(data));
+  window.addEventListener('resize', () => { drawSpark(); });
+  window.addEventListener('keydown', (e) => {
+    if ((e.target as HTMLElement).matches('input, select, textarea')) return;
+    if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); }
+    const step = focusedLayer().monthly ? 1 / 12 : 1;
+    if (e.key === 'ArrowRight') { setPlaying(false); setTime(Math.floor(state.time / step + 1e-6) * step + step); }
+    if (e.key === 'ArrowLeft') { setPlaying(false); setTime(Math.ceil(state.time / step - 1e-6) * step - step); }
+    if (e.key === 'Escape') { $('modal').hidden = true; }
+  });
+}
+
+async function boot() {
+  data = await loadAll();
+  layers = buildLayers(data);
+  byId = Object.fromEntries(layers.map((l) => [l.id, l]));
+  events = [...layers.flatMap((l) => (l.available ? l.events() : [])), ...CURATED_EVENTS].sort((a, b) => a.t - b.t);
+  state.time = byId.fires.range[0];
+  initMap();
+  bindControls();
+  focus('fires');
+  requestAnimationFrame(frame);
+}
+
+boot();
