@@ -15,7 +15,7 @@ import ExcelJS from 'exceljs';
 import { unzipSync, strFromU8 } from 'fflate';
 import simplify from '@turf/simplify';
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
-import { MUNICIPALITIES, ISLAND_COMMUNITIES, PLACES, MUNI_BY_KEY, ISLAND_BY_PTT, ISLAND_BY_RCMP, normalizeMuniName } from './municipalities.mjs';
+import { MUNICIPALITIES, ISLAND_COMMUNITIES, PLACES, MUNI_BY_KEY, PTT_CODES, ISLAND_BY_RCMP, normalizeMuniName } from './municipalities.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'public', 'data');
@@ -210,10 +210,32 @@ const fracYear = (iso) => {
  * in small, thinly settled neighbours, e.g. Thetis with Valdes, Gabriola with Mudge.) DA counts
  * for 2016 aren't published, so these rows are a single 2021 snapshot in BC Stats' shape.
  */
-async function islandCensus() {
+const CENSUS_PROFILE = 'https://api.statcan.gc.ca/census-recensement/profile/sdmx/rest/data/STC_CP';
+
+/** 2021 Census Profile values, summed per characteristic over the given areas (DF_DA or DF_CSD). */
+async function censusProfile(flow, dguids, chars, cacheName) {
+  const csv = (await cached(`census/${cacheName}.csv`, async () => {
+    const res = await fetch(`${CENSUS_PROFILE},${flow}/A5.${dguids.join('+')}.1.${chars.join('+')}.1`, { headers: { Accept: 'application/vnd.sdmx.data+csv;version=1.0.0', 'Accept-Language': 'en' }, signal: AbortSignal.timeout(120_000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status} from the census profile API`);
+    return Buffer.from(await res.text());
+  })).toString('utf8').split(/\r?\n/).filter(Boolean);
+  const h = csv[0].split(',');
+  const iA = h.indexOf('REF_AREA'), iC = h.indexOf('CHARACTERISTIC'), iV = h.indexOf('OBS_VALUE');
+  // area -> characteristic -> value (null where suppressed)
+  const out = {};
+  for (const line of csv.slice(1)) {
+    const r = line.split(',');
+    (out[r[iA]] ??= {})[r[iC]] = r[iV] === '' ? null : Number(r[iV]);
+  }
+  return out;
+}
+
+/** The 2021 dissemination areas that lie mostly on each shortlisted island, by island key. */
+let islandDAsMemo = null;
+async function islandDAs() {
+  if (islandDAsMemo) return islandDAsMemo;
   const { parts } = await getIsland();
   const DA = 'https://geo.statcan.gc.ca/geo_wa/rest/services/2021/Digital_boundary_files/MapServer/12/query';
-  const CP = 'https://api.statcan.gc.ca/census-recensement/profile/sdmx/rest/data/STC_CP,DF_DA';
   const out = {};
   for (const c of ISLAND_COMMUNITIES) {
     const isl = parts.get(c.fwa);
@@ -223,7 +245,7 @@ async function islandCensus() {
     const fc = await cachedJSON(`census/da-${c.key.replace(/ /g, '_')}.json`, `${DA}?${q}`);
     // DA polygons run out over the water, so compare the DA's land on this island (sampled on a
     // grid) with its official land area.
-    const das = fc.features.filter((f) => {
+    out[c.key] = fc.features.filter((f) => {
       const pts = (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates).flat(2);
       const x0 = Math.min(...pts.map((p) => p[0])), x1 = Math.max(...pts.map((p) => p[0]));
       const y0 = Math.min(...pts.map((p) => p[1])), y1 = Math.max(...pts.map((p) => p[1]));
@@ -234,25 +256,83 @@ async function islandCensus() {
         for (let y = y0 + step / 2; y < y1; y += step)
           if (booleanPointInPolygon([x, y], f) && booleanPointInPolygon([x, y], isl)) on++;
       return on * cellKm2 >= 0.3 * f.properties.LANDAREA;
-    });
-    if (!das.length) { log(`  population: no census areas found on ${c.fwa}`); continue; }
+    }).map((f) => f.properties.DGUID);
+  }
+  return (islandDAsMemo = out);
+}
+
+async function islandCensus() {
+  const das = await islandDAs();
+  const out = {};
+  for (const c of ISLAND_COMMUNITIES) {
+    const ids = das[c.key];
+    if (!ids.length) { log(`  population: no census areas found on ${c.fwa}`); continue; }
     // characteristics: 1 = population 2021, 24 = aged 65 and over
-    const ids = das.map((f) => f.properties.DGUID).join('+');
-    const csv = (await cached(`census/profile-${c.key.replace(/ /g, '_')}.csv`, async () => {
-      const res = await fetch(`${CP}/A5.${ids}.1.1+24.1`, { headers: { Accept: 'application/vnd.sdmx.data+csv;version=1.0.0', 'Accept-Language': 'en' }, signal: AbortSignal.timeout(120_000) });
-      if (!res.ok) throw new Error(`HTTP ${res.status} from the census profile API`);
-      return Buffer.from(await res.text());
-    })).toString('utf8').split(/\r?\n/).filter(Boolean);
-    const h = csv[0].split(',');
-    const iC = h.indexOf('CHARACTERISTIC'), iV = h.indexOf('OBS_VALUE');
-    const sum = { 1: 0, 24: 0 };
-    for (const line of csv.slice(1)) {
-      const r = line.split(',');
-      sum[r[iC]] += Number(r[iV]) || 0;
-    }
-    if (!sum[1]) { log(`  population: census returned no count for ${c.name}`); continue; }
-    out[c.key] = { pop: { 2021: sum[1] }, s65: { 2021: round(sum[24] / sum[1], 4) }, firstProjection: null, census: true };
-    log(`  ${c.name}: ${das.length} census areas, ${sum[1]} people in 2021, ${Math.round((sum[24] / sum[1]) * 100)}% 65+`);
+    const vals = Object.values(await censusProfile('DF_DA', ids, [1, 24], `profile-${c.key.replace(/ /g, '_')}`));
+    const sum = (k) => vals.reduce((a, v) => a + (v[k] ?? 0), 0);
+    const pop = sum(1), s65 = sum(24);
+    if (!pop) { log(`  population: census returned no count for ${c.name}`); continue; }
+    out[c.key] = { pop: { 2021: pop }, s65: { 2021: round(s65 / pop, 4) }, firstProjection: null, census: true };
+    log(`  ${c.name}: ${ids.length} census areas, ${pop} people in 2021, ${Math.round((s65 / pop) * 100)}% 65+`);
+  }
+  return out;
+}
+
+/** Median of a series' monthly medians over [from, to] ("YYYY-MM"), months with sales only. */
+function medianOver(series, from, to) {
+  const v = Object.entries(series).filter(([m, x]) => m >= from && m <= to && x[2] > 0 && x[0] > 0).map(([, x]) => x[0]).sort((a, b) => a - b);
+  return v.length >= 6 ? v[Math.floor(v.length / 2)] : null;
+}
+
+/**
+ * Island sales are only published inside wider rural jurisdictions that are mostly Vancouver
+ * Island acreage, so each island gets its own price level from the 2021 Census: owners' own
+ * estimate of their home's value, averaged over the island's dissemination areas. Owners' values
+ * and transfer-tax medians differ in kind, so the census average is scaled by the typical ratio
+ * between the two across the municipalities (both measured around census day, May 2021). The
+ * rural jurisdiction's sales then carry that level forward month by month, so the island's trend
+ * is the rural area's trend. Replaces munis[key] in place; returns how each estimate was built.
+ */
+async function islandPrices(munis) {
+  const AROUND = ['2020-11', '2021-11']; // 12 months around census day
+  const OWNERS = 1468, AVG_VALUE = 1475;
+
+  // ratio of transfer-tax median to census average value, per municipality
+  const csdQ = new URLSearchParams({ where: "PRUID='59'", outFields: 'CSDUID,CSDNAME,CSDTYPE,DGUID', returnGeometry: 'false', f: 'json', resultRecordCount: '2000' });
+  const csds = (await cachedJSON('census/csd-bc.json', `https://geo.statcan.gc.ca/geo_wa/rest/services/2021/Digital_boundary_files/MapServer/9/query?${csdQ}`)).features.map((f) => f.attributes);
+  const csdOf = new Map();
+  for (const c of csds) {
+    // municipalities only, not electoral areas or reserves
+    if (/^(RDA|IRI|IGD|TAL)$/.test(c.CSDTYPE)) continue;
+    const k = normalizeMuniName(c.CSDNAME);
+    if (MUNI_BY_KEY.has(k)) csdOf.set(k, c.DGUID);
+  }
+  const csdVals = await censusProfile('DF_CSD', [...csdOf.values()], [AVG_VALUE], 'value-municipalities');
+  const ratios = [];
+  for (const [k, dguid] of csdOf) {
+    const census = csdVals[dguid]?.[AVG_VALUE];
+    const ptt = munis[k] && medianOver(munis[k], ...AROUND);
+    if (census && ptt) ratios.push(ptt / census);
+  }
+  ratios.sort((a, b) => a - b);
+  const calib = ratios[Math.floor(ratios.length / 2)];
+  log(`  sale median ÷ census value across ${ratios.length} municipalities: median ${calib.toFixed(2)} (range ${ratios[0].toFixed(2)}–${ratios.at(-1).toFixed(2)})`);
+
+  const das = await islandDAs();
+  const out = {};
+  for (const c of ISLAND_COMMUNITIES.filter((c) => c.ptt)) {
+    const rural = munis[c.key];
+    const vals = Object.values(await censusProfile('DF_DA', das[c.key], [OWNERS, AVG_VALUE], `value-${c.key.replace(/ /g, '_')}`));
+    // owner-weighted average over the areas that report a value
+    let owners = 0, total = 0;
+    for (const v of vals) if (v[OWNERS] && v[AVG_VALUE]) { owners += v[OWNERS]; total += v[OWNERS] * v[AVG_VALUE]; }
+    const base = rural && medianOver(rural, ...AROUND);
+    if (!owners || !base) { delete munis[c.key]; log(`  ${c.name}: no census home values or rural sales, left blank`); continue; }
+    const census = total / owners;
+    const k = (census * calib) / base;
+    munis[c.key] = Object.fromEntries(Object.entries(rural).map(([m, [med, mean, n]]) => [m, [Math.round(med * k), Math.round(mean * k), n]]));
+    out[c.key] = { area: c.pttName, census: Math.round(census), owners, calib: round(calib, 3), factor: round(k, 3) };
+    log(`  ${c.name}: census average $${Math.round(census / 1000)}K over ${owners} owners → ${round(k, 2)}× ${c.pttName} sales`);
   }
   return out;
 }
@@ -559,10 +639,10 @@ const SOURCES = {
         // Workbook years differ in letter case and spacing of the statistic labels.
         const field = WANT[String(v[cStat] ?? '').toUpperCase().replace(/\s+/g, ' ').trim()];
         if (!field) return;
-        // Municipalities by name; island communities by their rural jurisdiction's code ("764 - Gulf Islands Rural").
+        // Municipalities by name; the islands' rural jurisdictions by code ("768 - Nanaimo Rural" -> "#768").
         const key = normalizeMuniName(v[cMuni]);
         const code = String(v[cMuni] ?? '').match(/^\s*(\d+)\s*-/)?.[1];
-        const keys = MUNI_BY_KEY.has(key) ? [key] : (ISLAND_BY_PTT.get(code) ?? []).map((c) => c.key);
+        const keys = MUNI_BY_KEY.has(key) ? [key] : PTT_CODES.has(code) ? [`#${code}`] : [];
         if (!keys.length) return;
         for (let c = cStat + 1; c < header.length; c++) {
           const m = String(header[c] ?? '').match(/(20\d\d)[-/ ]?(\d\d)/);
@@ -577,6 +657,17 @@ const SOURCES = {
         }
       });
     }
+    // An island's jurisdictions are pooled like school-district splits.
+    for (const c of ISLAND_COMMUNITIES.filter((c) => c.ptt)) {
+      const pooled = (acc[c.key] = {});
+      for (const code of c.ptt) {
+        for (const [month, x] of Object.entries(acc[`#${code}`] ?? {})) {
+          const slot = (pooled[month] ??= { n: 0, res: 0, sum: 0, medW: 0, medN: 0 });
+          for (const k in slot) slot[k] += x[k];
+        }
+      }
+    }
+    for (const k of Object.keys(acc)) if (k.startsWith('#')) delete acc[k];
     const munis = {};
     for (const [key, months] of Object.entries(acc)) {
       const series = {};
@@ -587,12 +678,14 @@ const SOURCES = {
       }
       munis[key] = series;
     }
+    const islands = await islandPrices(munis);
     const missing = PLACES.filter((m) => !munis[m.key]).map((m) => m.name);
     if (missing.length) log('  housing: no match for', missing.join(', '));
     await writeOut('housing', {
-      source: 'BC Ministry of Finance, Property Transfer Tax Data (BC Data Catalogue) — monthly fair-market value of all property transfers',
+      source: 'BC Ministry of Finance, Property Transfer Tax Data (BC Data Catalogue) — monthly fair-market value of all property transfers; island estimates also use the Statistics Canada 2021 Census of Population (value of owned dwellings)',
       fields: ['median FMV', 'mean FMV', 'transactions'],
       munis,
+      islands,
     });
   },
 

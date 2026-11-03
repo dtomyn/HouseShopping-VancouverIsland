@@ -1471,6 +1471,7 @@ function housingLayer(data: Data): AtlasLayer {
         <div class="ramp" style="background:${rampCSS((t) => ramp(350_000 + t * 950_000))}"></div>
         <div class="ramp-labels"><span>$350K</span><span>$825K</span><span>$1.3M+</span></div>
         <p class="note">Includes all market transfers (houses, condos, land, some commercial), so it runs lower than single-family listing prices. It’s best for comparing towns and seeing trends — not for valuing a specific home.</p>
+        ${data.housing?.islands && Object.keys(data.housing.islands).length ? `<p class="note">Island columns are estimates. Island sales are only published inside wider rural areas that are mostly Vancouver Island acreage, so each island’s level comes from what its owners valued their homes at in the 2021 Census, scaled by the typical ratio of sale medians to census values across the municipalities (${data.housing.islands[Object.keys(data.housing.islands)[0]].calib.toFixed(2)}). Its ups and downs since then follow the rural area’s sales.</p>` : ''}
         ${sourceLine(data.housing?.source ?? '')}`);
       return {
         update({ time }) {

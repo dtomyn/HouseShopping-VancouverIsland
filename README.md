@@ -28,8 +28,9 @@ Press play and watch 100+ years unfold: wildfires flare and leave burn scars, ea
 - **Gulf and Discovery islands** — Salt Spring, Galiano, Thetis, Penelakut (Kuper), Gabriola, Lasqueti, Denman and Quadra are included alongside the island's municipalities (list in `scripts/municipalities.mjs`). Every map layer is clipped to them too. They are unincorporated, so a few figures come from other sources and are labelled in their reports:
   - population and 65+ share from the 2021 Census (dissemination areas on each island)
   - crime from the island's rural RCMP detachment (Salt Spring, Gabriola, Quadra; Galiano shares the Outer Gulf Islands detachment)
-  - sale prices only for Salt Spring and Galiano, via the combined "Gulf Islands Rural" area; elsewhere island sales are folded into mostly Vancouver Island rural areas, so they show n/a
-  - ER access through the ferry route when there is no ER on the island; the Town Finder adds 30 minutes for the wait
+  - sale prices are estimates: each island's 2021 Census average home value, scaled to match transfer-tax medians and moved since with its rural area's sales
+  - ER access through the ferry route when there is no ER on the island; the Town Finder adds half the gap between sailings for the wait
+  - ferry links (weekday sailings, last boat home, crossing time, car ferry or not) feed a *Not ferry-dependent* factor in the Town Finder
 - Overlay multiple layers, hover anything for details, tilt/rotate the 3D map (right-drag or Ctrl-drag), keyboard: `Space` play/pause, `←`/`→` step.
 
 ## Tech

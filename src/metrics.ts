@@ -214,8 +214,36 @@ export function townMetrics(data: Data): TownMetrics[] {
 // ---------------------------------------------------------------------------------------------
 // Town Finder scoring
 
-/** Minutes added to ferry-dependent ER trips in the ranking, for waiting on a sailing. */
+/** Minutes added to ferry-dependent ER trips in the ranking when the timetable isn't known. */
 export const FERRY_WAIT = 30;
+/** Hours a day the ferries run, for turning sailings a day into a typical gap between boats. */
+const SERVICE_HOURS = 18;
+/** The last boat home counts against an island for each hour it leaves before this hour. */
+const LATE_BOAT = 23;
+
+/** Average wait for the next sailing (half the typical gap between boats), in minutes. */
+export function ferryWait(m: Muni) {
+  return m.ferry ? Math.round((SERVICE_HOURS * 60) / m.ferry.sailings / 2) : FERRY_WAIT;
+}
+
+/** Wait added to a routed ER trip that needs a ferry. The router only uses car ferries, so a
+ * passenger-only island's timetable says nothing about the route it found. */
+export function erFerryWait(m: Muni) {
+  return m.ferry?.car ? ferryWait(m) : FERRY_WAIT;
+}
+
+/**
+ * Ferry dependence as rough minutes: the crossing, the average wait for a boat, and 15 minutes
+ * for each hour the last boat home leaves before 11 pm; doubled when no car ferry runs.
+ * Places on Vancouver Island score 0.
+ */
+export function ferryBurden(m: Muni) {
+  const f = m.ferry;
+  if (!f) return 0;
+  const [h, mm] = f.last.split(':').map(Number);
+  const early = Math.max(0, LATE_BOAT - (h + mm / 60)) * 15;
+  return (f.min + ferryWait(m) + early) * (f.car ? 1 : 2);
+}
 
 export type Criterion = {
   id: string;
@@ -227,7 +255,7 @@ export type Criterion = {
 };
 
 export const CRITERIA: Criterion[] = [
-  { id: 'afford', label: 'Affordability', hint: 'Lower median transfer price', value: (t) => t.price, higherIsBetter: false, defaultWeight: 3 },
+  { id: 'afford', label: 'Affordability', hint: 'Lower median transfer price (islands: estimated from 2021 Census home values)', value: (t) => t.price, higherIsBetter: false, defaultWeight: 3 },
   { id: 'safety', label: 'Low crime', hint: 'Lower Crime Severity Index', value: (t) => t.csi, higherIsBetter: false, defaultWeight: 3 },
   { id: 'fire', label: 'Low wildfire exposure', hint: 'Fewer ignitions within 15 km since 1990', value: (t) => t.fires15km, higherIsBetter: false, defaultWeight: 2 },
   // The official hazard model is the better guide to future shaking; past quake counts mostly track
@@ -240,8 +268,10 @@ export const CRITERIA: Criterion[] = [
   // east coast from the cloudy west and north better than rainfall did, so no rainfall fallback.
   { id: 'dry', label: 'Sunnier', hint: 'More bright-sunshine hours a year (nearest of 8 stations that measure it; remote villages skipped)', value: (t) => t.feels.sun?.v ?? null, higherIsBetter: true, defaultWeight: 2 },
   { id: 'snow', label: 'Little snow & frost', hint: 'Fewer frost days + cm of snowfall a year (30-yr normals)', value: (t) => (t.feels.frostDays && t.feels.snow ? t.feels.frostDays.v + t.feels.snow.v : null), higherIsBetter: false, defaultWeight: 1 },
-  // The router times the crossing but not the wait for a sailing, so ferry trips carry a flat allowance.
-  { id: 'hospital', label: 'Close to a hospital', hint: `Fewer minutes’ drive to the nearest 24/7 emergency room (trips needing a ferry count ${FERRY_WAIT} extra minutes for the wait)`, value: (t) => (t.er ? (t.er.min ?? t.er.km) + (t.er.ferry ? FERRY_WAIT : 0) : null), higherIsBetter: false, defaultWeight: 2 },
+  // The router times the crossing but not the wait for a sailing, so ferry trips add half the gap between boats.
+  { id: 'hospital', label: 'Close to a hospital', hint: 'Fewer minutes’ drive to the nearest 24/7 emergency room (trips needing a ferry add the average wait for a sailing)', value: (t) => (t.er ? (t.er.min ?? t.er.km) + (t.er.ferry ? erFerryWait(t.muni) : 0) : null), higherIsBetter: false, defaultWeight: 2 },
+  // Every Vancouver Island town ties at the top; islands rank below by how much the ferry constrains daily life.
+  { id: 'ferry', label: 'Not ferry-dependent', hint: 'Off-island trips need no ferry; for islands, fewer sailings, an earlier last boat home and a longer crossing count against it, and no car ferry counts double', value: (t) => ferryBurden(t.muni), higherIsBetter: false, defaultWeight: 1 },
   { id: 'air', label: 'Clean air (fewer smoke days)', hint: 'Fewer days a year with PM2.5 over 25 µg/m³ at the nearest air monitor, any season (wildfire and wood-stove smoke; last 10 years; towns over 75 km from a monitor skipped)', value: (t) => t.smoke?.avg ?? null, higherIsBetter: false, defaultWeight: 1 },
   // Projection, not history: median of 26 downscaled CMIP6 models for 2041–2070 under the moderate
   // scenario. The range is wide, so it starts at a modest weight.

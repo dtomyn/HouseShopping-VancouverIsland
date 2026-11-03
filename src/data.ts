@@ -7,7 +7,15 @@
 export type Muni = {
   key: string; name: string; rd: string; lon: number; lat: number;
   island?: boolean; note?: string; areas?: { housing?: string; crime?: string; pop?: string };
+  ferry?: Ferry;
 };
+/**
+ * A place's ferry link to Vancouver Island (weekday timetable): departures a day toward Vancouver
+ * Island, the last departure back ("HH:MM"), the shortest crossing in minutes, and whether cars go.
+ */
+export type Ferry = { car: boolean; sailings: number; last: string; min: number; routes: string; schedule: string };
+/** How an island's price was estimated: 2021 Census average owner value, scaled onto a rural sales area. */
+export type IslandPrice = { area: string; census: number; owners: number; calib: number; factor: number };
 
 export type FirePerimeter = { id: string; year: number; t: number; ha: number; cause: number; c: [number, number]; polygon: number[][][] };
 /** lon, lat, t (fractional year), hectares, cause (0 lightning, 1 person, 2 unknown) */
@@ -83,7 +91,7 @@ export type Data = {
   climate: { stations: ClimateStation[]; source: string; baselinePeriod: string } | null;
   normals: { stations: NormalsStation[]; source: string; period: string } | null;
   population: { munis: Record<string, PopSeries>; source: string } | null;
-  housing: { munis: Record<string, HousingSeries>; source: string } | null;
+  housing: { munis: Record<string, HousingSeries>; islands?: Record<string, IslandPrice>; source: string } | null;
   crime: { munis: Record<string, CrimeSeries>; bc: CrimeSeries; source: string } | null;
   hospitals: { facilities: Facility[]; towns: Record<string, Trip[]>; source: string; routing: string; routingSource: string | null } | null;
   seismic: Seismic | null;

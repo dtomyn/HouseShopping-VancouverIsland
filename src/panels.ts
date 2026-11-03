@@ -2,7 +2,7 @@
 import * as d3 from 'd3';
 import { Data, fmt, trailingMedianPrice } from './data';
 import { lineChart } from './charts';
-import { CRITERIA, FERRY_WAIT, TownMetrics, rankTowns, townMetrics } from './metrics';
+import { CRITERIA, TownMetrics, erFerryWait, rankTowns, townMetrics } from './metrics';
 
 const STORE_KEY = 'island-atlas:weights';
 
@@ -29,7 +29,7 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
   const na = '<span style="color:var(--ink-3)">n/a</span>';
   const census = !!data.population?.munis[key]?.census;
   const popSub = census ? `2021 Census${m.areas?.pop ? ` · ${m.areas.pop}` : ''}` : t.popGrowth10y != null ? `${fmt.signed(t.popGrowth10y * 100, 0)}% in 10 yrs (${t.popYear})` : '';
-  const priceSub = t.price ? `${t.priceChange5y != null ? `${fmt.signed(t.priceChange5y * 100, 0)}% over 5 yrs` : (t.priceYear ?? '')}${m.areas?.housing ? `<br>${m.areas.housing}` : ''}` : m.island ? 'island sales are only published inside a wider rural area' : (t.priceYear ?? 'no transfer data');
+  const priceSub = t.price ? `${t.priceChange5y != null ? `${fmt.signed(t.priceChange5y * 100, 0)}% over 5 yrs` : (t.priceYear ?? '')}${m.areas?.housing ? `<br>${m.areas.housing}` : ''}` : m.island ? 'no open-market sales' : (t.priceYear ?? 'no transfer data');
   const csiSub = t.csi != null ? `index, ${t.csiYear} (lower = safer)${m.areas?.crime ? `<br>${m.areas.crime}` : ''}` : m.island ? 'no island-level police series' : 'no municipal police series';
 
   el.innerHTML = `
@@ -39,7 +39,7 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
     ${m.note ? `<div class="callout" style="--c:#4cc9f0">${m.note}</div>` : ''}
     ${opts.rank ? `<p class="lede">Ranks <b>#${opts.rank.pos} of ${opts.rank.of}</b> in your Town Finder (score ${Math.round(opts.rank.score * 100)}).</p>` : ''}
     <div class="metric-grid">
-      ${metric('Median sale value', '#b388ff', t.price ? fmt.money(t.price) : na, priceSub)}
+      ${metric(m.areas?.housing ? 'Est. median sale value' : 'Median sale value', '#b388ff', t.price ? fmt.money(t.price) : na, priceSub)}
       ${metric('Population', '#3ecf8e', t.pop ? fmt.int(t.pop) : na, popSub)}
       ${metric('Aged 65+', '#3ecf8e', t.s65 != null ? fmt.pct(t.s65) : na, census ? 'share of residents, 2021 Census' : 'share of residents')}
       ${metric('Crime Severity', '#ff4d8d', t.csi != null ? t.csi.toFixed(0) : na, csiSub)}
@@ -50,13 +50,14 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
       ${metric('Climate', '#f25f5c', t.climate ? `${t.climate.meanTemp.toFixed(1)} °C` : na, t.climate ? `${t.climate.precip ? `${Math.round(t.climate.precip)} mm/yr · ` : ''}${t.climate.name} (${Math.round(t.climate.dist)} km)` : '')}
       ${erMetric(t, data, metric, na)}
       ${smokeMetric(t, data, metric, na)}
+      ${ferryMetric(t, metric)}
     </div>
     ${feelsRow(t, data, metric, na)}
     ${futureRow(t, data, metric)}
     ${t.climate?.trend != null ? `<div class="callout" style="--c:#f25f5c">Nearest long-term station (${t.climate.name}) has warmed <b>${fmt.signed(t.climate.trend, 2)} °C per decade</b> since 1950.</div>` : ''}
     ${t.river ? `<div class="callout" style="--c:#4cc9f0"><b>${t.river.name}</b> (${t.river.dist.toFixed(0)} km away) reached 1.5× its normal peak in ${Math.round(t.river.floodShare * 100)}% of years; its record was ${t.river.record.ratio.toFixed(1)}× in ${t.river.record.year}.</div>` : ''}
     ${census ? '' : '<h3>Population (dashed = projection)</h3><div id="tr-pop"></div>'}
-    ${t.price ? `<h3>Median sale value${m.areas?.housing ? ' · wider rural area' : ''}</h3><div id="tr-price"></div>` : ''}
+    ${t.price ? `<h3>Median sale value${m.areas?.housing ? ` · estimated, following ${data.housing?.islands?.[key]?.area ?? 'the rural area'}` : ''}</h3><div id="tr-price"></div>` : ''}
     ${t.csi != null ? '<h3>Crime Severity Index</h3><div id="tr-crime"></div>' : ''}
     <p class="note">Distances are from the town centre. Hazard counts describe history, not a forecast — check official floodplain, tsunami and wildfire-interface maps for any specific property.</p>`;
   el.querySelector('.close-x')!.addEventListener('click', opts.onClose);
@@ -96,13 +97,21 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
   });
 }
 
+/** The ferry link for an island (or Alert Bay); towns on Vancouver Island show nothing. */
+function ferryMetric(t: TownMetrics, metric: (l: string, dot: string, v: string, sub: string) => string) {
+  const f = t.muni.ferry;
+  if (!f) return '';
+  const v = f.car ? `${f.sailings} sailings a day` : 'No car ferry';
+  return metric('Ferry', '#4cc9f0', v, `last boat home ${f.last} · ${f.min} min crossing<br>${f.routes}`);
+}
+
 /** Nearest 24/7 emergency room by road, from the pipeline's OSRM drive times. */
 function erMetric(t: TownMetrics, data: Data, metric: (l: string, dot: string, v: string, sub: string) => string, na: string) {
   if (!data.hospitals) return '';
   const e = t.er, c = '#6c8cff';
   const extra = t.care && t.care !== e && t.care.city !== e?.city ? `<br>Closer: ${t.care.city} (${t.care.ed === 'limited' ? 'limited hours' : t.care.ed === 'call' ? 'call ahead' : 'via ferry'}${t.care.min != null ? `, ${t.care.min} min` : ''})` : '';
   if (!e) return metric('Emergency room', c, na, t.muni.island ? 'no route by road or car ferry' : 'no 24/7 ER reachable without a ferry');
-  if (e.ferry && e.min != null) return metric('Emergency room', c, `${e.min} min + ferry wait`, `drive and crossing to ${e.name} · ${Math.round(e.km)} km; the Town Finder adds ${FERRY_WAIT} min for the wait${extra}`);
+  if (e.ferry && e.min != null) return metric('Emergency room', c, `${e.min} min + ferry wait`, `drive and crossing to ${e.name} · ${Math.round(e.km)} km; the Town Finder adds ${erFerryWait(t.muni)} min for the wait${extra}`);
   return e.min != null
     ? metric('Emergency room', c, `${e.min} min`, `drive to ${e.name} · ${Math.round(e.km)} km${extra}`)
     : metric('Emergency room', c, `${Math.round(e.km)} km`, `straight line to ${e.name} (no drive times)${extra}`);
@@ -176,7 +185,7 @@ export function renderFinder(
     </div>
     <h3>Your ranking</h3>
     <ol class="rank-list"></ol>
-    <p class="note">Scores are relative (0–100 = worst to best among island towns on your criteria). Missing data (e.g. no crime series for a village, or island sale prices that are only published for a wider rural area) is skipped rather than penalized. Your weights are saved in this browser.</p>`;
+    <p class="note">Scores are relative (0–100 = worst to best among island towns on your criteria). Missing data (e.g. no crime series for a village) is skipped rather than penalized. Island sale prices are estimates: each island’s 2021 Census home values, carried forward with its wider rural area’s sales. Your weights are saved in this browser.</p>`;
   el.querySelector('.close-x')!.addEventListener('click', opts.onClose);
 
   const wEl = el.querySelector('.weights')!;
@@ -236,7 +245,8 @@ export function renderAbout(data: Data) {
     ['Climate', 'climate', 'ECCC Adjusted & Homogenized Canadian Climate Data (AHCCD)', 'https://api.weather.gc.ca/collections/ahccd-annual'],
     ['Climate normals', 'normals', 'ECCC Canadian Climate Normals — sunshine, rain days, frost days, snowfall per station', 'https://api.weather.gc.ca/collections/climate-normals'],
     ['Population', 'population', 'BC Stats — sub-provincial population estimates & projections by age; island communities from the Statistics Canada 2021 Census (dissemination areas)', 'https://catalogue.data.gov.bc.ca/dataset/bc-sub-provincial-population-estimates-and-projections'],
-    ['Home prices', 'housing', 'BC Ministry of Finance — Property Transfer Tax data (municipal, monthly)', 'https://catalogue.data.gov.bc.ca/dataset?q=property+transfer+tax+data'],
+    ['Home prices', 'housing', 'BC Ministry of Finance — Property Transfer Tax data (municipal, monthly); island estimates scale each island’s 2021 Census average owner home value (Statistics Canada, dissemination areas) onto its rural area’s sales', 'https://catalogue.data.gov.bc.ca/dataset?q=property+transfer+tax+data'],
+    ['Ferries', 'island', 'BC Ferries seasonal schedules (from Nov 3, 2026) and Western Pacific Marine’s Lasqueti schedule — weekday sailings, last boat home and crossing time, transcribed by hand into scripts/municipalities.mjs', 'https://www.bcferries.com/routes-fares/schedules'],
     ['Crime', 'crime', 'Statistics Canada Table 35-10-0063-01 — Crime Severity Index by police service', 'https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3510006301'],
     ['Hospital access', 'hospitals', 'BC Ministry of Health / HealthLinkBC — Hospitals in BC + Emergency Rooms in BC; drive times from the OSRM demo router on OpenStreetMap roads', 'https://catalogue.data.gov.bc.ca/dataset/emergency-rooms-in-bc'],
     ['Shaking hazard', 'seismic', 'Natural Resources Canada — 2020 National Seismic Hazard Model (NBC 2020), peak ground acceleration for site class C, via the Earthquakes Canada hazard web service', 'https://earthquakescanada.nrcan.gc.ca/hazard-alea/interpolat/nbc-cnb-en.php'],
