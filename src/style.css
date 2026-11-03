@@ -106,6 +106,16 @@ a { color: #9cc7ff; }
 .bar { height: 7px; border-radius: 4px; background: rgba(255,255,255,.07); overflow: hidden; position: relative; }
 .bar > i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: linear-gradient(90deg, #7b61ff, #3ecf8e); }
 .bar-v { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); text-align: right; margin-top: 2px; }
+/* range bar (Future climate): band = 10th–90th percentile of models, white tick = median, grey tick = today */
+.rbar { height: 9px; border-radius: 5px; background: rgba(255,255,255,.07); position: relative; }
+.rbar > b { position: absolute; top: 1px; bottom: 1px; border-radius: 4px; opacity: .8; min-width: 3px; }
+.rbar > i, .rbar > s { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; border-radius: 1px; }
+.rbar > i { background: #fff; box-shadow: 0 0 4px rgba(0,0,0,.6); }
+.rbar > s { background: var(--ink-3); }
+.chip-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: center; margin: 4px 0; }
+.chip-k { font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ink-3); }
+.chip:disabled { opacity: .35; cursor: default; }
+.proj-badge { display: inline-block; margin: 2px 0 6px; padding: 3px 9px; border-radius: 999px; font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--c); border: 1px dashed var(--c); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c) 14%, transparent) 0 4px, transparent 4px 9px); }
 
 /* ---------- top actions ---------- */
 .top-actions { position: absolute; top: 18px; right: 16px; display: flex; gap: 8px; z-index: 6; }
@@ -139,6 +149,12 @@ a { color: #9cc7ff; }
 #scrub::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; margin-top: -6.5px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 18px var(--accent); }
 #scrub::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: none; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 18px var(--accent); }
 .track-labels { position: absolute; left: 0; right: 0; top: 48px; display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+/* a static layer is focused: the timeline still drives other visible layers, but steps back */
+.timeline.static > :not(.static-note) { opacity: .16; filter: grayscale(.8); pointer-events: none; transition: opacity .3s; }
+.static-note { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 4px; padding: 0 16px; font-size: 13.5px; color: var(--ink); pointer-events: none; }
+.static-note b { color: var(--accent); }
+.static-note span { display: block; font-size: 11.5px; color: var(--ink-3); }
+.static-note i { font-style: normal; font-family: var(--mono); color: var(--ink-2); }
 .speed { display: grid; gap: 4px; }
 .speed label { font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ink-3); }
 .speed select { background: rgba(255,255,255,.05); border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 6px; font-size: 12px; }

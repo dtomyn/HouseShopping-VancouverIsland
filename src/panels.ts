@@ -41,8 +41,13 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
       ${metric('Wildfire starts', '#ff8a3d', fmt.int(t.fires15km), 'within 15 km since 1990')}
       ${metric('Area burned nearby', '#ff8a3d', fmt.ha(t.burnedHa25km), 'mapped within 25 km since 1950')}
       ${metric('Felt-size quakes', '#f9d65c', fmt.int(t.quakes75km), 'M4+ within 75 km since 1970')}
+      ${data.seismic ? metric('Shaking hazard', '#e86cff', t.shaking ? `${Math.round(t.shaking.pga2 * 100)}% of g` : na, t.shaking ? 'peak ground shaking with a 2% chance in 50 years (NRCan 2020)' : '') : ''}
       ${metric('Climate', '#f25f5c', t.climate ? `${t.climate.meanTemp.toFixed(1)} °C` : na, t.climate ? `${t.climate.precip ? `${Math.round(t.climate.precip)} mm/yr · ` : ''}${t.climate.name} (${Math.round(t.climate.dist)} km)` : '')}
+      ${erMetric(t, data, metric, na)}
+      ${smokeMetric(t, data, metric, na)}
     </div>
+    ${feelsRow(t, data, metric, na)}
+    ${futureRow(t, data, metric)}
     ${t.climate?.trend != null ? `<div class="callout" style="--c:#f25f5c">Nearest long-term station (${t.climate.name}) has warmed <b>${fmt.signed(t.climate.trend, 2)} °C per decade</b> since 1950.</div>` : ''}
     ${t.river ? `<div class="callout" style="--c:#4cc9f0"><b>${t.river.name}</b> (${t.river.dist.toFixed(0)} km away) reached 1.5× its normal peak in ${Math.round(t.river.floodShare * 100)}% of years; its record was ${t.river.record.ratio.toFixed(1)}× in ${t.river.record.year}.</div>` : ''}
     <h3>Population (dashed = projection)</h3><div id="tr-pop"></div>
@@ -86,6 +91,62 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
   });
 }
 
+/** Nearest 24/7 emergency room by road, from the pipeline's OSRM drive times. */
+function erMetric(t: TownMetrics, data: Data, metric: (l: string, dot: string, v: string, sub: string) => string, na: string) {
+  if (!data.hospitals) return '';
+  const e = t.er, c = '#6c8cff';
+  const extra = t.care && t.care !== e && t.care.city !== e?.city ? `<br>Closer: ${t.care.city} (${t.care.ed === 'limited' ? 'limited hours' : t.care.ed === 'call' ? 'call ahead' : 'via ferry'}${t.care.min != null ? `, ${t.care.min} min` : ''})` : '';
+  if (!e) return metric('Emergency room', c, na, 'no 24/7 ER reachable without a ferry');
+  return e.min != null
+    ? metric('Emergency room', c, `${e.min} min`, `drive to ${e.name} · ${Math.round(e.km)} km${extra}`)
+    : metric('Emergency room', c, `${Math.round(e.km)} km`, `straight line to ${e.name} (no drive times)${extra}`);
+}
+
+/** Days a year over the BC 24-hour PM2.5 objective at the nearest air monitor. */
+function smokeMetric(t: TownMetrics, data: Data, metric: (l: string, dot: string, v: string, sub: string) => string, na: string) {
+  if (!data.smoke) return '';
+  const s = t.smoke, c = '#c9a27e';
+  if (!s) return metric('Smoky days', c, na, 'no air monitor with 5+ recent years within 75 km');
+  return metric('Smoky days', c, `${s.avg.toFixed(1)} /yr`, `PM2.5 over ${data.smoke.threshold} µg/m³ (${s.season.toFixed(1)} in May–Oct) · ${s.name} (${Math.round(s.dist)} km), ${s.years} yrs of ${s.from}–${s.to}`);
+}
+
+/** "What it feels like": 30-year climate normals, each from the nearest station that reports it. */
+function feelsRow(t: TownMetrics, data: Data, metric: (l: string, dot: string, v: string, sub: string) => string, na: string) {
+  if (!data.normals) return '';
+  const f = t.feels;
+  const from = (p: TownMetrics['feels']['sun']) => (p ? `${p.name} (${Math.round(p.dist)} km)` : 'no station nearby');
+  const c = '#c5e86c';
+  return `<h3>What it feels like · ${data.normals.period} normals</h3>
+    <div class="metric-grid">
+      ${metric('Sunshine', c, f.sun ? `${fmt.int(f.sun.v)} h` : na, `a year · ${from(f.sun)}`)}
+      ${metric('Rain days', c, f.wetDays ? fmt.int(f.wetDays.v) : na, `≥0.2 mm a year · ${from(f.wetDays)}`)}
+      ${metric('Frost days', c, f.frostDays ? fmt.int(f.frostDays.v) : na, `low ≤0 °C · ${from(f.frostDays)}`)}
+      ${metric('Snowfall', c, f.snow ? `${fmt.int(f.snow.v)} cm` : na, `a year · ${from(f.snow)}`)}
+    </div>`;
+}
+
+/** Downscaled CMIP6 projections for 2041–2070 at the town's grid cell, always with the model range. */
+function futureRow(t: TownMetrics, data: Data, metric: (l: string, dot: string, v: string, sub: string) => string) {
+  const f = t.future;
+  if (!data.future || !f) return '';
+  const c = '#ffb86b';
+  // [period][p10, p50, p90]; period 0 is the models' 1991–2020, 2 is 2041–2070
+  const n = (v: number, d: number) => (d === 0 && v < 10 ? v.toFixed(1) : v.toFixed(d));
+  const cell = (label: string, k: keyof Omit<typeof f, 'km'>, unit: string, d: number) => {
+    const [a, m, b] = f[k].ssp245[2], now = f[k].ssp245[0][1], high = f[k].ssp585[2];
+    return metric(label, c, `${n(m, d)}${unit}`, `range ${n(a, d)}–${n(b, d)} · today ${n(now, d)} · high scenario ${n(high[1], d)} (${n(high[0], d)}–${n(high[2], d)})`);
+  };
+  const [ha, hm, hb] = f.hot.ssp245[2];
+  return `<h3>By the 2050s · climate projections (2041–2070)</h3>
+    <div class="callout" style="--c:${c}">By the 2050s (moderate scenario): about <b>${n(hm, 0)} hot days a year</b> over 30 °C (range ${n(ha, 0)}–${n(hb, 0)} across models), today ${n(f.hot.ssp245[0][1], 0)}. These are model projections, not records; “today” is the same models’ 1991–2020.</div>
+    <div class="metric-grid">
+      ${cell('Hot days > 30 °C', 'hot', ' /yr', 0)}
+      ${cell('Mean temperature', 'temp', ' °C', 1)}
+      ${cell('Frost days', 'frost', ' /yr', 0)}
+      ${cell('Summer rain', 'summerRain', ' mm', 0)}
+    </div>`;
+}
+
 // ---------------------------------------------------------------------------------------------
 
 export function renderFinder(
@@ -124,9 +185,9 @@ export function renderFinder(
 
   const PRESETS: Record<string, Record<string, number>> = {
     balanced: Object.fromEntries(CRITERIA.map((c) => [c.id, c.defaultWeight])),
-    budget: { afford: 5, safety: 3, fire: 1, quake: 0, warm: 1, dry: 1, seniors: 1, services: 2 },
-    sun: { afford: 1, safety: 5, fire: 2, quake: 0, warm: 4, dry: 5, seniors: 1, services: 2 },
-    quiet: { afford: 2, safety: 4, fire: 5, quake: 3, warm: 1, dry: 1, seniors: 3, services: 0 },
+    budget: { afford: 5, safety: 3, fire: 1, seismic: 1, quake: 0, warm: 1, dry: 1, snow: 1, hospital: 2, air: 1, future: 1, seniors: 1, services: 2 },
+    sun: { afford: 1, safety: 5, fire: 2, seismic: 1, quake: 0, warm: 4, dry: 5, snow: 3, hospital: 2, air: 2, future: 1, seniors: 1, services: 2 },
+    quiet: { afford: 2, safety: 4, fire: 5, seismic: 4, quake: 1, warm: 1, dry: 1, snow: 2, hospital: 3, air: 4, future: 2, seniors: 3, services: 0 },
   };
 
   const refresh = () => {
@@ -167,9 +228,14 @@ export function renderAbout(data: Data) {
     ['Earthquakes', 'quakes', 'USGS ComCat — M2.5+ events, 1900→', 'https://earthquake.usgs.gov/fdsnws/event/1/'],
     ['River floods', 'rivers', 'Environment and Climate Change Canada — HYDAT annual peak flows', 'https://api.weather.gc.ca/collections/hydrometric-annual-peaks'],
     ['Climate', 'climate', 'ECCC Adjusted & Homogenized Canadian Climate Data (AHCCD)', 'https://api.weather.gc.ca/collections/ahccd-annual'],
+    ['Climate normals', 'normals', 'ECCC Canadian Climate Normals — sunshine, rain days, frost days, snowfall per station', 'https://api.weather.gc.ca/collections/climate-normals'],
     ['Population', 'population', 'BC Stats — sub-provincial population estimates & projections by age', 'https://catalogue.data.gov.bc.ca/dataset/bc-sub-provincial-population-estimates-and-projections'],
     ['Home prices', 'housing', 'BC Ministry of Finance — Property Transfer Tax data (municipal, monthly)', 'https://catalogue.data.gov.bc.ca/dataset?q=property+transfer+tax+data'],
     ['Crime', 'crime', 'Statistics Canada Table 35-10-0063-01 — Crime Severity Index by police service', 'https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3510006301'],
+    ['Hospital access', 'hospitals', 'BC Ministry of Health / HealthLinkBC — Hospitals in BC + Emergency Rooms in BC; drive times from the OSRM demo router on OpenStreetMap roads', 'https://catalogue.data.gov.bc.ca/dataset/emergency-rooms-in-bc'],
+    ['Shaking hazard', 'seismic', 'Natural Resources Canada — 2020 National Seismic Hazard Model (NBC 2020), peak ground acceleration for site class C, via the Earthquakes Canada hazard web service', 'https://earthquakescanada.nrcan.gc.ca/hazard-alea/interpolat/nbc-cnb-en.php'],
+    ['Smoke days', 'smoke', 'BC Ministry of Environment — verified hourly PM2.5 from air-quality monitoring stations; days with a daily mean over the BC 24-hour objective (25 µg/m³)', 'https://catalogue.data.gov.bc.ca/dataset/air-quality-and-climate-monitoring-verified-hourly-air-quality-and-meteorological-data'],
+    ['Future climate', 'future', 'CanDCS-U6 — CMIP6 projections statistically downscaled by PCIC (26 models, SSP2-4.5 and SSP5-8.5); ClimateData.ca 30-year index averages and 10th/50th/90th model percentiles, via the PAVICS THREDDS server', 'https://climatedata.ca/'],
     ['Coastline', 'island', 'BC Freshwater Atlas island polygons', 'https://catalogue.data.gov.bc.ca/dataset/freshwater-atlas-islands'],
   ];
   modal.innerHTML = `<div class="sheet glass">

@@ -15,6 +15,8 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const INTRO_FROM = { center: [-126.2, 50.4] as [number, number], zoom: 5.1, pitch: 0, bearing: 0 };
 const HOME = { center: [-125.25, 49.55] as [number, number], zoom: 7.15, pitch: 48, bearing: -18 };
 const MUNI_LAYERS = new Set(['population', 'housing', 'crime']);
+// static layers that draw town columns only while focused
+const MUNI_WHEN_FOCUSED = new Set(['hospitals', 'seismic', 'future']);
 
 type Mode = 'layer' | 'town' | 'finder';
 
@@ -23,8 +25,11 @@ const state = {
   playing: false,
   speed: 2,
   focused: 'fires',
+  // the timeline belongs to the last focused time-based layer; static layers leave it alone
+  timeLayer: 'fires',
   visible: new Set<string>(['fires']),
   selected: null as string | null,
+  hovered: null as string | null,
   mode: 'layer' as Mode,
   ranked: null as Ranked[] | null,
   beacons: [] as { ev: AtlasEvent; born: number }[],
@@ -39,8 +44,9 @@ let overlay: MapboxOverlay;
 let panelHandle: PanelHandle | null = null;
 let firstLabelLayer: string | undefined;
 
-const ctx = (): Ctx => ({ time: state.time, speed: state.speed, data, selected: state.selected, focusedId: state.focused, clock: performance.now() });
+const ctx = (): Ctx => ({ time: state.time, speed: state.speed, data, selected: state.selected, hovered: state.hovered, focusedId: state.focused, clock: performance.now() });
 const focusedLayer = () => byId[state.focused];
+const timeLayer = () => byId[state.timeLayer];
 
 // ---------------------------------------------------------------------------------------------
 // map
@@ -128,7 +134,7 @@ function render() {
     }
   }
 
-  const anyMuni = [...state.visible].some((id) => MUNI_LAYERS.has(id) && byId[id]?.available);
+  const anyMuni = [...state.visible].some((id) => (MUNI_LAYERS.has(id) || (MUNI_WHEN_FOCUSED.has(id) && id === state.focused)) && byId[id]?.available);
   if (state.mode === 'finder' && state.ranked) {
     const ramp = d3.scaleSequential(d3.interpolateRgb('#2b1f6b', '#7dffc4')).domain([0.2, 0.85]).clamp(true);
     const rk = state.ranked.map((r, i) => ({ ...r, i }));
@@ -236,6 +242,8 @@ const tooltipEl = () => $('tooltip');
 
 function onHover(info: PickingInfo) {
   const t = tooltipEl();
+  const o: any = info.object;
+  state.hovered = o ? o.m?.key ?? o.t?.muni?.key ?? (info.layer?.id.startsWith('towns') ? o.key : null) : null;
   if (!info.object || !info.layer) { t.hidden = true; return; }
   let html: string | null = null;
   const id = info.layer.id;
@@ -341,12 +349,13 @@ function renderRail() {
     card.setAttribute('role', 'button');
     card.tabIndex = 0;
     const [a, b] = l.range;
-    card.innerHTML = `<div class="ic">${l.icon}</div><div><div class="nm">${l.name}</div><div class="rg">${l.available ? `${Math.floor(a)}–${Math.floor(b)}` : 'data unavailable'}</div></div><button class="eye${state.visible.has(l.id) ? ' on' : ''}" aria-label="Show ${l.name} on map" title="Show / hide on map"></button>`;
+    card.innerHTML = `<div class="ic">${l.icon}</div><div><div class="nm">${l.name}</div><div class="rg">${!l.available ? 'data unavailable' : l.static ? l.period ?? 'no timeline' : `${Math.floor(a)}–${Math.floor(b)}`}</div></div><button class="eye${state.visible.has(l.id) ? ' on' : ''}" aria-label="Show ${l.name} on map" title="Show / hide on map"></button>`;
     card.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).classList.contains('eye')) {
         if (state.visible.has(l.id)) state.visible.delete(l.id);
         else state.visible.add(l.id);
         renderRail();
+        if (focusedLayer().static) setupTimeline();
         return;
       }
       focus(l.id);
@@ -364,8 +373,12 @@ function focus(id: string) {
   // Focusing shows the layer; other layers stay on only if the user turned them on themselves.
   state.visible.add(id);
   if (changed) {
-    const [a, b] = l.range;
-    if (state.time < a || state.time > b) state.time = a;
+    // a static layer keeps the current time, so other visible layers carry on where they were
+    if (!l.static && state.timeLayer !== id) {
+      state.timeLayer = id;
+      const [a, b] = l.range;
+      if (state.time < a || state.time > b) state.time = a;
+    }
     if (state.mode !== 'finder') { state.mode = 'layer'; state.selected = null; }
   }
   document.documentElement.style.setProperty('--accent', l.color);
@@ -380,7 +393,16 @@ function focus(id: string) {
 const scrub = () => $<HTMLInputElement>('scrub');
 
 function setupTimeline() {
-  const l = focusedLayer();
+  const l = timeLayer();
+  const f = focusedLayer();
+  $('timeline').classList.toggle('static', !!f.static);
+  const note = $('static-note');
+  note.hidden = !f.static;
+  if (f.static) {
+    // other visible time-based layers keep playing on the last timeline
+    const others = layers.filter((x) => !x.static && x.available && state.visible.has(x.id)).map((x) => x.name);
+    note.innerHTML = `<div><b>${f.name}</b> doesn’t change over time</div><span>${others.length ? `${others.join(', ')} shown at <i id="static-year">${Math.floor(state.time)}</i> · Space to play` : 'Pick a timeline layer to travel through history'}</span>`;
+  }
   const [a, b] = l.range;
   const s = scrub();
   s.min = String(a);
@@ -394,7 +416,7 @@ function setupTimeline() {
 }
 
 function drawSpark() {
-  const l = focusedLayer();
+  const l = timeLayer();
   const cv = $<HTMLCanvasElement>('spark');
   const dpr = window.devicePixelRatio || 1;
   const w = cv.clientWidth, h = cv.clientHeight;
@@ -429,7 +451,7 @@ function drawSpark() {
 }
 
 function drawEvents() {
-  const l = focusedLayer();
+  const l = timeLayer();
   const [a, b] = l.range;
   const el = $('events');
   el.innerHTML = '';
@@ -452,7 +474,7 @@ function drawEvents() {
 }
 
 function setTime(t: number) {
-  const [a, b] = focusedLayer().range;
+  const [a, b] = timeLayer().range;
   state.time = clamp(t, a, b);
 }
 
@@ -461,14 +483,14 @@ function setPlaying(p: boolean) {
   $('play').classList.toggle('playing', p);
   $('play').setAttribute('aria-label', p ? 'Pause' : 'Play');
   if (p) {
-    const [a, b] = focusedLayer().range;
+    const [a, b] = timeLayer().range;
     if (state.time >= b - 0.01) state.time = a;
   }
 }
 
 let lastSparkYear = -1;
 function syncTimelineUI() {
-  const l = focusedLayer();
+  const l = timeLayer();
   const [a, b] = l.range;
   const s = scrub();
   if (document.activeElement !== s || state.playing) s.value = String(state.time);
@@ -476,7 +498,12 @@ function syncTimelineUI() {
   $('year').textContent = String(Math.floor(state.time));
   $('month').textContent = l.monthly || state.speed <= 1 ? MONTHS[Math.floor((state.time % 1) * 12)] : '';
   const y = Math.floor(state.time * (l.monthly ? 12 : 1));
-  if (y !== lastSparkYear) { lastSparkYear = y; drawSpark(); }
+  if (y !== lastSparkYear) {
+    lastSparkYear = y;
+    drawSpark();
+    const sy = document.getElementById('static-year');
+    if (sy) sy.textContent = String(Math.floor(state.time));
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -513,7 +540,7 @@ function frame(now: number) {
   lastFrame = now;
   if (state.playing) {
     const prev = state.time;
-    const [, b] = focusedLayer().range;
+    const [, b] = timeLayer().range;
     state.time = Math.min(b, state.time + dt * state.speed);
     fireCrossedEvents(prev, state.time);
     if (state.time >= b) setPlaying(false);
@@ -537,7 +564,7 @@ function bindControls() {
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).matches('input, select, textarea')) return;
     if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); }
-    const step = focusedLayer().monthly ? 1 / 12 : 1;
+    const step = timeLayer().monthly ? 1 / 12 : 1;
     if (e.key === 'ArrowRight') { setPlaying(false); setTime(Math.floor(state.time / step + 1e-6) * step + step); }
     if (e.key === 'ArrowLeft') { setPlaying(false); setTime(Math.ceil(state.time / step - 1e-6) * step - step); }
     if (e.key === 'Escape') { $('modal').hidden = true; }

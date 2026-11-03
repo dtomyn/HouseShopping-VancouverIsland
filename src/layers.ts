@@ -1,14 +1,15 @@
 // Each "atlas layer" bundles: deck.gl layers for a moment in time, a timeline sparkline,
 // notable events, a story panel, and map tooltips.
 import * as d3 from 'd3';
-import { ColumnLayer, LineLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
-import { DataFilterExtension } from '@deck.gl/extensions';
+import { BitmapLayer, ColumnLayer, LineLayer, PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
+import { DataFilterExtension, PathStyleExtension } from '@deck.gl/extensions';
 import type { Layer, PickingInfo } from '@deck.gl/core';
-import { Data, FirePerimeter, FirePoint, Muni, Quake, fmt, interpYearly, km, lowerBound, trailingMedianPrice } from './data';
+import { Data, FutureTown, FutureVar, Facility, FirePerimeter, FirePoint, MONTHS, Muni, NormalsStation, Quake, SmokeStation, Trip, fmt, interpYearly, km, lowerBound, trailingMedianPrice } from './data';
 import { barChart, lineChart, rampCSS, scatterChart, stripes, ChartHandle } from './charts';
-import { islandAnomalies, slope } from './metrics';
+import { NormalVar, islandAnomalies, slope, townMetrics } from './metrics';
 
-export type Ctx = { time: number; speed: number; data: Data; selected: string | null; focusedId: string; clock: number };
+/** `hovered` is the municipality key under the pointer (town pin or column), if any. */
+export type Ctx = { time: number; speed: number; data: Data; selected: string | null; hovered: string | null; focusedId: string; clock: number };
 export type AtlasEvent = { t: number; layer: string; title: string; body: string; lon?: number; lat?: number; zoom?: number };
 export type PanelHandle = { update: (ctx: Ctx) => void };
 
@@ -19,6 +20,14 @@ export interface AtlasLayer {
   color: string;
   range: [number, number];
   monthly?: boolean;
+  /**
+   * Doesn't change over time (hospitals, hazard zones, 30-year normals). When focused, the timeline
+   * dims and keeps the last time-based layer's range and time, so other visible layers keep animating.
+   * `build` should ignore `ctx.time`; `spark` and `events` may return [].
+   */
+  static?: boolean;
+  /** Rail caption for a static layer instead of the year range, e.g. "1981–2010 average". */
+  period?: string;
   available: boolean;
   unavailable?: string;
   build: (ctx: Ctx) => Layer[];
@@ -402,6 +411,537 @@ function quakesLayer(data: Data): AtlasLayer {
 }
 
 // ---------------------------------------------------------------------------------------------
+// SHAKING HAZARD — NRCan's 2020 seismic hazard model as a static colour surface under the quakes
+
+type HazardPick = { lon: number; lat: number; v: number };
+/** A bitmap whose pick reports the hazard value under the pointer (bitmaps have no objects of their own). */
+class HazardBitmap extends BitmapLayer<{ valueAt: (lon: number, lat: number) => number | null }> {
+  static layerName = 'HazardBitmap';
+  getPickingInfo(params: any) {
+    const info: any = super.getPickingInfo(params);
+    const [lon, lat] = info.coordinate ?? [];
+    const v = lon != null ? (this.props as any).valueAt(lon, lat) : null;
+    info.object = v != null ? ({ lon, lat, v } as HazardPick) : null;
+    return info;
+  }
+}
+
+function seismicLayer(data: Data): AtlasLayer {
+  const color = '#e86cff';
+  const S = data.seismic;
+  const ramp = d3.scaleSequential(d3.interpolateRgbBasis(['#24406a', '#5a4fcf', '#b356e0', color, '#ffd6f2'])).domain([0.3, 1.1]).clamp(true);
+  const pct = (g: number) => `${Math.round(g * 100)}%`;
+  type Row = { m: Muni; v: number; v10: number };
+  const rows: Row[] = S ? data.munis.flatMap((m) => (S.towns[m.key] ? [{ m, v: S.towns[m.key][0], v10: S.towns[m.key][1] }] : [])) : [];
+  rows.sort((a, b) => b.v - a.v);
+
+  // bilinear interpolation of the model grid; edge cells average whichever corners exist
+  const G = S?.grid;
+  const valueAt = (lon: number, lat: number): number | null => {
+    if (!G) return null;
+    const fx = (lon - G.west) / G.dx, fy = (lat - G.south) / G.dy;
+    const i = Math.floor(fx), j = Math.floor(fy);
+    if (i < 0 || j < 0 || i >= G.nx - 1 || j >= G.ny - 1) return null;
+    const tx = fx - i, ty = fy - j;
+    let sum = 0, w = 0;
+    for (const [di, dj, wt] of [[0, 0, (1 - tx) * (1 - ty)], [1, 0, tx * (1 - ty)], [0, 1, (1 - tx) * ty], [1, 1, tx * ty]]) {
+      const v = G.pga[(j + dj) * G.nx + i + di];
+      if (v != null) { sum += v * wt; w += wt; }
+    }
+    return w > 0.15 ? sum / w : null;
+  };
+  // Web Mercator y, since the bitmap is stretched linearly in projected space
+  const merc = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+  const bounds: [number, number, number, number] = G ? [G.west, G.south, G.west + (G.nx - 1) * G.dx, G.south + (G.ny - 1) * G.dy] : [0, 0, 0, 0];
+  let mask: Uint8ClampedArray | null = null;
+  let image: HTMLCanvasElement | null = null;
+  const W = 2048;
+  const H = Math.round((W * (merc(bounds[3]) - merc(bounds[1]))) / (((bounds[2] - bounds[0]) * Math.PI) / 180));
+  const px = (lon: number) => ((lon - bounds[0]) / (bounds[2] - bounds[0])) * W;
+  const py = (lat: number) => ((merc(bounds[3]) - merc(lat)) / (merc(bounds[3]) - merc(bounds[1]))) * H;
+  /** Paints the surface once: colour by value, faint 10%-g contour steps, clipped to the coastline. */
+  const paint = () => {
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const c2 = cv.getContext('2d')!;
+    const img = c2.createImageData(W, H);
+    const lut = d3.range(256).map((k) => d3.rgb(ramp(0.3 + (k / 255) * 0.8)));
+    const m0 = merc(bounds[3]), m1 = merc(bounds[1]);
+    const vals = new Float32Array(W * H).fill(NaN);
+    for (let y = 0; y < H; y++) {
+      const lat = (Math.atan(Math.exp(m0 - ((y + 0.5) / H) * (m0 - m1))) * 360) / Math.PI - 90;
+      for (let x = 0; x < W; x++) vals[y * W + x] = valueAt(bounds[0] + ((x + 0.5) / W) * (bounds[2] - bounds[0]), lat) ?? NaN;
+    }
+    const band = (i: number) => Math.floor(vals[i] * 10);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x, v = vals[i];
+        if (Number.isNaN(v)) continue;
+        const k = Math.max(0, Math.min(255, Math.round(((v - 0.3) / 0.8) * 255)));
+        const c = lut[k];
+        // thin bright line where the value crosses a 10%-of-gravity step
+        const b = band(i);
+        let edge = false;
+        for (let d = 1; d <= 2 && !edge; d++)
+          edge = (x + d < W && band(i + d) > b) || (y + d < H && band(i + d * W) > b) || (x >= d && band(i - d) > b) || (y >= d && band(i - d * W) > b);
+        const o = i * 4;
+        img.data[o] = edge ? 255 : c.r;
+        img.data[o + 1] = edge ? 240 : c.g;
+        img.data[o + 2] = edge ? 252 : c.b;
+        img.data[o + 3] = edge ? 175 : 92 + k * 0.32;
+      }
+    }
+    c2.putImageData(img, 0, 0);
+    // keep only the island
+    const geom = data.island?.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon | undefined;
+    if (geom) {
+      c2.globalCompositeOperation = 'destination-in';
+      c2.beginPath();
+      for (const poly of geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates)
+        for (const ring of poly) ring.forEach(([lon, lat], k) => (k ? c2.lineTo(px(lon), py(lat)) : c2.moveTo(px(lon), py(lat))));
+      c2.fill('evenodd');
+      c2.globalCompositeOperation = 'source-over';
+    }
+    mask = c2.getImageData(0, 0, W, H).data;
+    image = cv;
+  };
+  const onLand = (lon: number, lat: number) => {
+    if (!mask) return false;
+    const x = Math.floor(px(lon)), y = Math.floor(py(lat));
+    return x >= 0 && y >= 0 && x < W && y < H && mask[(y * W + x) * 4 + 3] > 0;
+  };
+
+  const l: AtlasLayer = {
+    id: 'seismic',
+    name: 'Shaking hazard',
+    icon: '∿',
+    color,
+    range: [2020, 2020.99],
+    static: true,
+    period: '2020 building-code model',
+    available: !!S,
+    unavailable: 'Natural Resources Canada’s seismic hazard service could not be reached when this copy of the data was built. Run <code>npm run data seismic</code>, then reload.',
+    build({ focusedId, hovered, selected }) {
+      if (!S) return [];
+      if (!image) paint();
+      const focused = focusedId === 'seismic';
+      const out: Layer[] = [
+        new HazardBitmap({
+          id: 'seismic-base',
+          image: image!,
+          bounds,
+          valueAt: (lon: number, lat: number) => (onLand(lon, lat) ? valueAt(lon, lat) : null),
+          opacity: focused ? 1 : 0.8,
+          pickable: focused,
+          parameters: NO_DEPTH,
+        } as any),
+      ];
+      if (focused) {
+        const hot = hovered ?? selected;
+        out.push(
+          new ScatterplotLayer<Row>({
+            id: 'seismic-towns',
+            data: rows,
+            getPosition: (r) => [r.m.lon, r.m.lat],
+            getRadius: (r) => (r.m.key === hot ? 1500 : 800),
+            radiusMinPixels: 4,
+            radiusMaxPixels: 11,
+            getFillColor: (r) => rgb(ramp(r.v)),
+            stroked: true,
+            getLineColor: (r) => (r.m.key === hot ? [255, 255, 255, 255] : [6, 10, 18, 230]),
+            lineWidthMinPixels: 1.5,
+            pickable: true,
+            updateTriggers: { getRadius: hot, getLineColor: hot },
+            parameters: { depthCompare: 'always' },
+          } as any),
+          new TextLayer<Row>({
+            id: 'seismic-labels',
+            data: rows,
+            getPosition: (r) => [r.m.lon, r.m.lat],
+            getText: (r) => pct(r.v),
+            getSize: (r) => (r.m.key === hot ? 13 : 10.5),
+            getColor: [245, 236, 252, 235],
+            getPixelOffset: [0, -12],
+            getAlignmentBaseline: 'bottom',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontWeight: 600,
+            outlineWidth: 3,
+            outlineColor: [6, 10, 18, 220],
+            fontSettings: { sdf: true },
+            updateTriggers: { getSize: hot },
+            parameters: { depthCompare: 'always' },
+          } as any),
+        );
+      }
+      return out;
+    },
+    spark: () => [],
+    events: () => [],
+    panel(el) {
+      el.innerHTML = `${kicker(l, 'Shaking hazard · NRCan 2020 model')}
+        <h2>How hard could the ground shake?</h2>`;
+      if (!S) {
+        el.insertAdjacentHTML('beforeend', `<div class="unavail">${l.unavailable}</div>`);
+        return { update() {} };
+      }
+      const hi = rows[0], lo = rows.at(-1);
+      // the west-coast signature: rare shaking far above the "1-in-10" level
+      const spread = [...rows].sort((a, b) => b.v / b.v10 - a.v / a.v10);
+      const wide = spread[0], narrow = rows.find((r) => r.m.key === 'victoria') ?? spread.at(-1);
+      let peak = { v: 0, lon: 0, lat: 0 };
+      G!.pga.forEach((v, k) => { if (v != null && v > peak.v) peak = { v, lon: G!.west + (k % G!.nx) * G!.dx, lat: G!.south + Math.floor(k / G!.nx) * G!.dy }; });
+      const peakNear = nearestTown(data.munis, peak.lon, peak.lat);
+      el.insertAdjacentHTML('beforeend', `<p class="lede">This is the official forecast behind Canada’s building code, not a record of past quakes. The colour shows the <b>peak ground shaking that has a 2% chance of being exceeded in any 50 years</b> (about a 1-in-2,500-year event), measured as a <b>share of gravity</b>. At 100% the ground accelerates sideways as hard as gravity pulls down. Turn on <i>Earthquakes</i> to see the history on top.</p>`);
+      const hero = heroStats(el, 4);
+      hero(0, hi ? pct(hi.v) : '–', hi ? `highest town: ${hi.m.name}` : '');
+      hero(1, lo ? pct(lo.v) : '–', lo ? `lowest town: ${lo.m.name}` : '');
+      hero(2, hi && lo ? `${(hi.v / lo.v).toFixed(1)}×` : '–', 'difference across the island');
+      hero(3, '1 in 2,475', 'chance per year');
+      const max = rows[0]?.v ?? 1;
+      el.insertAdjacentHTML('beforeend', `
+        <div class="ramp" style="background:${rampCSS((t) => ramp(0.3 + t * 0.8))}"></div>
+        <div class="ramp-labels"><span>30% of gravity</span><span>70%</span><span>110%+</span></div>
+        <p class="note">Bright lines step every 10% of gravity. As a rough guide, shaking of a few percent is felt by everyone and knocks things off shelves; tens of percent topples chimneys and damages older, unreinforced buildings. Buildings designed to the current code are meant to ride out this level of shaking without collapsing.</p>
+        <h3>Why it differs across the island</h3>
+        <p class="note" style="margin-top:0">Three kinds of earthquake feed the model. <b>Deep quakes inside the sinking Juan de Fuca plate</b> (like Nisqually, 2001) and <b>shallow faults</b> are concentrated under the south island and the Salish Sea, which is why Greater Victoria tops the list. <b>The Cascadia megathrust</b> offshore is rarer but enormous (about magnitude 9, last in 1700); it dominates the west coast. Farther north the subducting plate ends, and the hazard falls off toward Campbell River and Port Hardy. The single highest value on the island is on the north-west coast near ${peakNear.town.name} (${pct(peak.v)}), close to where the plates meet offshore.</p>
+        ${wide && narrow ? `<div class="callout" style="--c:${color}">Compare the more likely <b>10%-in-50-years</b> level: at ${wide.m.name} it is ${pct(wide.v10)}, but the rare level is <b>${(wide.v / wide.v10).toFixed(1)}×</b> higher (${pct(wide.v)}). At ${narrow.m.name} the gap is only ${(narrow.v / narrow.v10).toFixed(1)}×. That jump is the Cascadia signature: west-coast quakes are rare but very large.</div>` : ''}
+        <h3>Towns, highest to lowest hazard</h3>
+        <ol class="rank-list">${rows.map((r, i) => `<li><span class="rk">${i + 1}</span><span><span class="nm">${r.m.name}</span><br><span class="rd">10% in 50 yrs: ${pct(r.v10)}</span></span><span><div class="bar"><i style="width:${Math.round((r.v / max) * 100)}%;background:${ramp(r.v)}"></i></div><div class="bar-v">${pct(r.v)}</div></span></li>`).join('')}</ol>
+        <p class="note">Values are for firm ground (the code’s reference “site class C”) at the town centre. Soft soil, fill and river deltas can shake harder and may liquefy; solid rock shakes less. This is a long-term hazard estimate, not a prediction, and not advice about any particular building. Engineers use the full NBC values at <a href="https://earthquakescanada.nrcan.gc.ca/hazard-alea/interpolat/nbc-cnb-en.php" target="_blank" rel="noopener">Earthquakes Canada’s hazard tool</a>.</p>
+        ${sourceLine(S.source)}`);
+      return { update() {} };
+    },
+    tooltip(info) {
+      const id = info.layer?.id ?? '';
+      if (!info.object || !id.startsWith('seismic')) return null;
+      if (id === 'seismic-base') {
+        const o = info.object as HazardPick;
+        const near = nearestTown(data.munis, o.lon, o.lat);
+        return `<b>Shaking hazard here</b><br><span class="tk">2% in 50 yrs</span> <span class="tv">${pct(o.v)} of gravity</span><br><span class="tk">${Math.round(near.km)} km from ${near.town.name}</span>`;
+      }
+      const r = info.object as Row;
+      return `<b>${r.m.name}</b><br><span class="tk">2% in 50 yrs</span> <span class="tv">${pct(r.v)} of gravity</span><br><span class="tk">10% in 50 yrs</span> <span class="tv">${pct(r.v10)}</span><br><span class="tk">Click for town report</span>`;
+    },
+  };
+  return l;
+}
+
+// ---------------------------------------------------------------------------------------------
+// FUTURE CLIMATE — downscaled CMIP6 projections (CanDCS-U6, as on ClimateData.ca): a static
+// surface for one variable / scenario / period, with the model spread shown wherever a number is
+
+export const FUTURE_SCEN: Record<string, { chip: string; label: string }> = {
+  ssp245: { chip: 'Moderate', label: 'moderate emissions (SSP2-4.5)' },
+  ssp585: { chip: 'High', label: 'high emissions (SSP5-8.5)' },
+};
+/** Index into `Future.periods`: 0 is the recent (modelled) baseline. */
+export const FUTURE_PERIOD = [
+  { chip: 'Today', label: '1991–2020', short: 'today' },
+  { chip: '2030s', label: '2021–2050', short: 'the 2030s' },
+  { chip: '2050s', label: '2041–2070', short: 'the 2050s' },
+];
+
+function futureLayer(data: Data): AtlasLayer {
+  const color = '#ffb86b';
+  const F = data.future;
+  /** `drops`: in the change view, rank the biggest decrease first (fewer frost days, drier summers). */
+  type Var = { key: FutureVar; chip: string; label: string; unit: string; d: number; value: string[]; change: string[]; symmetric?: boolean; drops?: boolean; rankTitle: (p: string, change: boolean) => string };
+  const VARS: Var[] = [
+    { key: 'hot', chip: 'Hot days', label: 'Days a year over 30 °C', unit: 'days', d: 0, value: ['#1d2a44', '#5b3a6e', '#c2493d', '#ff9f43', '#ffe08a'], change: ['#2a2f3d', '#7a3b52', '#e0533b', '#ffb347', '#fff0b0'], rankTitle: (p, c) => (c ? `Biggest rise in hot days by ${p}` : `Most hot days by ${p}`) },
+    { key: 'temp', chip: 'Mean temp', label: 'Average temperature over the year', unit: '°C', d: 1, value: ['#203a6b', '#3f7fb3', '#8cc9a8', '#ffd36b', '#ff7a45'], change: ['#2a2f3d', '#7a4b3b', '#e0773b', '#ffc061', '#fff2c4'], rankTitle: (p, c) => (c ? `Most warming by ${p}` : `Warmest by ${p}`) },
+    { key: 'frost', chip: 'Frost days', label: 'Days a year with a low below 0 °C', unit: 'days', d: 0, value: ['#2f3d55', '#4f86b5', '#a9dbf5', '#ffffff'], change: ['#ffb347', '#c76a4a', '#5b5f7a', '#2f3d55'], drops: true, rankTitle: (p, c) => (c ? `Biggest drop in frost days by ${p}` : `Most frost days in ${p}`) },
+    { key: 'summerRain', chip: 'Summer rain', label: 'June–August rain', unit: 'mm', d: 0, value: ['#6b4a2b', '#b48a55', '#8fc3d6', '#2f6fb3'], change: ['#c0662b', '#e3a35f', '#3b3f4a', '#6fb0e0', '#2f6fb3'], symmetric: true, drops: true, rankTitle: (p, c) => (c ? `Biggest drop in summer rain by ${p}` : `Wettest summers in ${p}`) },
+  ];
+  let cur = VARS[0], scen = 'ssp245', per = 2, change = false;
+  /** The change view only means something for a future period. */
+  const chg = () => change && per > 0;
+  const fmtV = (v: number, x = cur) => (x.key === 'hot' && v < 10 ? v.toFixed(1) : v.toFixed(x.d));
+  const fmtC = (v: number, x = cur) => `${v >= 0 ? '+' : '−'}${fmtV(Math.abs(v), x)}`;
+  const unitOf = (x = cur) => (x.unit === '°C' ? ' °C' : ` ${x.unit}`);
+
+  // dense [ny*nx] median grids per var/scenario/period, NaN off the island
+  const G = F?.grid;
+  const dense = new Map<string, Float32Array>();
+  const grid = (v: FutureVar, s: string, p: number, pct = 1) => {
+    const k = `${v}|${s}|${p}|${pct}`;
+    let a = dense.get(k);
+    if (!a && G) {
+      a = new Float32Array(G.nx * G.ny).fill(NaN);
+      const src = F!.vals[v][s][p][pct];
+      G.cells.forEach((c, n) => { if (src[n] != null) a![c] = src[n]!; });
+      dense.set(k, a);
+    }
+    return a!;
+  };
+  const sample = (a: Float32Array, lon: number, lat: number): number | null => {
+    if (!G) return null;
+    const fx = (lon - G.west) / G.dx, fy = (lat - G.south) / G.dy;
+    const i = Math.floor(fx), j = Math.floor(fy);
+    if (i < 0 || j < 0 || i >= G.nx - 1 || j >= G.ny - 1) return null;
+    const tx = fx - i, ty = fy - j;
+    let sum = 0, w = 0;
+    for (const [di, dj, wt] of [[0, 0, (1 - tx) * (1 - ty)], [1, 0, tx * (1 - ty)], [0, 1, (1 - tx) * ty], [1, 1, tx * ty]]) {
+      const v = a[(j + dj) * G.nx + i + di];
+      if (!Number.isNaN(v)) { sum += v * wt; w += wt; }
+    }
+    return w > 0.15 ? sum / w : null;
+  };
+  /** What the surface shows: the projected median, or its change from the same models' 1991–2020. */
+  const shown = (lon: number, lat: number, v = cur, s = scen, p = per, ch = chg()) => {
+    const x = sample(grid(v.key, s, p), lon, lat);
+    if (x == null || !ch) return x;
+    const b = sample(grid(v.key, s, 0), lon, lat);
+    return b == null ? null : x - b;
+  };
+
+  // colour domains span every scenario and period so switching chips compares like with like
+  const domains = new Map<string, [number, number]>();
+  const domain = (v = cur, ch = chg()): [number, number] => {
+    const k = `${v.key}|${ch}`;
+    let d = domains.get(k);
+    if (!d) {
+      const all: number[] = [];
+      if (F) for (const s of F.scenarios) for (let p = ch ? 1 : 0; p < F.periods.length; p++) {
+        const a = F.vals[v.key][s][p][1], b = F.vals[v.key][s][0][1];
+        a.forEach((x, n) => { if (x != null && b[n] != null) all.push(ch ? x - b[n]! : x); });
+      }
+      all.sort((a, b) => a - b);
+      let lo = d3.quantile(all, 0.01) ?? 0, hi = d3.quantile(all, 0.99) ?? 1;
+      if (ch && v.symmetric) { const m = Math.max(Math.abs(lo), Math.abs(hi)); lo = -m; hi = m; }
+      else if (ch) { if (hi <= 0) hi = 0; else lo = Math.min(0, lo); if (lo >= 0) lo = 0; }
+      else if (v.key === 'hot' || v.key === 'frost') lo = 0;
+      d = [lo, hi === lo ? lo + 1 : hi];
+      domains.set(k, d);
+    }
+    return d;
+  };
+  const ramp = (v = cur, ch = chg()) => {
+    const [lo, hi] = domain(v, ch);
+    return d3.scaleSequential(d3.interpolateRgbBasis(ch ? v.change : v.value)).domain([lo, hi]).clamp(true);
+  };
+
+  // bitmap surface, one per variable/scenario/period/view (painted on demand, then cached)
+  const merc = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+  const bounds: [number, number, number, number] = G ? [G.west, G.south, G.west + (G.nx - 1) * G.dx, G.south + (G.ny - 1) * G.dy] : [0, 0, 0, 0];
+  const W = 1400;
+  const H = Math.round((W * (merc(bounds[3]) - merc(bounds[1]))) / (((bounds[2] - bounds[0]) * Math.PI) / 180));
+  const px = (lon: number) => ((lon - bounds[0]) / (bounds[2] - bounds[0])) * W;
+  const py = (lat: number) => ((merc(bounds[3]) - merc(lat)) / (merc(bounds[3]) - merc(bounds[1]))) * H;
+  let mask: Uint8ClampedArray | null = null;
+  const images = new Map<string, HTMLCanvasElement>();
+  const clip = (c2: CanvasRenderingContext2D) => {
+    const geom = data.island?.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon | undefined;
+    if (!geom) return;
+    c2.globalCompositeOperation = 'destination-in';
+    c2.beginPath();
+    for (const poly of geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates)
+      for (const ring of poly) ring.forEach(([lon, lat], k) => (k ? c2.lineTo(px(lon), py(lat)) : c2.moveTo(px(lon), py(lat))));
+    c2.fill('evenodd');
+    c2.globalCompositeOperation = 'source-over';
+  };
+  const paint = () => {
+    const key = `${cur.key}|${scen}|${per}|${chg()}`;
+    let cv = images.get(key);
+    if (cv) return cv;
+    cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const c2 = cv.getContext('2d')!;
+    const img = c2.createImageData(W, H);
+    const r = ramp();
+    const [lo, hi] = domain();
+    const lut = d3.range(256).map((k) => d3.rgb(r(lo + (k / 255) * (hi - lo))));
+    const m0 = merc(bounds[3]), m1 = merc(bounds[1]);
+    for (let y = 0; y < H; y++) {
+      const lat = (Math.atan(Math.exp(m0 - ((y + 0.5) / H) * (m0 - m1))) * 360) / Math.PI - 90;
+      for (let x = 0; x < W; x++) {
+        const v = shown(bounds[0] + ((x + 0.5) / W) * (bounds[2] - bounds[0]), lat);
+        if (v == null) continue;
+        const c = lut[Math.max(0, Math.min(255, Math.round(((v - lo) / (hi - lo)) * 255)))];
+        // faint diagonal hatching marks the surface as a projection, not a measurement
+        const hatch = per > 0 && (x + y) % 11 === 0;
+        const o = (y * W + x) * 4;
+        img.data[o] = hatch ? Math.min(255, c.r + 50) : c.r;
+        img.data[o + 1] = hatch ? Math.min(255, c.g + 50) : c.g;
+        img.data[o + 2] = hatch ? Math.min(255, c.b + 50) : c.b;
+        img.data[o + 3] = hatch ? 230 : 185;
+      }
+    }
+    c2.putImageData(img, 0, 0);
+    clip(c2);
+    if (!mask) mask = c2.getImageData(0, 0, W, H).data;
+    images.set(key, cv);
+    return cv;
+  };
+  const onLand = (lon: number, lat: number) => {
+    if (!mask) return false;
+    const x = Math.floor(px(lon)), y = Math.floor(py(lat));
+    return x >= 0 && y >= 0 && x < W && y < H && mask[(y * W + x) * 4 + 3] > 0;
+  };
+
+  // towns
+  type Row = { m: Muni; t: FutureTown };
+  const rows: Row[] = F ? data.munis.flatMap((m) => (F.towns[m.key] ? [{ m, t: F.towns[m.key] }] : [])) : [];
+  const rng = (r: Row, v = cur, s = scen, p = per) => r.t[v.key][s][p];
+  const townShown = (r: Row, v = cur, s = scen, p = per, ch = chg()) => rng(r, v, s, p)[1] - (ch ? rng(r, v, s, 0)[1] : 0);
+  const ranked = () => [...rows].sort((a, b) => (chg() && cur.drops ? townShown(a) - townShown(b) : townShown(b) - townShown(a)));
+  const scenLabel = () => (per === 0 ? 'modelled recent climate' : FUTURE_SCEN[scen].label);
+  const perLabel = (p = per) => `${FUTURE_PERIOD[p].chip === 'Today' ? 'today' : FUTURE_PERIOD[p].chip} (${FUTURE_PERIOD[p].label})`;
+
+  const l: AtlasLayer = {
+    id: 'future',
+    name: 'Future climate',
+    icon: '⇡',
+    color,
+    range: [2041, 2070.99],
+    static: true,
+    period: 'projections to 2041–2070',
+    available: !!F,
+    unavailable: 'The ClimateData.ca projection server (PAVICS THREDDS) could not be reached when this copy of the data was built. Run <code>npm run data future</code>, then reload.',
+    build({ focusedId, hovered, selected }) {
+      if (!F) return [];
+      const image = paint();
+      const focused = focusedId === 'future';
+      const out: Layer[] = [
+        new HazardBitmap({
+          id: 'future-base',
+          image,
+          bounds,
+          valueAt: (lon: number, lat: number) => (onLand(lon, lat) ? shown(lon, lat) : null),
+          opacity: focused ? 1 : 0.75,
+          pickable: focused,
+          parameters: NO_DEPTH,
+          updateTriggers: { valueAt: `${cur.key}|${scen}|${per}|${chg()}` },
+        } as any),
+      ];
+      if (focused) {
+        const hot = hovered ?? selected;
+        const key = `${cur.key}|${scen}|${per}|${chg()}|${hot}`;
+        const r = ramp();
+        out.push(
+          new ScatterplotLayer<Row>({
+            id: 'future-towns',
+            data: rows,
+            getPosition: (d) => [d.m.lon, d.m.lat],
+            getRadius: (d) => (d.m.key === hot ? 1500 : 800),
+            radiusMinPixels: 4,
+            radiusMaxPixels: 11,
+            getFillColor: (d) => rgb(r(townShown(d))),
+            stroked: true,
+            getLineColor: (d) => (d.m.key === hot ? [255, 255, 255, 255] : [6, 10, 18, 230]),
+            lineWidthMinPixels: 1.5,
+            pickable: true,
+            updateTriggers: { getRadius: key, getLineColor: key, getFillColor: key },
+            parameters: { depthCompare: 'always' },
+          } as any),
+          new TextLayer<Row>({
+            id: 'future-labels',
+            data: rows,
+            getPosition: (d) => [d.m.lon, d.m.lat],
+            getText: (d) => (chg() ? fmtC(townShown(d)) : fmtV(townShown(d))),
+            getSize: (d) => (d.m.key === hot ? 13 : 10.5),
+            getColor: [255, 240, 225, 235],
+            getPixelOffset: [0, -12],
+            getAlignmentBaseline: 'bottom',
+            fontFamily: 'JetBrains Mono, monospace',
+            fontWeight: 600,
+            outlineWidth: 3,
+            outlineColor: [6, 10, 18, 220],
+            fontSettings: { sdf: true },
+            updateTriggers: { getSize: key, getText: key },
+            parameters: { depthCompare: 'always' },
+          } as any),
+        );
+      }
+      return out;
+    },
+    spark: () => [],
+    events: () => [],
+    panel(el) {
+      el.innerHTML = `${kicker(l, 'Future climate · CMIP6 projections')}
+        <h2>What the next 25 years could bring</h2>`;
+      if (!F) {
+        el.insertAdjacentHTML('beforeend', `<div class="unavail">${l.unavailable}</div>`);
+        return { update() {} };
+      }
+      const chipRow = (name: string, items: [string, string][]) =>
+        `<div class="chip-row"><span class="chip-k">${name}</span><div class="chips">${items.map(([v, t]) => `<button class="chip" data-${name.toLowerCase()}="${v}" style="--c:${color}">${t}</button>`).join('')}</div></div>`;
+      el.insertAdjacentHTML('beforeend', `<div class="proj-badge" style="--c:${color}">Projection, not a record</div>
+        <p class="lede">Every other layer shows what has happened. This one shows what <b>climate models project</b>: 26 global models, downscaled to a ~10 km grid for Canada (CanDCS-U6, the data behind ClimateData.ca). The models disagree, so every number comes with a range: the middle model (median) and the spread from the 10th to the 90th percentile of models. “Today” is the same models’ 1991–2020, so the comparison is like with like.</p>
+        ${chipRow('Show', VARS.map((v) => [v.key, v.chip]))}
+        ${chipRow('Scenario', Object.entries(FUTURE_SCEN).map(([k, s]) => [k, s.chip]))}
+        ${chipRow('Period', FUTURE_PERIOD.map((p, i) => [String(i), p.chip]))}
+        ${chipRow('Map', [['abs', 'Projected value'], ['chg', 'Change from today']])}`);
+      const hero = heroStats(el, 4);
+      const body = el.appendChild(mk('div'));
+      const draw = () => {
+        el.querySelectorAll<HTMLButtonElement>('[data-show]').forEach((b) => b.classList.toggle('on', b.dataset.show === cur.key));
+        el.querySelectorAll<HTMLButtonElement>('[data-scenario]').forEach((b) => { b.classList.toggle('on', b.dataset.scenario === scen); b.disabled = per === 0; });
+        el.querySelectorAll<HTMLButtonElement>('[data-period]').forEach((b) => b.classList.toggle('on', b.dataset.period === String(per)));
+        el.querySelectorAll<HTMLButtonElement>('[data-map]').forEach((b) => { b.classList.toggle('on', b.dataset.map === (change ? 'chg' : 'abs')); b.disabled = per === 0; });
+        const ch = chg();
+        const r = ranked();
+        const isl = (p: number, pct: number) => d3.median(rows, (d) => rng(d, cur, scen, p)[pct]) ?? 0;
+        const u = unitOf();
+        hero(0, `${fmtV(isl(per, 1))}${u}`, `island town median, ${perLabel()}`);
+        hero(1, `${fmtV(isl(per, 0))}–${fmtV(isl(per, 2))}`, `town median of the 10th–90th % of models`);
+        hero(2, `${fmtV(isl(0, 1))}${u}`, 'today (1991–2020, modelled)');
+        const hi = r[0];
+        hero(3, hi ? (ch ? fmtC(townShown(hi)) : fmtV(townShown(hi))) + u : '–', hi ? `${ch ? (cur.drops ? 'biggest drop' : 'biggest rise') : 'top town'}: ${hi.m.name}` : '');
+        const max = d3.max(rows, (d) => Math.max(rng(d)[2], rng(d, cur, scen, 0)[2])) ?? 1;
+        const min = cur.key === 'temp' || cur.key === 'summerRain' ? (d3.min(rows, (d) => Math.min(rng(d)[0], rng(d, cur, scen, 0)[0])) ?? 0) * 0.9 : 0;
+        const pos = (v: number) => `${(((v - min) / (max - min)) * 100).toFixed(1)}%`;
+        const rp = ramp(cur, ch);
+        const [lo, hiD] = domain(cur, ch);
+        const big = rows.map((d) => ({ d, a: rng(d, cur, 'ssp245', 2)[1], b: rng(d, cur, 'ssp585', 2)[1] })).sort((a, b) => b.b - a.b)[0];
+        body.innerHTML = `
+          <div class="ramp" style="background:${rampCSS((t) => rp(lo + t * (hiD - lo)))}"></div>
+          <div class="ramp-labels"><span>${ch ? fmtC(lo) : fmtV(lo)}${u}</span><span>${ch ? 'change from 1991–2020, median model' : `${cur.label.toLowerCase()}, median model`}</span><span>${ch ? fmtC(hiD) : fmtV(hiD)}${u}</span></div>
+          <h3>${per ? cur.rankTitle(FUTURE_PERIOD[per].short, ch) : `${cur.chip} today (1991–2020, modelled)`}<br><span style="font-weight:400;color:var(--ink-3);font-size:11.5px">${scenLabel()} · bar = 10th–90th percentile of models, tick = median, grey tick = today</span></h3>
+          <ol class="rank-list">${r.map((d, i) => {
+            const [a, m, b] = rng(d), now = rng(d, cur, scen, 0)[1];
+            return `<li data-key="${d.m.key}"><span class="rk">${i + 1}</span><span><span class="nm">${d.m.name}</span><br><span class="rd">${per ? `today ${fmtV(now)} → ${fmtV(m)}${u}` : `${fmtV(m)}${u}`}</span></span><span><div class="rbar"><b style="left:${pos(a)};width:calc(${pos(b)} - ${pos(a)});background:${rp(townShown(d, cur, scen, per, ch))}"></b>${per ? `<s style="left:${pos(now)}"></s>` : ''}<i style="left:${pos(m)}"></i></div><div class="bar-v">${fmtV(a)}–${fmtV(b)}</div></span></li>`;
+          }).join('')}</ol>
+          ${big && per ? `<div class="callout" style="--c:${color}">The scenario matters most late in the period. By the 2050s, ${big.d.m.name} is projected at about <b>${fmtV(big.a)}${u}</b> under moderate emissions and <b>${fmtV(big.b)}${u}</b> under high emissions (medians), against ${fmtV(rng(big.d, cur, 'ssp245', 0)[1])}${u} today.</div>` : ''}`;
+      };
+      el.addEventListener('click', (e) => {
+        const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button.chip');
+        if (!b || b.disabled) return;
+        if (b.dataset.show) cur = VARS.find((v) => v.key === b.dataset.show) ?? cur;
+        if (b.dataset.scenario) scen = b.dataset.scenario;
+        if (b.dataset.period) per = +b.dataset.period;
+        if (b.dataset.map) change = b.dataset.map === 'chg';
+        draw();
+      });
+      draw();
+      el.insertAdjacentHTML('beforeend', `
+        <h3>Reading the scenarios</h3>
+        <p class="note" style="margin-top:0"><b>Moderate (SSP2-4.5)</b> is roughly where today’s policies lead. <b>High (SSP5-8.5)</b> assumes emissions keep climbing fast; it is a plausible upper end, not a forecast. The two barely differ by the 2030s because that warming is already locked in; they pull apart by the 2050s. Neither is a prediction of any single year: these are 30-year averages, and individual summers like the 2021 heat dome will still swing far above them.</p>
+        <p class="note">Values come from the grid cell nearest each town centre (~6 × 9 km), so a coastal town can share a cell with its warmer or cooler hinterland. Hot days are counted when the daily high exceeds 30 °C; frost days when the low drops below 0 °C. Because they are model estimates, today’s figures differ a little from the station <i>Climate normals</i>, which are measurements.</p>
+        ${sourceLine(F.source)}`);
+      return { update() {} };
+    },
+    tooltip(info) {
+      const id = info.layer?.id ?? '';
+      if (!info.object || !id.startsWith('future')) return null;
+      const u = unitOf();
+      const head = `<span class="tk">${perLabel()}${per ? ` · ${FUTURE_SCEN[scen].chip.toLowerCase()} scenario` : ''}</span>`;
+      if (id === 'future-base') {
+        const o = info.object as HazardPick;
+        const near = nearestTown(data.munis, o.lon, o.lat);
+        const a = sample(grid(cur.key, scen, per, 0), o.lon, o.lat), m = sample(grid(cur.key, scen, per, 1), o.lon, o.lat), b = sample(grid(cur.key, scen, per, 2), o.lon, o.lat);
+        const now = sample(grid(cur.key, scen, 0, 1), o.lon, o.lat);
+        if (a == null || m == null || b == null || now == null) return null;
+        return `<b>${cur.label} here</b><br>${head}<br><span class="tk">Median model</span> <span class="tv">${fmtV(m)}${u}</span><br><span class="tk">Range (10–90%)</span> <span class="tv">${fmtV(a)}–${fmtV(b)}</span>${per ? `<br><span class="tk">Today (1991–2020)</span> <span class="tv">${fmtV(now)}${u}</span>` : ''}<br><span class="tk">${Math.round(near.km)} km from ${near.town.name}</span>`;
+      }
+      const d = info.object as Row;
+      const [a, m, b] = rng(d);
+      return `<b>${d.m.name}</b><br>${head}<br><span class="tk">${cur.chip}</span> <span class="tv">${fmtV(m)}${u} (${fmtV(a)}–${fmtV(b)})</span>${per ? `<br><span class="tk">Today (1991–2020)</span> <span class="tv">${fmtV(rng(d, cur, scen, 0)[1])}${u}</span>` : ''}<br><span class="tk">Click for town report</span>`;
+    },
+  };
+  return l;
+}
+
+// ---------------------------------------------------------------------------------------------
 // RIVER FLOODS
 
 function riversLayer(data: Data): AtlasLayer {
@@ -640,6 +1180,137 @@ function climateLayer(data: Data): AtlasLayer {
       const s = o.s;
       const yrs = Object.keys(s.temp);
       return `<b>${s.name}</b><br><span class="tk">This year</span> <span class="tv">${fmt.signed(o.a, 2)} °C vs normal</span><br><span class="tk">1961–90 normal</span> <span class="tv">${s.baseline.toFixed(1)} °C</span><br><span class="tk">Record</span> <span class="tv">${yrs[0]}–${yrs.at(-1)}</span>`;
+    },
+  };
+  return l;
+}
+
+// ---------------------------------------------------------------------------------------------
+// CLIMATE NORMALS — a 30-year average, so the layer is the same at every point of its range
+
+function normalsLayer(data: Data): AtlasLayer {
+  const color = '#c5e86c';
+  const stations = data.normals?.stations ?? [];
+  const [p0, p1] = (data.normals?.period.match(/\d{4}/g) ?? ['1981', '2010']).map(Number);
+  type Var = { key: NormalVar; chip: string; label: string; unit: string; best: string; low: boolean; ramp: (v: number) => string; domain: [number, number] };
+  const scale = (domain: [number, number], a: string, b: string) => d3.scaleSequential(d3.interpolateRgb(a, b)).domain(domain).clamp(true);
+  const VARS: Var[] = [
+    { key: 'sun', chip: 'Sunshine', label: 'Bright sunshine', unit: 'h', best: 'Sunniest', low: false, domain: [1400, 2150], ramp: scale([1400, 2150], '#4b4a3a', '#fff07a') },
+    { key: 'wetDays', chip: 'Rain days', label: 'Days with rain or snow (≥0.2 mm)', unit: 'days', best: 'Fewest rain days', low: true, domain: [140, 250], ramp: scale([140, 250], '#bfe3ff', '#1d4f91') },
+    { key: 'frostDays', chip: 'Frost days', label: 'Days with a low of 0 °C or below', unit: 'days', best: 'Fewest frost days', low: true, domain: [10, 100], ramp: scale([10, 100], '#2f7a8a', '#dff4ff') },
+    { key: 'snow', chip: 'Snowfall', label: 'Snowfall', unit: 'cm', best: 'Least snow', low: true, domain: [10, 105], ramp: scale([10, 105], '#5d7184', '#ffffff') },
+  ];
+  let cur = VARS[0];
+  const val = (s: NormalsStation, v = cur) => s[v.key] ?? null;
+  const fmtV = (v: number, x = cur) => `${fmt.int(v)} ${x.unit}`;
+  const ranked = (v = cur) => stations.filter((s) => val(s, v) != null).sort((a, b) => (v.low ? val(a, v)! - val(b, v)! : val(b, v)! - val(a, v)!));
+  const liveCache: Partial<Record<NormalVar, NormalsStation[]>> = {};
+  const height = (v: number) => 1500 + ((v - cur.domain[0] * 0.6) / (cur.domain[1] - cur.domain[0] * 0.6)) * 30000;
+
+  const l: AtlasLayer = {
+    id: 'normals',
+    name: 'Climate normals',
+    icon: '☀',
+    color,
+    range: [p0, p1 + 0.99],
+    static: true,
+    period: `${p0}–${p1} average`,
+    available: stations.length > 0,
+    unavailable: 'Environment Canada’s climate-normals service could not be reached when this copy of the data was built. Run <code>npm run data normals</code>, then reload.',
+    build({ focusedId }) {
+      const live = (liveCache[cur.key] ??= stations.filter((s) => val(s) != null));
+      const layers: Layer[] = [
+        new ScatterplotLayer<NormalsStation>({
+          id: 'normals-base',
+          data: stations,
+          getPosition: (s) => [s.lon, s.lat],
+          getRadius: 900,
+          radiusMinPixels: 2,
+          getFillColor: [197, 232, 108, 70],
+          pickable: true,
+          parameters: NO_DEPTH,
+        }),
+        new ColumnLayer<NormalsStation>({
+          id: 'normals-cols',
+          data: live,
+          getPosition: (s) => [s.lon, s.lat],
+          radius: 2200,
+          diskResolution: 20,
+          extruded: true,
+          getElevation: (s) => height(val(s)!),
+          getFillColor: (s) => rgb(cur.ramp(val(s)!), 240),
+          material: { ambient: 0.6, diffuse: 0.55, shininess: 40 },
+          pickable: true,
+          updateTriggers: { getElevation: cur.key, getFillColor: cur.key },
+        }),
+      ];
+      if (focusedId === 'normals')
+        layers.push(
+          new TextLayer<NormalsStation>({
+            id: 'normals-labels',
+            data: live,
+            getPosition: (s) => [s.lon, s.lat, height(val(s)!) + 2500],
+            getText: (s) => fmt.int(val(s)!),
+            getSize: 11,
+            getColor: [235, 240, 248, 230],
+            fontFamily: 'JetBrains Mono, monospace',
+            fontWeight: 600,
+            outlineWidth: 3,
+            outlineColor: [6, 10, 18, 220],
+            fontSettings: { sdf: true },
+            billboard: true,
+            updateTriggers: { getText: cur.key, getPosition: cur.key },
+            parameters: NO_DEPTH,
+          } as any),
+        );
+      return layers;
+    },
+    spark: () => [],
+    events: () => [],
+    panel(el) {
+      el.innerHTML = `${kicker(l, `Climate normals · ${p0}–${p1} average`)}
+        <h2>What a town feels like</h2>`;
+      if (!data.normals) {
+        el.insertAdjacentHTML('beforeend', `<div class="unavail">${l.unavailable}</div>`);
+        return { update() {} };
+      }
+      el.insertAdjacentHTML('beforeend', `<p class="lede">Annual temperature hides the differences you feel day to day. These are Environment Canada’s <b>30-year averages (${p0}–${p1})</b> at ${stations.length} weather stations, so this layer has no timeline: other layers keep playing underneath. Pick what the columns show:</p>
+        <div class="chips" style="margin:2px 0 10px">${VARS.map((v) => `<button class="chip" data-v="${v.key}" style="--c:${color}">${v.chip}</button>`).join('')}</div>`);
+      const hero = heroStats(el, 4);
+      const body = el.appendChild(mk('div'));
+      const draw = () => {
+        el.querySelectorAll<HTMLButtonElement>('[data-v]').forEach((b) => b.classList.toggle('on', b.dataset.v === cur.key));
+        const r = ranked();
+        const lo = r.at(-1), hi = r[0];
+        hero(0, hi ? fmtV(val(hi)!) : '–', hi ? `${cur.best.toLowerCase()}: ${hi.name}` : '');
+        hero(1, lo ? fmtV(val(lo)!) : '–', lo ? `other extreme: ${lo.name}` : '');
+        hero(2, String(r.length), `stations report ${cur.chip.toLowerCase()}`);
+        const med = d3.median(r, (s) => val(s)!);
+        hero(3, med != null ? fmtV(med) : '–', 'island median');
+        const max = d3.max(r, (s) => val(s)!) ?? 1;
+        body.innerHTML = `<h3>${cur.best} · ${cur.label}</h3>
+          <ol class="rank-list">${r.map((s, i) => `<li><span class="rk">${i + 1}</span><span><span class="nm">${s.name}</span>${s.yrs < 20 ? `<br><span class="rd">${s.yrs} yrs of record</span>` : ''}</span><span><div class="bar"><i style="width:${Math.round((val(s)! / max) * 100)}%;background:${cur.ramp(val(s)!)}"></i></div><div class="bar-v">${fmt.int(val(s)!)}</div></span></li>`).join('')}</ol>
+          <div class="ramp" style="background:${rampCSS((t) => cur.ramp(cur.domain[0] + t * (cur.domain[1] - cur.domain[0])))}"></div>
+          <div class="ramp-labels"><span>${cur.domain[0]} ${cur.unit}</span><span>${cur.domain[1]}+ ${cur.unit}</span></div>
+          ${cur.key === 'sun' ? `<div class="callout" style="--c:${color}">Only ${r.length} island stations measure sunshine. The Town Report and Town Finder borrow the nearest one (within 60 km) and name it.</div>` : ''}`;
+      };
+      el.querySelector('.chips')!.addEventListener('click', (e) => {
+        const k = (e.target as HTMLElement).closest<HTMLElement>('[data-v]')?.dataset.v;
+        const v = VARS.find((x) => x.key === k);
+        if (v) { cur = v; draw(); }
+      });
+      draw();
+      el.insertAdjacentHTML('beforeend', `
+        <p class="note">A “normal” is the average of ${p1 - p0 + 1} years of daily observations, the standard climate reference period. Some stations have gaps; those with under 20 years behind a value are flagged. Newer ${p0 + 10}–${p1 + 10} normals are not yet in Environment Canada’s open API.</p>
+        ${sourceLine(data.normals.source)}`);
+      return { update() {} };
+    },
+    tooltip(info) {
+      const o = info.object as NormalsStation;
+      if (!o || !info.layer?.id.startsWith('normals')) return null;
+      const row = (k: string, v: string | null) => (v ? `<br><span class="tk">${k}</span> <span class="tv">${v}</span>` : '');
+      const n = (v: number | undefined, u: string) => (v != null ? `${fmt.int(v)} ${u}` : null);
+      return `<b>${o.name}</b>${row('Sunshine', n(o.sun, 'h/yr'))}${row('Rain days', n(o.wetDays, '/yr'))}${row('Frost days', n(o.frostDays, '/yr'))}${row('Snowfall', n(o.snow, 'cm/yr'))}${row('Precipitation', n(o.precip, 'mm/yr'))}${row('Jan / Jul mean', o.tJan != null && o.tJul != null ? `${o.tJan.toFixed(1)} / ${o.tJul.toFixed(1)} °C` : null)}${row('Wettest month', o.wet ? `${MONTHS[o.wet[0] - 1]} (${fmt.int(o.wet[1])} mm)` : null)}<br><span class="tk">${p0}–${p1} normals${o.yrs < 20 ? ` · ${o.yrs} yrs of record` : ''}</span>`;
     },
   };
   return l;
@@ -894,6 +1565,371 @@ function crimeLayer(data: Data): AtlasLayer {
 }
 
 // ---------------------------------------------------------------------------------------------
+// HOSPITAL ACCESS — a static layer: where emergency care is today, and how long the drive takes
+
+const dashExt = [new PathStyleExtension({ dash: true })];
+
+function hospitalsLayer(data: Data): AtlasLayer {
+  const color = '#6c8cff';
+  const H = data.hospitals;
+  const fac: Facility[] = H?.facilities ?? [];
+  const routed = !!H && H.routing !== 'straight-line';
+  const unit = routed ? 'min' : 'km';
+  const er = new Map((H ? townMetrics(data) : []).map((t) => [t.muni.key, t.er]));
+  // minutes to the nearest 24/7 ER without a ferry (km if no drive times could be computed)
+  const val = (key: string) => { const e = er.get(key); return e ? e.min ?? e.km : null; };
+  const ramp = d3.scaleLinear<string>().domain([5, 30, 90]).range(['#e3f1ff', color, '#e0457b']).interpolate(d3.interpolateRgb).clamp(true);
+  const height = (v: number) => 1200 + Math.min(v, 150) * 260;
+  const ED_LABEL = { '24/7': '24/7 emergency room', call: '24/7, call ahead to confirm', limited: 'limited hours' } as const;
+  const edColor = (f: Facility) => (f.ed === '24/7' ? color : f.ed === 'call' ? '#a9b6ff' : '#7d879c');
+  const tripText = (t: Trip) => (t.min != null ? `${t.min} min${t.ferry ? ' + ferry' : ''}` : `${Math.round(t.km)} km (straight line)`);
+
+  // road lines for the hovered / selected town, with cumulative lengths for the travelling pulse
+  type Row = { t: Trip; i: number; path: [number, number][]; cum: number[] };
+  let memoKey: string | null = null;
+  let memoRows: Row[] = [];
+  const rowsFor = (key: string | null) => {
+    if (key === memoKey) return memoRows;
+    memoKey = key;
+    const m = data.munis.find((x) => x.key === key);
+    memoRows = !m || !H ? [] : (H.towns[m.key] ?? []).map((t, i) => {
+      const path: [number, number][] = t.line ?? [[m.lon, m.lat], [fac[t.f].lon, fac[t.f].lat]];
+      const cum = [0];
+      for (let k = 1; k < path.length; k++) cum.push(cum[k - 1] + Math.hypot(path[k][0] - path[k - 1][0], (path[k][1] - path[k - 1][1]) * 1.5));
+      return { t, i, path, cum };
+    });
+    return memoRows;
+  };
+  const along = (r: Row, q: number): [number, number] => {
+    const d = q * r.cum[r.cum.length - 1];
+    const k = Math.max(1, lowerBound(r.cum, d, (c) => c));
+    if (k >= r.path.length) return r.path[r.path.length - 1];
+    const f = (d - r.cum[k - 1]) / (r.cum[k] - r.cum[k - 1] || 1);
+    return [r.path[k - 1][0] + (r.path[k][0] - r.path[k - 1][0]) * f, r.path[k - 1][1] + (r.path[k][1] - r.path[k - 1][1]) * f];
+  };
+
+  const l: AtlasLayer = {
+    id: 'hospitals',
+    name: 'Hospital access',
+    icon: '✚',
+    color,
+    range: [new Date().getFullYear(), new Date().getFullYear() + 0.99],
+    static: true,
+    period: 'emergency care today',
+    available: fac.length > 0,
+    unavailable: 'The HealthLinkBC hospital and emergency-room lists could not be downloaded when this copy of the data was built. Run <code>npm run data hospitals</code>, then reload.',
+    build({ selected, hovered, focusedId, clock }) {
+      const focused = focusedId === 'hospitals';
+      const out: Layer[] = [];
+      if (focused) out.push(...townColumns('hospitals', data.munis, (m) => val(m.key), height, (v) => rgb(ramp(v), 235), 0, selected));
+
+      const rows = rowsFor(hovered ?? selected);
+      if (rows.length) {
+        const q = (clock % 2600) / 2600;
+        out.push(
+          new PathLayer<Row>({
+            id: 'hospitals-trips',
+            data: rows,
+            getPath: (r) => r.path,
+            getColor: (r) => (r.i === 0 ? rgb('#ffffff', 235) : rgb(color, 200)),
+            getWidth: (r) => (r.i === 0 ? 4 : 2.5),
+            widthUnits: 'pixels',
+            capRounded: true,
+            jointRounded: true,
+            extensions: dashExt,
+            getDashArray: (r) => (r.t.ferry || !r.t.line ? [3, 2] : [0, 0]),
+            dashJustified: true,
+            parameters: NO_DEPTH,
+          } as any),
+          new ScatterplotLayer<Row>({
+            id: 'hospitals-pulse',
+            data: rows,
+            getPosition: (r) => along(r, q),
+            getRadius: 900,
+            radiusMinPixels: 3,
+            getFillColor: (r) => (r.i === 0 ? [255, 255, 255, 230] : rgb(color, 230)),
+            updateTriggers: { getPosition: q },
+            parameters: ADDITIVE,
+          }),
+          new TextLayer<Row>({
+            id: 'hospitals-mins',
+            data: rows,
+            getPosition: (r) => r.path[r.path.length - 1],
+            getText: (r) => `${tripText(r.t)}\n${fac[r.t.f].name}`,
+            getSize: (r) => (r.i === 0 ? 13 : 11),
+            getColor: (r) => (r.i === 0 ? [255, 255, 255, 255] : [214, 222, 255, 235]),
+            getPixelOffset: [0, -14],
+            getAlignmentBaseline: 'bottom',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 700,
+            characterSet: 'auto',
+            outlineWidth: 3,
+            outlineColor: [6, 10, 18, 230],
+            fontSettings: { sdf: true },
+            parameters: { depthCompare: 'always' },
+          } as any),
+        );
+      }
+
+      // round-the-clock ERs breathe; smaller sites are drawn dimmer
+      const p = (clock % 2400) / 2400;
+      out.push(
+        new ScatterplotLayer<Facility>({
+          id: 'hospitals-halo',
+          data: fac.filter((f) => f.ed === '24/7'),
+          getPosition: (f) => [f.lon, f.lat],
+          getRadius: 1400 + p * 5200,
+          radiusMinPixels: 5,
+          stroked: true,
+          filled: false,
+          lineWidthMinPixels: 1.5,
+          getLineColor: rgb(color, 210 * (1 - p)),
+          updateTriggers: { getRadius: p, getLineColor: p },
+          parameters: NO_DEPTH,
+        } as any),
+        new ScatterplotLayer<Facility>({
+          id: 'hospitals-sites',
+          data: fac,
+          getPosition: (f) => [f.lon, f.lat],
+          getRadius: (f) => (f.hospital ? 1200 : 850),
+          radiusMinPixels: focused ? 5 : 4,
+          radiusMaxPixels: 13,
+          getFillColor: (f) => (f.ed === '24/7' ? [255, 255, 255, 255] : [16, 22, 38, 235]),
+          stroked: true,
+          getLineColor: (f) => rgb(edColor(f)),
+          lineWidthMinPixels: 2.5,
+          pickable: true,
+          parameters: { depthCompare: 'always' },
+        } as any),
+      );
+      return out;
+    },
+    spark: () => [],
+    events: () => [],
+    panel(el) {
+      el.innerHTML = `${kicker(l, 'Hospital access · emergency care today')}
+        <h2>How far to emergency care?</h2>`;
+      if (!H) {
+        el.insertAdjacentHTML('beforeend', `<div class="unavail">${l.unavailable}</div>`);
+        return { update() {} };
+      }
+      const n24 = fac.filter((f) => f.ed === '24/7').length;
+      el.insertAdjacentHTML('beforeend', `<p class="lede">The ${fac.length} hospitals and emergency rooms Island Health lists in the provincial HealthLinkBC directory (${n24} open around the clock). Column height shows the ${routed ? '<b>typical drive</b>' : '<b>straight-line distance</b>'} from each town centre to its nearest <b>24/7 emergency room</b> reachable without a ferry. Hover or click a town to see its routes.</p>`);
+      const hero = heroStats(el, 4);
+      const rows = data.munis.flatMap((m) => { const e = er.get(m.key), v = val(m.key); return e && v != null ? [{ m, v, e }] : []; });
+      rows.sort((a, b) => a.v - b.v);
+      const near = routed ? 20 : 15;
+      hero(0, String(n24), '24/7 emergency rooms');
+      hero(1, `${Math.round(d3.median(rows, (r) => r.v) ?? 0)} ${unit}`, 'median town to a 24/7 ER');
+      hero(2, `${rows.filter((r) => r.v <= near).length} of ${rows.length}`, `towns within ${near} ${unit}`);
+      const far = rows.at(-1);
+      hero(3, far ? `${Math.round(far.v)} ${unit}` : '–', far ? `farthest: ${far.m.name}` : '');
+      const max = d3.max(rows, (r) => r.v) ?? 1;
+      const small = fac.filter((f) => f.ed !== '24/7');
+      el.insertAdjacentHTML('beforeend', `
+        <h3>${routed ? 'Drive' : 'Distance'} to the nearest 24/7 emergency room</h3>
+        <ol class="rank-list">${rows.map((r, i) => `<li><span class="rk">${i + 1}</span><span><span class="nm">${r.m.name}</span><br><span class="rd">${r.e.name} · ${Math.round(r.e.km)} km</span></span><span><div class="bar"><i style="width:${Math.round((r.v / max) * 100)}%;background:${ramp(r.v)}"></i></div><div class="bar-v">${Math.round(r.v)}</div></span></li>`).join('')}</ol>
+        <div class="ramp" style="background:${rampCSS((t) => ramp(5 + t * 85))}"></div>
+        <div class="ramp-labels"><span>5 ${unit}</span><span>30</span><span>90+ ${unit}</span></div>
+        <div class="legend"><span><i class="sw" style="background:#fff;box-shadow:0 0 0 2px ${color}"></i>24/7 ER</span><span><i class="sw" style="background:#101626;box-shadow:0 0 0 2px #a9b6ff"></i>24/7, call ahead</span><span><i class="sw" style="background:#101626;box-shadow:0 0 0 2px #7d879c"></i>limited hours</span><span>dashed route = ferry</span></div>
+        ${small.length ? `<div class="callout" style="--c:${color}">Smaller sites: ${small.map((f) => `<b>${f.city}</b> (${f.hours})`).join('; ')}. They are left out of the ranking above.</div>` : ''}
+        <p class="note">${routed ? 'Drive times are the OSRM router’s estimate for normal free-flowing traffic on OpenStreetMap roads, from the town centre. They don’t include ferry waits, winter driving, or closures such as Highway 4 or the Malahat.' : 'No routing service was reachable when this data was built, so these are straight-line distances, not drive times.'} Opening hours are as listed by HealthLinkBC; rural ERs sometimes close temporarily for staffing, and services (surgery, maternity, cardiac care) differ by hospital — check Island Health before relying on one.</p>
+        ${sourceLine(`${H.source}. ${H.routingSource ?? 'Straight-line distances.'}`)}`);
+      return { update() {} };
+    },
+    tooltip(info) {
+      const id = info.layer?.id ?? '';
+      if (!info.object || !id.startsWith('hospitals')) return null;
+      if (id === 'hospitals-sites') {
+        const f = info.object as Facility;
+        return `<b>${f.name}</b><br><span class="tk">${f.hospital ? 'Hospital' : 'Health centre'} · ${f.city}</span><br><span class="tk">Emergency</span> <span class="tv">${f.ed ? ED_LABEL[f.ed] : 'none listed'}</span>${f.hours && f.ed !== '24/7' ? `<br><span class="tk">${f.hours}</span>` : ''}`;
+      }
+      const o: any = info.object;
+      const e = er.get(o.m?.key);
+      if (!e) return null;
+      return `<b>${o.m.name}</b><br><span class="tk">Nearest 24/7 ER</span> <span class="tv">${e.min != null ? `${e.min} min` : `${Math.round(e.km)} km`}</span><br><span class="tk">${e.name} · ${Math.round(e.km)} km by ${e.min != null ? 'road' : 'straight line'}</span><br><span class="tk">Click for town report</span>`;
+    },
+  };
+  return l;
+}
+
+// ---------------------------------------------------------------------------------------------
+// WILDFIRE SMOKE — days a year when fine particulates (PM2.5) top the BC 24-hour objective
+
+function smokeLayer(data: Data): AtlasLayer {
+  const color = '#c9a27e';
+  const S = data.smoke;
+  const stations: SmokeStation[] = S?.stations ?? [];
+  const thr = S?.threshold ?? 25;
+  const isl = new Map((S?.island ?? []).map((r) => [r[0], r]));
+  const ys = [...isl.keys()].sort((a, b) => a - b);
+  const y0 = ys[0] ?? 2000, y1 = ys.at(-1) ?? 2025;
+  const ramp = d3.scaleLinear<string>().domain([0, 3, 10, 20]).range(['#6e665d', '#a8875e', '#e8a14b', '#ffd79a']).clamp(true);
+  // The map counts fire-season (May–Oct) days only: in winter the same threshold is crossed by
+  // wood-stove smoke pooling in valleys (Duncan, Port Alberni, Courtenay), which would bury the
+  // wildfire signal. All-year counts stay in the tooltips and the Town Report.
+  const series = stations.map((s) => ({ s, d: Object.fromEntries(Object.entries(s.y).filter(([, v]) => v[3] != null).map(([y, v]) => [y, v[3]!])) }));
+  const islandMean = Object.fromEntries(ys.map((y) => [y, isl.get(y)![4]]));
+  const peak = d3.max(ys, (y) => islandMean[y]) || 1;
+  const worst = [...ys].sort((a, b) => islandMean[b] - islandMean[a]).filter((y) => islandMean[y] >= 1).slice(0, 4);
+  const topStation = (y: number) => {
+    let best: { s: SmokeStation; v: [number | null, number | null, number, number | null] } | null = null;
+    for (const s of stations) { const v = s.y[y]; if (v?.[3] != null && (!best || v[3] > best.v[3]! || (v[3] === best.v[3] && (v[1] ?? 0) > (best.v[1] ?? 0)))) best = { s, v }; }
+    return best;
+  };
+  const elev = (d: number) => 900 + d * 1700;
+  let shownYear = y0; // for tooltips
+  const short = (n: string) => n.replace(/ (Elementary|School|Firehall|Fire Hall|Health Centre|Community Hall).*$/i, '');
+
+  const l: AtlasLayer = {
+    id: 'smoke',
+    name: 'Wildfire smoke',
+    icon: '☁',
+    color,
+    range: [y0, y1 + 0.99],
+    available: !!S,
+    unavailable: `The BC Ministry of Environment air-quality file server couldn’t be reached when this copy of the data was built. Run <code>npm run data smoke</code> to fetch the PM2.5 record, then reload.`,
+    build({ time, focusedId }) {
+      const y = (shownYear = Math.floor(time));
+      const live = series.map(({ s, d }) => ({ s, v: interpYearly(d, time) })).filter((x) => x.v != null) as { s: SmokeStation; v: number }[];
+      // a warm haze over the whole map, as thick as the island's smoke that year
+      const haze = interpYearly(islandMean, time) ?? 0;
+      const a = Math.min(1, haze / peak) ** 1.4;
+      const layers: Layer[] = [
+        new PolygonLayer<any>({
+          id: 'smoke-haze-base',
+          data: a > 0.02 ? [[[-131, 46.5], [-120, 46.5], [-120, 52.5], [-131, 52.5]]] : [],
+          getPolygon: (p) => p,
+          getFillColor: [176, 140, 96, Math.round(a * 80)],
+          stroked: false,
+          updateTriggers: { getFillColor: time },
+          parameters: NO_DEPTH,
+        }),
+        new ScatterplotLayer<any>({
+          id: 'smoke-glow',
+          data: live.filter((d) => d.v >= 0.5),
+          getPosition: (d) => [d.s.lon, d.s.lat],
+          getRadius: (d) => 2500 + Math.sqrt(d.v) * 2600,
+          getFillColor: (d) => rgb(ramp(d.v), Math.min(110, 30 + d.v * 6)),
+          updateTriggers: { getRadius: time, getFillColor: time },
+          parameters: ADDITIVE,
+        }),
+        new ScatterplotLayer<any>({
+          id: 'smoke-sites',
+          data: stations.filter((s) => s.y[y]),
+          getPosition: (s) => [s.lon, s.lat],
+          getRadius: 600,
+          radiusMinPixels: 2,
+          getFillColor: [201, 162, 126, 90],
+          pickable: true,
+          parameters: NO_DEPTH,
+        }),
+        new ColumnLayer<any>({
+          id: 'smoke-cols',
+          data: live,
+          getPosition: (d) => [d.s.lon, d.s.lat],
+          radius: 1400,
+          diskResolution: 20,
+          extruded: true,
+          getElevation: (d) => elev(d.v),
+          getFillColor: (d) => rgb(ramp(d.v), 235),
+          material: { ambient: 0.65, diffuse: 0.5 },
+          pickable: true,
+          updateTriggers: { getElevation: time, getFillColor: time },
+        }),
+      ];
+      if (focusedId === 'smoke')
+        layers.push(
+          new TextLayer<any>({
+            id: 'smoke-labels',
+            data: live.filter((d) => Math.round(d.v) > 0),
+            getPosition: (d) => [d.s.lon, d.s.lat, elev(d.v) + 2500],
+            getText: (d) => String(Math.round(d.v)),
+            getSize: 12,
+            getColor: [245, 236, 222, 230],
+            fontFamily: 'JetBrains Mono, monospace',
+            fontWeight: 600,
+            outlineWidth: 3,
+            outlineColor: [6, 10, 18, 220],
+            fontSettings: { sdf: true },
+            billboard: true,
+            updateTriggers: { getText: time, getPosition: time },
+            parameters: NO_DEPTH,
+          } as any),
+        );
+      return layers;
+    },
+    spark: () => ys.map((x) => ({ x, y: islandMean[x], color: ramp(islandMean[x]) })),
+    events: () =>
+      worst.map((y) => {
+        const r = isl.get(y)!, top = topStation(y);
+        return {
+          t: y + 0.62, layer: 'smoke', title: `${y}: a smoky year`,
+          body: `Between May and October, island air monitors averaged ${r[4].toFixed(1)} days with PM2.5 over ${thr} µg/m³ (${r[2]} stations).${top ? ` Most at ${top.s.name}: ${top.v[3]} days; its worst day averaged ${Math.round(top.v[1] ?? 0)} µg/m³.` : ''}`,
+          ...(top ? { lon: top.s.lon, lat: top.s.lat, zoom: 8 } : {}),
+        };
+      }),
+    panel(el) {
+      el.innerHTML = `${kicker(l, 'Air quality · fine particulates (PM2.5)')}
+        <h2>Smoke on the wind</h2>`;
+      if (!S) {
+        el.insertAdjacentHTML('beforeend', `<div class="unavail">${l.unavailable}</div>`);
+        return { update() {} };
+      }
+      el.insertAdjacentHTML('beforeend', `<p class="lede">Wildfire smoke drifts hundreds of kilometres, so towns that never burn still breathe it — and fine particles are hardest on older hearts and lungs. Each column is a provincial air monitor; its height is the number of days between May and October — fire season — when the 24-hour average of PM2.5 topped <b>${thr} µg/m³</b>. A brown haze settles over the map in the island’s smokiest years.</p>`);
+      const hero = heroStats(el, 4);
+      el.insertAdjacentHTML('beforeend', `<h3>Fire-season days over ${thr} µg/m³, average island monitor</h3>`);
+      const set = deferChart(el.appendChild(mk('div')), (c) =>
+        barChart(c, {
+          data: l.spark(), xDomain: [y0, y1], color, height: 130, yFormat: (v) => String(Math.round(v)),
+          tooltip: (d) => {
+            const r = isl.get(d.x)!;
+            return `<b>${d.x}</b><br>${r[4].toFixed(1)} days May–Oct on average (${r[1].toFixed(1)} all year)<br>most at one station: ${r[5]} (${r[3]} all year)<br>${r[2]} station${r[2] === 1 ? '' : 's'} with a full year`;
+          },
+        }),
+      );
+      // coverage: complete years per station, oldest first
+      const cov = stations
+        .map((s) => { const full = Object.keys(s.y).filter((y) => s.y[y][0] != null).map(Number); return { s, a: d3.min(full)!, b: d3.max(full)!, n: full.length }; })
+        .sort((p, q) => p.a - q.a || q.n - p.n);
+      el.insertAdjacentHTML('beforeend', `
+        <h3>Smokiest years</h3>
+        <div class="legend" style="display:grid;gap:6px">${worst.map((y) => { const r = isl.get(y)!, top = topStation(y); return `<span><b>${y}</b> · ${r[4].toFixed(1)} days on average${top ? ` <span class="tk">(${short(top.s.name)}: ${top.v[3]} days, worst day ${Math.round(top.v[1] ?? 0)} µg/m³)</span>` : ''}</span>`; }).join('')}</div>
+        <h3>Fire-season days over the objective</h3>
+        <div class="ramp" style="background:${rampCSS((t) => ramp(t * 20))}"></div>
+        <div class="ramp-labels"><span>0</span><span>3</span><span>10</span><span>20+</span></div>
+        <div class="callout" style="--c:${color}"><b>Why ${thr} µg/m³?</b> It is British Columbia’s Ambient Air Quality Objective for PM2.5 averaged over 24 hours, adopted in 2009. (BC judges compliance on the 98th-percentile day of a year; here we simply count every day above it.) The map counts May–October only, when it is mostly wildfire smoke. Several valley towns also cross it in winter from wood-stove smoke trapped under cold air — hover a column, or open a Town Report, for all-year counts.</div>
+        <h3>Station coverage</h3>
+        <div class="legend" style="display:grid;gap:4px;font-size:12px">${cov.map((c) => `<span>${c.s.name} <span class="tk">${c.a === c.b ? c.a : `${c.a}–${c.b}`} · ${c.n} yr${c.n === 1 ? '' : 's'}</span></span>`).join('')}</div>
+        <p class="note">Monitors are few, cluster on the east coast, and opened in different years, so the island average mixes different sets of stations — early years rest on Victoria alone and the west coast and north island are barely measured. A station-year counts only when at least 75% of its days have data (and a day needs 18 of 24 hours). Instruments changed over time; older TEOM monitors tended to read low in smoke and cold weather, so early years may undercount.</p>
+        ${sourceLine(S.source)}`);
+      return {
+        update({ time }) {
+          const y = Math.floor(time);
+          const r = isl.get(y);
+          hero(0, r ? r[4].toFixed(1) : '–', r ? `fire-season days over ${thr}, avg monitor ${y}` : `no full-year data in ${y}`);
+          const top = topStation(y);
+          hero(1, top ? String(top.v[3]) : '–', top?.v[3] ? `most: ${short(top.s.name)}` : 'most at one station');
+          hero(2, r ? String(r[2]) : '0', `stations with a full year`);
+          hero(3, worst[0] ? String(worst[0]) : '–', worst[0] ? `smokiest year (${islandMean[worst[0]].toFixed(1)} days)` : 'smokiest year');
+          set(time);
+        },
+      };
+    },
+    tooltip(info) {
+      const o: any = info.object;
+      if (!o || !info.layer?.id.startsWith('smoke')) return null;
+      const s: SmokeStation = o.s ?? o;
+      const full = Object.keys(s.y).filter((y) => s.y[y][0] != null);
+      const yr = shownYear, v = s.y[yr];
+      const now = v ? (v[0] != null ? `<br><span class="tk">${yr}</span> <span class="tv">${v[3]} days over ${thr} in May–Oct (${v[0]} all year)</span><br><span class="tk">Worst day</span> <span class="tv">${v[1]} µg/m³</span>` : `<br><span class="tk">${yr}</span> <span class="tv">only ${Math.round(v[2] * 100)}% of days measured</span>`) : '';
+      return `<b>${s.name}</b>${now}<br><span class="tk">Full years</span> <span class="tv">${full.length ? `${full.length} (${full[0]}–${full.at(-1)})` : 'none'}</span>`;
+    },
+  };
+  return l;
+}
+
+// ---------------------------------------------------------------------------------------------
 
 /** Curated events that aren’t derivable from the datasets. */
 export const CURATED_EVENTS: AtlasEvent[] = [
@@ -904,5 +1940,5 @@ export const CURATED_EVENTS: AtlasEvent[] = [
 ];
 
 export function buildLayers(data: Data): AtlasLayer[] {
-  return [firesLayer(data), quakesLayer(data), riversLayer(data), climateLayer(data), populationLayer(data), housingLayer(data), crimeLayer(data)];
+  return [firesLayer(data), quakesLayer(data), seismicLayer(data), riversLayer(data), climateLayer(data), normalsLayer(data), futureLayer(data), populationLayer(data), housingLayer(data), crimeLayer(data), hospitalsLayer(data), smokeLayer(data)];
 }

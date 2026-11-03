@@ -16,9 +16,54 @@ export type ClimateStation = {
   id: string; name: string; lon: number; lat: number; baseline: number;
   temp: Record<string, number>; precip: Record<string, number>;
 };
+/** One station's 30-year climate normals (annual values; fields missing where the station doesn't report them). */
+export type NormalsStation = {
+  id: string; name: string; lon: number; lat: number; yrs: number;
+  sun?: number; wetDays?: number; frostDays?: number; snow?: number; precip?: number;
+  tMean?: number; tJan?: number; tJul?: number; wet?: [number, number];
+};
 export type PopSeries = { pop: Record<string, number>; s65: Record<string, number>; firstProjection: number | null };
 /** month "YYYY-MM" -> [median FMV, mean FMV, transactions] */
 export type HousingSeries = Record<string, [number, number, number]>;
+/** A hospital or emergency room. `ed`: 24/7 ER, 24/7 but "call ahead", limited hours, or none listed. */
+export type Facility = { name: string; city: string; lon: number; lat: number; hospital: boolean; ed: '24/7' | 'call' | 'limited' | null; hours: string | null };
+/** One town -> facility trip: facility index, drive minutes (null if straight-line only), km, ferry on the fastest route, road line. */
+export type Trip = { f: number; min: number | null; km: number; ferry?: boolean; line?: [number, number][] };
+/**
+ * NRCan 2020 seismic hazard (site class C). `grid.pga` is row-major from the south-west corner
+ * (null away from the island); towns: key -> [PGA 2%/50yr, PGA 10%/50yr, Sa(0.2) 2%/50yr], in g.
+ */
+export type Seismic = {
+  source: string; model: string; site: string;
+  grid: { west: number; south: number; dx: number; dy: number; nx: number; ny: number; pga: (number | null)[] };
+  towns: Record<string, [number, number, number]>;
+};
+/**
+ * BC ENV verified hourly PM2.5, reduced to station-years. y: year -> [days with a daily mean over
+ * `threshold`, highest daily mean µg/m³, share of days with data, days over in May–Oct]; the counts
+ * are null when under 75% of the year had data.
+ */
+export type SmokeStation = { id: string; name: string; lon: number; lat: number; y: Record<string, [number | null, number | null, number, number | null]> };
+export type Smoke = {
+  source: string; threshold: number; basis: string;
+  /** [year, mean days over per station, stations with a complete year, most at one station, mean and most in May–Oct] */
+  island: [number, number, number, number, number, number][];
+  stations: SmokeStation[];
+};
+/**
+ * CanDCS-U6 downscaled CMIP6 projections (ClimateData.ca 30-year index averages). Every series is
+ * [period][p10, p50, p90] over `periods` (recent 1991–2020, then 2021–2050 and 2041–2070), per
+ * scenario ("ssp245", "ssp585"). Grid values line up with `grid.cells` (j*nx+i from the south-west).
+ */
+export type FutureVar = 'hot' | 'temp' | 'frost' | 'summerRain';
+export type FutureRange = [number, number, number];
+export type FutureTown = { km: number } & { [V in FutureVar]: Record<string, FutureRange[]> };
+export type Future = {
+  source: string; periods: string[]; scenarios: string[]; percentiles: number[];
+  grid: { west: number; south: number; dx: number; dy: number; nx: number; ny: number; cells: number[] };
+  vals: { [V in FutureVar]: Record<string, (number | null)[][][]> };
+  towns: Record<string, FutureTown>;
+};
 export type CrimeSeries = { csi?: Record<string, number>; vcsi?: Record<string, number>; nvcsi?: Record<string, number> };
 
 export type Data = {
@@ -28,9 +73,14 @@ export type Data = {
   quakes: { rows: Quake[]; source: string } | null;
   rivers: { stations: RiverStation[]; source: string } | null;
   climate: { stations: ClimateStation[]; source: string; baselinePeriod: string } | null;
+  normals: { stations: NormalsStation[]; source: string; period: string } | null;
   population: { munis: Record<string, PopSeries>; source: string } | null;
   housing: { munis: Record<string, HousingSeries>; source: string } | null;
   crime: { munis: Record<string, CrimeSeries>; bc: CrimeSeries; source: string } | null;
+  hospitals: { facilities: Facility[]; towns: Record<string, Trip[]>; source: string; routing: string; routingSource: string | null } | null;
+  seismic: Seismic | null;
+  smoke: Smoke | null;
+  future: Future | null;
   manifest: Record<string, { ok: boolean; updated?: string; lastError?: string }>;
 };
 
@@ -47,16 +97,21 @@ async function load<T>(name: string): Promise<T | null> {
 }
 
 export async function loadAll(): Promise<Data> {
-  const [island, munis, fires, quakes, rivers, climate, population, housing, crime, manifest] = await Promise.all([
+  const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, manifest] = await Promise.all([
     load<GeoJSON.Feature>('island'),
     load<Muni[]>('municipalities'),
     load<any>('fires'),
     load<any>('quakes'),
     load<any>('rivers'),
     load<any>('climate'),
+    load<any>('normals'),
     load<any>('population'),
     load<any>('housing'),
     load<any>('crime'),
+    load<any>('hospitals'),
+    load<Seismic>('seismic'),
+    load<Smoke>('smoke'),
+    load<Future>('future'),
     load<any>('manifest'),
   ]);
 
@@ -72,7 +127,7 @@ export async function loadAll(): Promise<Data> {
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, population, housing, crime: crimeOk, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, manifest: manifest ?? {} };
 }
 
 // ---------------------------------------------------------------------------------------------

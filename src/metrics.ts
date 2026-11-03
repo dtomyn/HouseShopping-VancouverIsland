@@ -1,5 +1,14 @@
 // Derived, per-town statistics shared by the Town Report and the Town Finder.
-import { Data, Muni, km, trailingMedianPrice } from './data';
+import { Data, Facility, FutureTown, Muni, NormalsStation, Smoke, km, trailingMedianPrice } from './data';
+
+/** A climate-normal value borrowed from the nearest station that reports it. */
+export type NormalPick = { v: number; name: string; dist: number };
+export type NormalVar = 'sun' | 'wetDays' | 'frostDays' | 'snow';
+// Only 8 island stations measure sunshine, so allow a longer reach for it than for the others.
+const NORMAL_REACH: Record<NormalVar, number> = { sun: 60, wetDays: 40, frostDays: 40, snow: 40 };
+
+/** A trip to a hospital/ER; `min` is null when only straight-line distance is known. */
+export type CareTrip = { name: string; city: string; ed: Facility['ed']; min: number | null; km: number; ferry: boolean };
 
 export type TownMetrics = {
   muni: Muni;
@@ -15,9 +24,51 @@ export type TownMetrics = {
   fires15km: number; // ignitions within 15 km since 1990
   burnedHa25km: number; // perimeter area within 25 km since 1950
   quakes75km: number; // M4+ within 75 km since 1970
+  shaking: { pga2: number; pga10: number } | null; // NRCan 2020 hazard at the town centre, g (site class C)
   climate: { name: string; dist: number; meanTemp: number; precip: number | null; trend: number | null } | null;
   river: { name: string; dist: number; floodShare: number; record: { year: string; ratio: number } } | null;
+  feels: Record<NormalVar, NormalPick | null>; // climate normals from the nearest reporting station
+  er: CareTrip | null; // nearest round-the-clock emergency room reachable without a ferry
+  care: CareTrip | null; // nearest hospital or ER of any kind (may be limited hours or need a ferry)
+  smoke: SmokePick | null; // high-PM2.5 days a year at the nearest monitor with a recent record
+  future: FutureTown | null; // CMIP6 projections at the nearest grid cell: var -> scenario -> [period][p10, p50, p90]
 };
+
+/**
+ * Average days a year with daily PM2.5 over the BC objective, at the nearest monitoring station with
+ * at least SMOKE_MIN_YEARS complete years in the last decade of data. A shared window keeps towns
+ * comparable: a station that closed before the smoky late 2010s would otherwise look clean.
+ */
+export type SmokePick = { name: string; dist: number; avg: number; season: number; years: number; from: number; to: number };
+const SMOKE_REACH = 75;
+const SMOKE_MIN_YEARS = 5;
+
+/** Nearest station reporting `k` (and every field in `also`, so paired values come from one place). */
+function nearestNormal(stations: NormalsStation[], m: Muni, k: NormalVar, also: NormalVar[] = []): NormalPick | null {
+  let best: NormalPick | null = null;
+  for (const s of stations) {
+    const v = s[k];
+    if (v == null || also.some((a) => s[a] == null)) continue;
+    const d = km(m.lon, m.lat, s.lon, s.lat);
+    if (d <= NORMAL_REACH[k] && (!best || d < best.dist)) best = { v, name: s.name, dist: d };
+  }
+  return best;
+}
+
+function nearestSmoke(smoke: Smoke, m: Muni): SmokePick | null {
+  const to = smoke.island.at(-1)![0], from = to - 9;
+  let best: SmokePick | null = null;
+  for (const s of smoke.stations) {
+    const ys = Object.entries(s.y).filter(([y, v]) => +y >= from && v[0] != null);
+    if (ys.length < SMOKE_MIN_YEARS) continue;
+    const d = km(m.lon, m.lat, s.lon, s.lat);
+    if (d > SMOKE_REACH || (best && d >= best.dist)) continue;
+    const avg = ys.reduce((a, [, v]) => a + v[0]!, 0) / ys.length;
+    const season = ys.reduce((a, [, v]) => a + (v[3] ?? 0), 0) / ys.length;
+    best = { name: s.name, dist: d, avg, season, years: ys.length, from, to };
+  }
+  return best;
+}
 
 export function latestYear(series?: Record<string, number>, maxYear = Infinity) {
   if (!series) return null;
@@ -130,7 +181,31 @@ export function townMetrics(data: Data): TownMetrics[] {
       }
     }
 
-    return { muni: m, price, priceYear, priceChange5y, pop, popYear, popGrowth10y, s65, csi, csiYear: cy ? String(cy) : null, fires15km, burnedHa25km, quakes75km, climate, river };
+    const sz = data.seismic?.towns[m.key];
+    const shaking = sz ? { pga2: sz[0], pga10: sz[1] } : null;
+
+    const ns = data.normals?.stations ?? [];
+    // frost and snow come from the same station so the "little snow & frost" score is consistent
+    const feels: TownMetrics['feels'] = {
+      sun: nearestNormal(ns, m, 'sun'),
+      wetDays: nearestNormal(ns, m, 'wetDays'),
+      frostDays: nearestNormal(ns, m, 'frostDays', ['snow']),
+      snow: nearestNormal(ns, m, 'snow', ['frostDays']),
+    };
+
+    // hospitals: trips were ranked in the pipeline, fastest first
+    let er: CareTrip | null = null, care: CareTrip | null = null;
+    if (data.hospitals) {
+      const fac = data.hospitals.facilities;
+      const trips = (data.hospitals.towns[m.key] ?? []).map((c) => ({ name: fac[c.f].name, city: fac[c.f].city, ed: fac[c.f].ed, min: c.min, km: c.km, ferry: !!c.ferry }));
+      care = trips[0] ?? null;
+      er = trips.find((c) => c.ed === '24/7' && !c.ferry) ?? null;
+    }
+
+    const smoke = data.smoke ? nearestSmoke(data.smoke, m) : null;
+    const future = data.future?.towns[m.key] ?? null;
+
+    return { muni: m, price, priceYear, priceChange5y, pop, popYear, popGrowth10y, s65, csi, csiYear: cy ? String(cy) : null, fires15km, burnedHa25km, quakes75km, shaking, climate, river, feels, er, care, smoke, future };
   });
   return cache;
 }
@@ -151,9 +226,21 @@ export const CRITERIA: Criterion[] = [
   { id: 'afford', label: 'Affordability', hint: 'Lower median transfer price', value: (t) => t.price, higherIsBetter: false, defaultWeight: 3 },
   { id: 'safety', label: 'Low crime', hint: 'Lower Crime Severity Index', value: (t) => t.csi, higherIsBetter: false, defaultWeight: 3 },
   { id: 'fire', label: 'Low wildfire exposure', hint: 'Fewer ignitions within 15 km since 1990', value: (t) => t.fires15km, higherIsBetter: false, defaultWeight: 2 },
-  { id: 'quake', label: 'Low quake activity', hint: 'Fewer M4+ quakes within 75 km since 1970', value: (t) => t.quakes75km, higherIsBetter: false, defaultWeight: 1 },
+  // The official hazard model is the better guide to future shaking; past quake counts mostly track
+  // where seismometers and offshore faults are, so that criterion is off by default.
+  { id: 'seismic', label: 'Lower shaking hazard', hint: 'Lower expected peak shaking, 2% chance in 50 years (NRCan 2020 hazard model)', value: (t) => t.shaking?.pga2 ?? null, higherIsBetter: false, defaultWeight: 2 },
+  { id: 'quake', label: 'Low quake activity', hint: 'Fewer M4+ quakes within 75 km since 1970 (past record)', value: (t) => t.quakes75km, higherIsBetter: false, defaultWeight: 0 },
   { id: 'warm', label: 'Mild & warm', hint: 'Higher mean annual temperature (1991+)', value: (t) => t.climate?.meanTemp ?? null, higherIsBetter: true, defaultWeight: 2 },
-  { id: 'dry', label: 'Drier & sunnier', hint: 'Less annual precipitation', value: (t) => t.climate?.precip ?? null, higherIsBetter: false, defaultWeight: 2 },
+  // Sunshine hours from the nearest of the 8 island stations that measure it (within 60 km). That
+  // covers all but a few remote villages (which are skipped, not penalized) and separates the sunny
+  // east coast from the cloudy west and north better than rainfall did, so no rainfall fallback.
+  { id: 'dry', label: 'Sunnier', hint: 'More bright-sunshine hours a year (nearest of 8 stations that measure it; remote villages skipped)', value: (t) => t.feels.sun?.v ?? null, higherIsBetter: true, defaultWeight: 2 },
+  { id: 'snow', label: 'Little snow & frost', hint: 'Fewer frost days + cm of snowfall a year (30-yr normals)', value: (t) => (t.feels.frostDays && t.feels.snow ? t.feels.frostDays.v + t.feels.snow.v : null), higherIsBetter: false, defaultWeight: 1 },
+  { id: 'hospital', label: 'Close to a hospital', hint: 'Fewer minutes’ drive to the nearest 24/7 emergency room (no ferry)', value: (t) => (t.er ? t.er.min ?? t.er.km : null), higherIsBetter: false, defaultWeight: 2 },
+  { id: 'air', label: 'Clean air (fewer smoke days)', hint: 'Fewer days a year with PM2.5 over 25 µg/m³ at the nearest air monitor, any season (wildfire and wood-stove smoke; last 10 years; towns over 75 km from a monitor skipped)', value: (t) => t.smoke?.avg ?? null, higherIsBetter: false, defaultWeight: 1 },
+  // Projection, not history: median of 26 downscaled CMIP6 models for 2041–2070 under the moderate
+  // scenario. The range is wide, so it starts at a modest weight.
+  { id: 'future', label: 'Mild future summers', hint: 'Fewer projected days over 30 °C in 2041–2070 (moderate emissions, SSP2-4.5, median of 26 climate models)', value: (t) => t.future?.hot.ssp245[2][1] ?? null, higherIsBetter: false, defaultWeight: 1 },
   { id: 'seniors', label: 'Retiree community', hint: 'Higher share of residents 65+', value: (t) => t.s65, higherIsBetter: true, defaultWeight: 1 },
   { id: 'services', label: 'Services & amenities', hint: 'Larger town (hospitals, shops, transit)', value: (t) => (t.pop ? Math.log10(t.pop) : null), higherIsBetter: true, defaultWeight: 2 },
 ];
