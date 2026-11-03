@@ -1,54 +1,54 @@
 {
   "island": {
     "ok": true,
-    "updated": "2026-11-03T16:32:11.433Z"
+    "updated": "2026-11-03T18:37:18.117Z"
   },
   "quakes": {
     "ok": true,
-    "updated": "2026-11-03T16:32:12.336Z"
+    "updated": "2026-11-03T18:32:03.785Z"
   },
   "fires": {
     "ok": true,
-    "updated": "2026-11-03T16:32:26.993Z"
+    "updated": "2026-11-03T18:32:03.023Z"
   },
   "rivers": {
     "ok": true,
-    "updated": "2026-11-03T16:45:15.845Z"
+    "updated": "2026-11-03T18:32:04.807Z"
   },
   "climate": {
     "ok": true,
-    "updated": "2026-11-03T16:32:33.209Z"
+    "updated": "2026-11-03T18:32:04.840Z"
   },
   "population": {
     "ok": true,
-    "updated": "2026-11-03T16:32:34.682Z"
+    "updated": "2026-11-03T18:31:45.056Z"
   },
   "housing": {
     "ok": true,
-    "updated": "2026-11-03T16:48:12.931Z"
+    "updated": "2026-11-03T18:32:20.744Z"
   },
   "crime": {
     "ok": true,
-    "updated": "2026-11-03T16:49:18.990Z"
+    "updated": "2026-11-03T18:32:22.760Z"
   },
   "normals": {
     "ok": true,
-    "updated": "2026-11-03T17:05:54.626Z"
+    "updated": "2026-11-03T18:32:04.893Z"
   },
   "hospitals": {
     "ok": true,
-    "updated": "2026-11-03T17:18:06.734Z"
+    "updated": "2026-11-03T18:32:56.842Z"
   },
   "seismic": {
     "ok": true,
-    "updated": "2026-11-03T17:32:04.486Z"
+    "updated": "2026-11-03T18:37:08.851Z"
   },
   "smoke": {
     "ok": true,
-    "updated": "2026-11-03T18:03:31.503Z"
+    "updated": "2026-11-03T18:37:10.144Z"
   },
   "future": {
     "ok": true,
-    "updated": "2026-11-03T18:11:33.891Z"
+    "updated": "2026-11-03T18:37:10.434Z"
   }
 }

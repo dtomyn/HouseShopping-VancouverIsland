@@ -1,6 +1,13 @@
 // Loads the pre-built JSON files in public/data and shapes them for rendering.
 
-export type Muni = { key: string; name: string; rd: string; lon: number; lat: number };
+/**
+ * A municipality, or (island: true) an unincorporated island community. `areas` says what a
+ * figure covers when it isn't the place itself (a shared rural sales area, an RCMP detachment).
+ */
+export type Muni = {
+  key: string; name: string; rd: string; lon: number; lat: number;
+  island?: boolean; note?: string; areas?: { housing?: string; crime?: string; pop?: string };
+};
 
 export type FirePerimeter = { id: string; year: number; t: number; ha: number; cause: number; c: [number, number]; polygon: number[][][] };
 /** lon, lat, t (fractional year), hectares, cause (0 lightning, 1 person, 2 unknown) */
@@ -22,7 +29,8 @@ export type NormalsStation = {
   sun?: number; wetDays?: number; frostDays?: number; snow?: number; precip?: number;
   tMean?: number; tJan?: number; tJul?: number; wet?: [number, number];
 };
-export type PopSeries = { pop: Record<string, number>; s65: Record<string, number>; firstProjection: number | null };
+/** `census`: a single 2021 Census snapshot (island communities) rather than BC Stats' annual series. */
+export type PopSeries = { pop: Record<string, number>; s65: Record<string, number>; firstProjection: number | null; census?: boolean };
 /** month "YYYY-MM" -> [median FMV, mean FMV, transactions] */
 export type HousingSeries = Record<string, [number, number, number]>;
 /** A hospital or emergency room. `ed`: 24/7 ER, 24/7 but "call ahead", limited hours, or none listed. */

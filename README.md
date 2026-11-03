@@ -25,6 +25,11 @@ Press play and watch 100+ years unfold: wildfires flare and leave burn scars, ea
 - **Timeline** with play/pause, speeds, a sparkline of the focused layer, and clickable historic events (the 1946 M7.3 quake, the 1964 Port Alberni tsunami, the 2021 heat dome…). Events pop up as toasts and send a shockwave across the map as playback passes them.
 - **Town Report** — click any town for a report card: prices, population, 65+ share, crime, nearby wildfire and quake history, official earthquake shaking hazard, local climate and warming trend, nearest river's flood record, drive time to the nearest 24/7 emergency room, and projected hot days, temperature, frost and summer rain for the 2050s (with model ranges).
 - **Town Finder** — weight what matters to you (affordability, safety, wildfire exposure, shaking hazard, past quakes, warmth, sunshine, snow & frost, hospital access, mild future summers, retiree community, services) and every municipality is ranked and raised as 3D columns on the map. Weights persist in your browser.
+- **Gulf and Discovery islands** — Salt Spring, Galiano, Thetis, Penelakut (Kuper), Gabriola, Lasqueti, Denman and Quadra are included alongside the island's municipalities (list in `scripts/municipalities.mjs`). Every map layer is clipped to them too. They are unincorporated, so a few figures come from other sources and are labelled in their reports:
+  - population and 65+ share from the 2021 Census (dissemination areas on each island)
+  - crime from the island's rural RCMP detachment (Salt Spring, Gabriola, Quadra; Galiano shares the Outer Gulf Islands detachment)
+  - sale prices only for Salt Spring and Galiano, via the combined "Gulf Islands Rural" area; elsewhere island sales are folded into mostly Vancouver Island rural areas, so they show n/a
+  - ER access through the ferry route when there is no ER on the island; the Town Finder adds 30 minutes for the wait
 - Overlay multiple layers, hover anything for details, tilt/rotate the 3D map (right-drag or Ctrl-drag), keyboard: `Space` play/pause, `←`/`→` step.
 
 ## Tech

@@ -169,6 +169,15 @@ Hospitals, seismic hazard and tsunami zones don't change over time. Before addin
 
 ---
 
+## Gulf and Discovery islands
+
+✅ **Built.** The shortlisted islands (Salt Spring, Galiano, Thetis, Penelakut, Gabriola, Lasqueti, Denman, Quadra) are `ISLAND_COMMUNITIES` in `scripts/municipalities.mjs`, merged into one MultiPolygon outline so every spatial source clips to them. Per-place joins: 2021 Census dissemination areas (StatCan boundary service + Census Profile API) for population; rural RCMP detachments for crime; BC Assessment jurisdiction 764 "Gulf Islands Rural" for Salt Spring and Galiano prices.
+
+Still open:
+- **Island sale prices** for Gabriola, Denman, Quadra, Thetis and Lasqueti. Their sales are folded into "Nanaimo Rural", "Courtenay Rural" and "Campbell River Rural" alongside rural Vancouver Island. Needs a finer source (BC Assessment or a realtor board) *(verify)*.
+- **Ferry dependence** as its own factor: sailing frequency, last sailing of the day, and whether there is a car ferry (Lasqueti has none) *(verify: BC Ferries schedules)*.
+- **Population trend**: dissemination-area counts are 2021 only. 2016 and 2026 Census counts by island would give growth.
+
 ## Smaller polish ideas
 
 - Shareable links: put the focused layer, year and selected town in the URL so a view can be bookmarked or sent.

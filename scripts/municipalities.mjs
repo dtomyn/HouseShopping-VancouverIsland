@@ -39,6 +39,35 @@ export const MUNICIPALITIES = [
   { key: 'alert bay', name: 'Alert Bay', rd: 'Mount Waddington', lon: -126.931, lat: 50.585 },
 ];
 
+// Gulf and Discovery islands on the shortlist. All are unincorporated, so municipal tables don't
+// cover them: `fwa` names the BC Freshwater Atlas island (outline, clipping, census areas), `ptt`
+// the BC Assessment rural jurisdiction in the Property Transfer Tax data when it is island-specific,
+// `rcmp` the rural RCMP detachment in the StatCan crime table. `areas` says what those cover.
+export const ISLAND_COMMUNITIES = [
+  {
+    key: 'salt spring island', name: 'Salt Spring Island', rd: 'Capital', lon: -123.4985, lat: 48.8528, fwa: 'Saltspring Island',
+    ptt: '764', rcmp: 'saltspring island',
+    areas: { housing: 'Gulf Islands Rural — Salt Spring plus the Southern Gulf Islands combined', crime: 'Salt Spring Island RCMP' },
+  },
+  {
+    key: 'galiano island', name: 'Galiano Island', rd: 'Capital', lon: -123.3226, lat: 48.8775, fwa: 'Galiano Island',
+    ptt: '764', rcmp: 'outer gulf islands',
+    areas: { housing: 'Gulf Islands Rural — Salt Spring plus the Southern Gulf Islands combined', crime: 'Outer Gulf Islands RCMP — Galiano, Mayne, Pender and Saturna' },
+  },
+  { key: 'thetis island', name: 'Thetis Island', rd: 'Cowichan Valley', lon: -123.673, lat: 48.997, fwa: 'Thetis Island', areas: { pop: 'census area also takes in Valdes and other small neighbouring islands' } },
+  {
+    key: 'penelakut island', name: 'Penelakut Island', rd: 'Cowichan Valley', lon: -123.638, lat: 48.975, fwa: 'Penelakut Island',
+    note: 'Formerly Kuper Island. It is Penelakut Tribe reserve land, so homes are not sold on the open market.',
+  },
+  { key: 'gabriola island', name: 'Gabriola Island', rd: 'Nanaimo', lon: -123.852, lat: 49.17, fwa: 'Gabriola Island', rcmp: 'gabriola island', areas: { crime: 'Gabriola Island RCMP' } },
+  { key: 'lasqueti island', name: 'Lasqueti Island', rd: 'Nanaimo', lon: -124.3515, lat: 49.4965, fwa: 'Lasqueti Island', note: 'No car ferry: a passenger ferry runs from French Creek, and the island is off the power grid.' },
+  { key: 'denman island', name: 'Denman Island', rd: 'Comox Valley', lon: -124.799, lat: 49.534, fwa: 'Denman Island' },
+  { key: 'quadra island', name: 'Quadra Island', rd: 'Strathcona', lon: -125.2135, lat: 50.0445, fwa: 'Quadra Island', rcmp: 'quadra island', areas: { crime: 'Quadra Island RCMP' } },
+].map((c) => ({ ...c, island: true }));
+
+/** Every place the atlas reports on: the island's municipalities, then the island communities. */
+export const PLACES = [...MUNICIPALITIES, ...ISLAND_COMMUNITIES];
+
 const PREFIX = /^(the\s+)?(corporation of the\s+)?(city|district|town|township|village|resort municipality|district municipality)\s+of\s+/i;
 
 /** "234 - City of Victoria", "District of Saanich (SD61)", "Victoria (CY)" -> "victoria" */
@@ -55,3 +84,5 @@ export function normalizeMuniName(raw) {
 }
 
 export const MUNI_BY_KEY = new Map(MUNICIPALITIES.map((m) => [m.key, m]));
+export const ISLAND_BY_PTT = Map.groupBy(ISLAND_COMMUNITIES.filter((c) => c.ptt), (c) => c.ptt);
+export const ISLAND_BY_RCMP = new Map(ISLAND_COMMUNITIES.filter((c) => c.rcmp).map((c) => [c.rcmp, c]));

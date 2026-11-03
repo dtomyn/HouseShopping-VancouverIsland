@@ -28,7 +28,7 @@ export type TownMetrics = {
   climate: { name: string; dist: number; meanTemp: number; precip: number | null; trend: number | null } | null;
   river: { name: string; dist: number; floodShare: number; record: { year: string; ratio: number } } | null;
   feels: Record<NormalVar, NormalPick | null>; // climate normals from the nearest reporting station
-  er: CareTrip | null; // nearest round-the-clock emergency room reachable without a ferry
+  er: CareTrip | null; // nearest round-the-clock emergency room, without a ferry if any can be reached that way
   care: CareTrip | null; // nearest hospital or ER of any kind (may be limited hours or need a ferry)
   smoke: SmokePick | null; // high-PM2.5 days a year at the nearest monitor with a recent record
   future: FutureTown | null; // CMIP6 projections at the nearest grid cell: var -> scenario -> [period][p10, p50, p90]
@@ -199,7 +199,8 @@ export function townMetrics(data: Data): TownMetrics[] {
       const fac = data.hospitals.facilities;
       const trips = (data.hospitals.towns[m.key] ?? []).map((c) => ({ name: fac[c.f].name, city: fac[c.f].city, ed: fac[c.f].ed, min: c.min, km: c.km, ferry: !!c.ferry }));
       care = trips[0] ?? null;
-      er = trips.find((c) => c.ed === '24/7' && !c.ferry) ?? null;
+      // islands without their own ER fall back to the ferry route
+      er = trips.find((c) => c.ed === '24/7' && !c.ferry) ?? trips.find((c) => c.ed === '24/7') ?? null;
     }
 
     const smoke = data.smoke ? nearestSmoke(data.smoke, m) : null;
@@ -212,6 +213,9 @@ export function townMetrics(data: Data): TownMetrics[] {
 
 // ---------------------------------------------------------------------------------------------
 // Town Finder scoring
+
+/** Minutes added to ferry-dependent ER trips in the ranking, for waiting on a sailing. */
+export const FERRY_WAIT = 30;
 
 export type Criterion = {
   id: string;
@@ -236,7 +240,8 @@ export const CRITERIA: Criterion[] = [
   // east coast from the cloudy west and north better than rainfall did, so no rainfall fallback.
   { id: 'dry', label: 'Sunnier', hint: 'More bright-sunshine hours a year (nearest of 8 stations that measure it; remote villages skipped)', value: (t) => t.feels.sun?.v ?? null, higherIsBetter: true, defaultWeight: 2 },
   { id: 'snow', label: 'Little snow & frost', hint: 'Fewer frost days + cm of snowfall a year (30-yr normals)', value: (t) => (t.feels.frostDays && t.feels.snow ? t.feels.frostDays.v + t.feels.snow.v : null), higherIsBetter: false, defaultWeight: 1 },
-  { id: 'hospital', label: 'Close to a hospital', hint: 'Fewer minutes’ drive to the nearest 24/7 emergency room (no ferry)', value: (t) => (t.er ? t.er.min ?? t.er.km : null), higherIsBetter: false, defaultWeight: 2 },
+  // The router times the crossing but not the wait for a sailing, so ferry trips carry a flat allowance.
+  { id: 'hospital', label: 'Close to a hospital', hint: `Fewer minutes’ drive to the nearest 24/7 emergency room (trips needing a ferry count ${FERRY_WAIT} extra minutes for the wait)`, value: (t) => (t.er ? (t.er.min ?? t.er.km) + (t.er.ferry ? FERRY_WAIT : 0) : null), higherIsBetter: false, defaultWeight: 2 },
   { id: 'air', label: 'Clean air (fewer smoke days)', hint: 'Fewer days a year with PM2.5 over 25 µg/m³ at the nearest air monitor, any season (wildfire and wood-stove smoke; last 10 years; towns over 75 km from a monitor skipped)', value: (t) => t.smoke?.avg ?? null, higherIsBetter: false, defaultWeight: 1 },
   // Projection, not history: median of 26 downscaled CMIP6 models for 2041–2070 under the moderate
   // scenario. The range is wide, so it starts at a modest weight.

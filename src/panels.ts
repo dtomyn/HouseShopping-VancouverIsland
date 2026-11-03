@@ -2,7 +2,7 @@
 import * as d3 from 'd3';
 import { Data, fmt, trailingMedianPrice } from './data';
 import { lineChart } from './charts';
-import { CRITERIA, TownMetrics, rankTowns, townMetrics } from './metrics';
+import { CRITERIA, FERRY_WAIT, TownMetrics, rankTowns, townMetrics } from './metrics';
 
 const STORE_KEY = 'island-atlas:weights';
 
@@ -27,17 +27,22 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
   const metric = (label: string, dot: string, v: string, sub: string) =>
     `<div class="metric"><div class="mk"><span class="dot" style="background:${dot}"></span>${label}</div><div class="mv">${v}</div><div class="ms">${sub}</div></div>`;
   const na = '<span style="color:var(--ink-3)">n/a</span>';
+  const census = !!data.population?.munis[key]?.census;
+  const popSub = census ? `2021 Census${m.areas?.pop ? ` · ${m.areas.pop}` : ''}` : t.popGrowth10y != null ? `${fmt.signed(t.popGrowth10y * 100, 0)}% in 10 yrs (${t.popYear})` : '';
+  const priceSub = t.price ? `${t.priceChange5y != null ? `${fmt.signed(t.priceChange5y * 100, 0)}% over 5 yrs` : (t.priceYear ?? '')}${m.areas?.housing ? `<br>${m.areas.housing}` : ''}` : m.island ? 'island sales are only published inside a wider rural area' : (t.priceYear ?? 'no transfer data');
+  const csiSub = t.csi != null ? `index, ${t.csiYear} (lower = safer)${m.areas?.crime ? `<br>${m.areas.crime}` : ''}` : m.island ? 'no island-level police series' : 'no municipal police series';
 
   el.innerHTML = `
     <button class="close-x" aria-label="Close town report">×</button>
-    <div class="kicker" style="--c:#ffffff">Town report · ${m.rd} Regional District</div>
+    <div class="kicker" style="--c:#ffffff">${m.island ? 'Island community' : 'Town report'} · ${m.rd} Regional District</div>
     <h2>${m.name}</h2>
+    ${m.note ? `<div class="callout" style="--c:#4cc9f0">${m.note}</div>` : ''}
     ${opts.rank ? `<p class="lede">Ranks <b>#${opts.rank.pos} of ${opts.rank.of}</b> in your Town Finder (score ${Math.round(opts.rank.score * 100)}).</p>` : ''}
     <div class="metric-grid">
-      ${metric('Median sale value', '#b388ff', t.price ? fmt.money(t.price) : na, t.priceChange5y != null ? `${fmt.signed(t.priceChange5y * 100, 0)}% over 5 yrs` : (t.priceYear ?? 'no transfer data'))}
-      ${metric('Population', '#3ecf8e', t.pop ? fmt.int(t.pop) : na, t.popGrowth10y != null ? `${fmt.signed(t.popGrowth10y * 100, 0)}% in 10 yrs (${t.popYear})` : '')}
-      ${metric('Aged 65+', '#3ecf8e', t.s65 != null ? fmt.pct(t.s65) : na, 'share of residents')}
-      ${metric('Crime Severity', '#ff4d8d', t.csi != null ? t.csi.toFixed(0) : na, t.csi != null ? `index, ${t.csiYear} (lower = safer)` : 'no municipal police series')}
+      ${metric('Median sale value', '#b388ff', t.price ? fmt.money(t.price) : na, priceSub)}
+      ${metric('Population', '#3ecf8e', t.pop ? fmt.int(t.pop) : na, popSub)}
+      ${metric('Aged 65+', '#3ecf8e', t.s65 != null ? fmt.pct(t.s65) : na, census ? 'share of residents, 2021 Census' : 'share of residents')}
+      ${metric('Crime Severity', '#ff4d8d', t.csi != null ? t.csi.toFixed(0) : na, csiSub)}
       ${metric('Wildfire starts', '#ff8a3d', fmt.int(t.fires15km), 'within 15 km since 1990')}
       ${metric('Area burned nearby', '#ff8a3d', fmt.ha(t.burnedHa25km), 'mapped within 25 km since 1950')}
       ${metric('Felt-size quakes', '#f9d65c', fmt.int(t.quakes75km), 'M4+ within 75 km since 1970')}
@@ -50,15 +55,15 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
     ${futureRow(t, data, metric)}
     ${t.climate?.trend != null ? `<div class="callout" style="--c:#f25f5c">Nearest long-term station (${t.climate.name}) has warmed <b>${fmt.signed(t.climate.trend, 2)} °C per decade</b> since 1950.</div>` : ''}
     ${t.river ? `<div class="callout" style="--c:#4cc9f0"><b>${t.river.name}</b> (${t.river.dist.toFixed(0)} km away) reached 1.5× its normal peak in ${Math.round(t.river.floodShare * 100)}% of years; its record was ${t.river.record.ratio.toFixed(1)}× in ${t.river.record.year}.</div>` : ''}
-    <h3>Population (dashed = projection)</h3><div id="tr-pop"></div>
-    <h3>Median sale value</h3><div id="tr-price"></div>
+    ${census ? '' : '<h3>Population (dashed = projection)</h3><div id="tr-pop"></div>'}
+    ${t.price ? `<h3>Median sale value${m.areas?.housing ? ' · wider rural area' : ''}</h3><div id="tr-price"></div>` : ''}
     ${t.csi != null ? '<h3>Crime Severity Index</h3><div id="tr-crime"></div>' : ''}
     <p class="note">Distances are from the town centre. Hazard counts describe history, not a forecast — check official floodplain, tsunami and wildfire-interface maps for any specific property.</p>`;
   el.querySelector('.close-x')!.addEventListener('click', opts.onClose);
 
   requestAnimationFrame(() => {
     const p = data.population?.munis[key];
-    if (p) {
+    if (p && !census) {
       const fp = p.firstProjection ?? 9999;
       const all = Object.entries(p.pop).map(([y, v]) => ({ x: +y, y: v }));
       lineChart(el.querySelector('#tr-pop')!, {
@@ -73,7 +78,7 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
       });
     }
     const h = data.housing?.munis[key];
-    if (h) {
+    if (h && t.price) {
       const months = Object.keys(h).sort();
       const vals = months.map((mm) => {
         const tt = +mm.slice(0, 4) + (+mm.slice(5, 7) - 1) / 12;
@@ -96,7 +101,8 @@ function erMetric(t: TownMetrics, data: Data, metric: (l: string, dot: string, v
   if (!data.hospitals) return '';
   const e = t.er, c = '#6c8cff';
   const extra = t.care && t.care !== e && t.care.city !== e?.city ? `<br>Closer: ${t.care.city} (${t.care.ed === 'limited' ? 'limited hours' : t.care.ed === 'call' ? 'call ahead' : 'via ferry'}${t.care.min != null ? `, ${t.care.min} min` : ''})` : '';
-  if (!e) return metric('Emergency room', c, na, 'no 24/7 ER reachable without a ferry');
+  if (!e) return metric('Emergency room', c, na, t.muni.island ? 'no route by road or car ferry' : 'no 24/7 ER reachable without a ferry');
+  if (e.ferry && e.min != null) return metric('Emergency room', c, `${e.min} min + ferry wait`, `drive and crossing to ${e.name} · ${Math.round(e.km)} km; the Town Finder adds ${FERRY_WAIT} min for the wait${extra}`);
   return e.min != null
     ? metric('Emergency room', c, `${e.min} min`, `drive to ${e.name} · ${Math.round(e.km)} km${extra}`)
     : metric('Emergency room', c, `${Math.round(e.km)} km`, `straight line to ${e.name} (no drive times)${extra}`);
@@ -160,7 +166,7 @@ export function renderFinder(
     <button class="close-x" aria-label="Close Town Finder">×</button>
     <div class="kicker" style="--c:#a99bff">Town Finder</div>
     <h2>Where should we retire?</h2>
-    <p class="lede">Tell the atlas what matters to you. Every municipality is ranked on each factor from the historical data, then blended using your weights. Columns on the map show the overall score.</p>
+    <p class="lede">Tell the atlas what matters to you. Every municipality and shortlisted island is ranked on each factor from the historical data, then blended using your weights. Columns on the map show the overall score.</p>
     <div class="weights"></div>
     <div class="chips" style="margin:6px 0 4px">
       <button class="chip" data-preset="balanced">Balanced</button>
@@ -170,7 +176,7 @@ export function renderFinder(
     </div>
     <h3>Your ranking</h3>
     <ol class="rank-list"></ol>
-    <p class="note">Scores are relative (0–100 = worst to best among island towns on your criteria). Missing data (e.g. no crime series for a village) is skipped rather than penalized. Your weights are saved in this browser.</p>`;
+    <p class="note">Scores are relative (0–100 = worst to best among island towns on your criteria). Missing data (e.g. no crime series for a village, or island sale prices that are only published for a wider rural area) is skipped rather than penalized. Your weights are saved in this browser.</p>`;
   el.querySelector('.close-x')!.addEventListener('click', opts.onClose);
 
   const wEl = el.querySelector('.weights')!;
@@ -229,14 +235,14 @@ export function renderAbout(data: Data) {
     ['River floods', 'rivers', 'Environment and Climate Change Canada — HYDAT annual peak flows', 'https://api.weather.gc.ca/collections/hydrometric-annual-peaks'],
     ['Climate', 'climate', 'ECCC Adjusted & Homogenized Canadian Climate Data (AHCCD)', 'https://api.weather.gc.ca/collections/ahccd-annual'],
     ['Climate normals', 'normals', 'ECCC Canadian Climate Normals — sunshine, rain days, frost days, snowfall per station', 'https://api.weather.gc.ca/collections/climate-normals'],
-    ['Population', 'population', 'BC Stats — sub-provincial population estimates & projections by age', 'https://catalogue.data.gov.bc.ca/dataset/bc-sub-provincial-population-estimates-and-projections'],
+    ['Population', 'population', 'BC Stats — sub-provincial population estimates & projections by age; island communities from the Statistics Canada 2021 Census (dissemination areas)', 'https://catalogue.data.gov.bc.ca/dataset/bc-sub-provincial-population-estimates-and-projections'],
     ['Home prices', 'housing', 'BC Ministry of Finance — Property Transfer Tax data (municipal, monthly)', 'https://catalogue.data.gov.bc.ca/dataset?q=property+transfer+tax+data'],
     ['Crime', 'crime', 'Statistics Canada Table 35-10-0063-01 — Crime Severity Index by police service', 'https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3510006301'],
     ['Hospital access', 'hospitals', 'BC Ministry of Health / HealthLinkBC — Hospitals in BC + Emergency Rooms in BC; drive times from the OSRM demo router on OpenStreetMap roads', 'https://catalogue.data.gov.bc.ca/dataset/emergency-rooms-in-bc'],
     ['Shaking hazard', 'seismic', 'Natural Resources Canada — 2020 National Seismic Hazard Model (NBC 2020), peak ground acceleration for site class C, via the Earthquakes Canada hazard web service', 'https://earthquakescanada.nrcan.gc.ca/hazard-alea/interpolat/nbc-cnb-en.php'],
     ['Smoke days', 'smoke', 'BC Ministry of Environment — verified hourly PM2.5 from air-quality monitoring stations; days with a daily mean over the BC 24-hour objective (25 µg/m³)', 'https://catalogue.data.gov.bc.ca/dataset/air-quality-and-climate-monitoring-verified-hourly-air-quality-and-meteorological-data'],
     ['Future climate', 'future', 'CanDCS-U6 — CMIP6 projections statistically downscaled by PCIC (26 models, SSP2-4.5 and SSP5-8.5); ClimateData.ca 30-year index averages and 10th/50th/90th model percentiles, via the PAVICS THREDDS server', 'https://climatedata.ca/'],
-    ['Coastline', 'island', 'BC Freshwater Atlas island polygons', 'https://catalogue.data.gov.bc.ca/dataset/freshwater-atlas-islands'],
+    ['Coastline', 'island', 'BC Freshwater Atlas island polygons — Vancouver Island and the shortlisted Gulf and Discovery islands', 'https://catalogue.data.gov.bc.ca/dataset/freshwater-atlas-islands'],
   ];
   modal.innerHTML = `<div class="sheet glass">
     <button class="close-x" aria-label="Close">×</button>

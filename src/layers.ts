@@ -1342,13 +1342,17 @@ function townColumns(id: string, munis: Muni[], value: (m: Muni) => number | nul
 function populationLayer(data: Data): AtlasLayer {
   const color = '#3ecf8e';
   const pop = data.population?.munis ?? {};
+  // Totals, the timeline and the charts use BC Stats' annual municipal series; island communities
+  // are a single 2021 Census snapshot, shown as columns in 2021 only.
+  const muniPop = Object.fromEntries(Object.entries(pop).filter(([, p]) => !p.census));
+  const islandKeys = Object.keys(pop).filter((k) => pop[k].census);
   const ramp = d3.scaleSequential(d3.interpolateRgb('#0e4d3a', '#b8ffde')).domain([0.12, 0.42]).clamp(true);
   const allYears = new Set<number>();
-  Object.values(pop).forEach((p) => Object.keys(p.pop).forEach((y) => allYears.add(+y)));
+  Object.values(muniPop).forEach((p) => Object.keys(p.pop).forEach((y) => allYears.add(+y)));
   const ys = [...allYears].sort((a, b) => a - b);
-  const firstProj = Math.min(...Object.values(pop).map((p) => p.firstProjection ?? 9999));
-  const total = (y: number) => d3.sum(Object.values(pop), (p) => p.pop[y] ?? 0);
-  const seniors = (y: number) => d3.sum(Object.values(pop), (p) => (p.pop[y] ?? 0) * (p.s65[y] ?? 0)) / (total(y) || 1);
+  const firstProj = Math.min(...Object.values(muniPop).map((p) => p.firstProjection ?? 9999));
+  const total = (y: number) => d3.sum(Object.values(muniPop), (p) => p.pop[y] ?? 0);
+  const seniors = (y: number) => d3.sum(Object.values(muniPop), (p) => (p.pop[y] ?? 0) * (p.s65[y] ?? 0)) / (total(y) || 1);
   const y0 = ys[0] ?? 2001, y1 = ys.at(-1) ?? 2046;
   let shownTime = y0;
 
@@ -1380,7 +1384,7 @@ function populationLayer(data: Data): AtlasLayer {
         <p class="lede">Column height shows each municipality’s population; colour shows the share of residents aged 65+ (brighter = older). From ${firstProj} on, figures are BC Stats <i>projections</i> and columns turn translucent.</p>`;
       const hero = heroStats(el, 4);
       el.insertAdjacentHTML('beforeend', `<h3>Share of residents aged 65+</h3>`);
-      const keys = Object.keys(pop);
+      const keys = Object.keys(muniPop);
       const highlight = new Set(['victoria', 'nanaimo', 'qualicum beach', 'sidney', 'courtenay', 'langford']);
       const palette = ['#3ecf8e', '#4cc9f0', '#ffd166', '#ff8a3d', '#b388ff', '#ff5d8f'];
       let pi = 0;
@@ -1395,7 +1399,7 @@ function populationLayer(data: Data): AtlasLayer {
         <h3>Colour: share aged 65+</h3>
         <div class="ramp" style="background:${rampCSS((t) => ramp(0.12 + t * 0.3))}"></div>
         <div class="ramp-labels"><span>12%</span><span>27%</span><span>42%+</span></div>
-        <p class="note">Covers the island’s ${keys.length} incorporated municipalities; rural electoral areas are not shown. Projections after ${firstProj - 1} are BC Stats’ P.E.O.P.L.E. scenario, not forecasts of certainty.</p>
+        <p class="note">Covers the island’s ${keys.length} incorporated municipalities; rural electoral areas are not shown.${islandKeys.length ? ` The ${islandKeys.length} shortlisted islands (${islandKeys.map((k) => data.munis.find((m) => m.key === k)?.name ?? k).join(', ')}) only have a 2021 Census count, so their columns appear in 2021 and they are left out of the totals.` : ''} Projections after ${firstProj - 1} are BC Stats’ P.E.O.P.L.E. scenario, not forecasts of certainty.</p>
         ${sourceLine(data.population?.source ?? '')}`);
       return {
         update({ time }) {
@@ -1415,7 +1419,7 @@ function populationLayer(data: Data): AtlasLayer {
       const o: any = info.object;
       if (!o || !info.layer?.id.startsWith('population')) return null;
       const p = pop[o.m.key];
-      return `<b>${o.m.name}</b><br><span class="tk">Population</span> <span class="tv">${fmt.int(o.v)}</span><br><span class="tk">Aged 65+</span> <span class="tv">${fmt.pct(interpYearly(p.s65, shownTime) ?? 0)}</span><br><span class="tk">Click for town report</span>`;
+      return `<b>${o.m.name}</b><br><span class="tk">Population${p.census ? ' (2021 Census)' : ''}</span> <span class="tv">${fmt.int(o.v)}</span><br><span class="tk">Aged 65+</span> <span class="tv">${fmt.pct(interpYearly(p.s65, shownTime) ?? 0)}</span><br><span class="tk">Click for town report</span>`;
     },
   };
   return l;
@@ -1538,7 +1542,7 @@ function crimeLayer(data: Data): AtlasLayer {
       el.insertAdjacentHTML('beforeend', `<div class="legend">${series.filter((s) => !s.muted).map((s) => `<span><i class="sw" style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>
         <div class="ramp" style="background:${rampCSS((t) => ramp(30 + t * 150))}"></div>
         <div class="ramp-labels"><span>30</span><span>105</span><span>180+</span></div>
-        <p class="note">Only municipalities with their own police service series are shown; smaller villages are folded into rural RCMP detachments. Victoria Police also serves Esquimalt, whose own series ends when the forces merged. Regional service hubs (e.g. Duncan) score high partly because many non-residents shop and work there.</p>
+        <p class="note">Only municipalities with their own police service series are shown; smaller villages are folded into rural RCMP detachments. Victoria Police also serves Esquimalt, whose own series ends when the forces merged. Regional service hubs (e.g. Duncan) score high partly because many non-residents shop and work there. Salt Spring, Gabriola and Quadra have their own rural RCMP detachments; Galiano shares the Outer Gulf Islands detachment with Mayne, Pender and Saturna.</p>
         ${sourceLine(data.crime?.source ?? '')}`);
       return {
         update({ time }) {
@@ -1576,7 +1580,7 @@ function hospitalsLayer(data: Data): AtlasLayer {
   const routed = !!H && H.routing !== 'straight-line';
   const unit = routed ? 'min' : 'km';
   const er = new Map((H ? townMetrics(data) : []).map((t) => [t.muni.key, t.er]));
-  // minutes to the nearest 24/7 ER without a ferry (km if no drive times could be computed)
+  // minutes to the nearest 24/7 ER, avoiding ferries where possible (km if no drive times could be computed)
   const val = (key: string) => { const e = er.get(key); return e ? e.min ?? e.km : null; };
   const ramp = d3.scaleLinear<string>().domain([5, 30, 90]).range(['#e3f1ff', color, '#e0457b']).interpolate(d3.interpolateRgb).clamp(true);
   const height = (v: number) => 1200 + Math.min(v, 150) * 260;
@@ -1714,7 +1718,7 @@ function hospitalsLayer(data: Data): AtlasLayer {
         return { update() {} };
       }
       const n24 = fac.filter((f) => f.ed === '24/7').length;
-      el.insertAdjacentHTML('beforeend', `<p class="lede">The ${fac.length} hospitals and emergency rooms Island Health lists in the provincial HealthLinkBC directory (${n24} open around the clock). Column height shows the ${routed ? '<b>typical drive</b>' : '<b>straight-line distance</b>'} from each town centre to its nearest <b>24/7 emergency room</b> reachable without a ferry. Hover or click a town to see its routes.</p>`);
+      el.insertAdjacentHTML('beforeend', `<p class="lede">The ${fac.length} hospitals and emergency rooms Island Health lists in the provincial HealthLinkBC directory (${n24} open around the clock). Column height shows the ${routed ? '<b>typical drive</b>' : '<b>straight-line distance</b>'} from each town centre to its nearest <b>24/7 emergency room</b>, avoiding ferries where a road route exists. Islands without their own ER use the ferry route; the time covers the crossing but not the wait for a sailing. Hover or click a town to see its routes.</p>`);
       const hero = heroStats(el, 4);
       const rows = data.munis.flatMap((m) => { const e = er.get(m.key), v = val(m.key); return e && v != null ? [{ m, v, e }] : []; });
       rows.sort((a, b) => a.v - b.v);
@@ -1728,7 +1732,7 @@ function hospitalsLayer(data: Data): AtlasLayer {
       const small = fac.filter((f) => f.ed !== '24/7');
       el.insertAdjacentHTML('beforeend', `
         <h3>${routed ? 'Drive' : 'Distance'} to the nearest 24/7 emergency room</h3>
-        <ol class="rank-list">${rows.map((r, i) => `<li><span class="rk">${i + 1}</span><span><span class="nm">${r.m.name}</span><br><span class="rd">${r.e.name} · ${Math.round(r.e.km)} km</span></span><span><div class="bar"><i style="width:${Math.round((r.v / max) * 100)}%;background:${ramp(r.v)}"></i></div><div class="bar-v">${Math.round(r.v)}</div></span></li>`).join('')}</ol>
+        <ol class="rank-list">${rows.map((r, i) => `<li><span class="rk">${i + 1}</span><span><span class="nm">${r.m.name}</span><br><span class="rd">${r.e.name} · ${Math.round(r.e.km)} km${r.e.ferry ? " · by ferry, plus the wait" : ""}</span></span><span><div class="bar"><i style="width:${Math.round((r.v / max) * 100)}%;background:${ramp(r.v)}"></i></div><div class="bar-v">${Math.round(r.v)}</div></span></li>`).join('')}</ol>
         <div class="ramp" style="background:${rampCSS((t) => ramp(5 + t * 85))}"></div>
         <div class="ramp-labels"><span>5 ${unit}</span><span>30</span><span>90+ ${unit}</span></div>
         <div class="legend"><span><i class="sw" style="background:#fff;box-shadow:0 0 0 2px ${color}"></i>24/7 ER</span><span><i class="sw" style="background:#101626;box-shadow:0 0 0 2px #a9b6ff"></i>24/7, call ahead</span><span><i class="sw" style="background:#101626;box-shadow:0 0 0 2px #7d879c"></i>limited hours</span><span>dashed route = ferry</span></div>

@@ -15,7 +15,7 @@ import ExcelJS from 'exceljs';
 import { unzipSync, strFromU8 } from 'fflate';
 import simplify from '@turf/simplify';
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
-import { MUNICIPALITIES, MUNI_BY_KEY, normalizeMuniName } from './municipalities.mjs';
+import { MUNICIPALITIES, ISLAND_COMMUNITIES, PLACES, MUNI_BY_KEY, ISLAND_BY_PTT, ISLAND_BY_RCMP, normalizeMuniName } from './municipalities.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'public', 'data');
@@ -131,11 +131,13 @@ async function ogcAll(collection, params, cacheKey) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// island outline (used for clipping and for the glowing coastline in the app)
+// island outline (used for clipping and for the glowing coastline in the app): Vancouver Island
+// plus the shortlisted Gulf and Discovery islands, as one MultiPolygon
 
 let island;
 async function getIsland() {
   if (island) return island;
+  const names = ['Vancouver Island', ...ISLAND_COMMUNITIES.map((c) => c.fwa)];
   const q = new URLSearchParams({
     service: 'WFS',
     version: '2.0.0',
@@ -143,19 +145,33 @@ async function getIsland() {
     typeName: 'pub:WHSE_BASEMAPPING.FWA_ISLANDS_POLY',
     outputFormat: 'application/json',
     srsName: 'EPSG:4326',
-    CQL_FILTER: "GNIS_NAME_1='Vancouver Island'",
+    CQL_FILTER: `GNIS_NAME_1 IN (${names.map((n) => `'${n}'`).join(',')})`,
   });
-  const fc = await cachedJSON('wfs/vancouver-island.json', `${WFS}?${q}`);
-  const raw = fc.features[0];
-  // Display outline: light simplification keeps inlets readable but small.
-  const display = simplify(raw, { tolerance: 0.004, highQuality: true, mutate: false });
-  // Clipping outline: coarser, fast for point-in-polygon tests.
-  const clip = simplify(raw, { tolerance: 0.01, highQuality: false, mutate: false });
-  island = { display, clip };
+  const fc = await cachedJSON(`wfs/islands-${names.length}.json`, `${WFS}?${q}`);
+  const missing = names.filter((n) => !fc.features.some((f) => f.properties.GNIS_NAME_1 === n));
+  if (missing.length) throw new Error(`island outline missing: ${missing.join(', ')}`);
+  // Display outline: light simplification keeps inlets readable but small. Clipping outline:
+  // coarser, fast for point-in-polygon tests. Small islands get a finer tolerance so they keep
+  // their shape.
+  const merge = (opts) => {
+    const polys = fc.features.flatMap((f) => {
+      const big = f.properties.GNIS_NAME_1 === 'Vancouver Island';
+      const g = simplify(f, { ...opts(big), mutate: false }).geometry;
+      return g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+    });
+    return { type: 'Feature', properties: {}, geometry: { type: 'MultiPolygon', coordinates: polys } };
+  };
+  const display = merge((big) => ({ tolerance: big ? 0.004 : 0.0015, highQuality: true }));
+  const clip = merge((big) => ({ tolerance: big ? 0.01 : 0.003, highQuality: false }));
+  // one feature per island, for assigning census areas to the island they lie on
+  const parts = new Map(fc.features.map((f) => [f.properties.GNIS_NAME_1, f]));
+  island = { display, clip, parts };
+  for (const c of ISLAND_COMMUNITIES)
+    if (!booleanPointInPolygon([c.lon, c.lat], parts.get(c.fwa))) log(`  warning: ${c.name} centre is not on ${c.fwa}`);
   return island;
 }
 
-/** Point on (or within ~`tol` degrees of) Vancouver Island. */
+/** Point on (or within ~`tol` degrees of) Vancouver Island or one of the shortlisted islands. */
 function onIsland(lon, lat, tol = 0) {
   const poly = island.clip;
   if (booleanPointInPolygon([lon, lat], poly)) return true;
@@ -186,13 +202,69 @@ const fracYear = (iso) => {
 };
 
 // ---------------------------------------------------------------------------------------------
+// census counts for the island communities
+
+/**
+ * BC Stats only estimates municipalities, so island communities use the 2021 Census: every
+ * dissemination area (DA) with at least 30% of its land on the island, summed. (Some DAs also take
+ * in small, thinly settled neighbours, e.g. Thetis with Valdes, Gabriola with Mudge.) DA counts
+ * for 2016 aren't published, so these rows are a single 2021 snapshot in BC Stats' shape.
+ */
+async function islandCensus() {
+  const { parts } = await getIsland();
+  const DA = 'https://geo.statcan.gc.ca/geo_wa/rest/services/2021/Digital_boundary_files/MapServer/12/query';
+  const CP = 'https://api.statcan.gc.ca/census-recensement/profile/sdmx/rest/data/STC_CP,DF_DA';
+  const out = {};
+  for (const c of ISLAND_COMMUNITIES) {
+    const isl = parts.get(c.fwa);
+    const ring = (isl.geometry.type === 'Polygon' ? [isl.geometry.coordinates] : isl.geometry.coordinates).flat(2);
+    const env = { xmin: Math.min(...ring.map((p) => p[0])), ymin: Math.min(...ring.map((p) => p[1])), xmax: Math.max(...ring.map((p) => p[0])), ymax: Math.max(...ring.map((p) => p[1])), spatialReference: { wkid: 4326 } };
+    const q = new URLSearchParams({ geometry: JSON.stringify(env), geometryType: 'esriGeometryEnvelope', spatialRel: 'esriSpatialRelIntersects', outFields: 'DAUID,DGUID,LANDAREA', returnGeometry: 'true', outSR: '4326', geometryPrecision: '5', f: 'geojson' });
+    const fc = await cachedJSON(`census/da-${c.key.replace(/ /g, '_')}.json`, `${DA}?${q}`);
+    // DA polygons run out over the water, so compare the DA's land on this island (sampled on a
+    // grid) with its official land area.
+    const das = fc.features.filter((f) => {
+      const pts = (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates).flat(2);
+      const x0 = Math.min(...pts.map((p) => p[0])), x1 = Math.max(...pts.map((p) => p[0]));
+      const y0 = Math.min(...pts.map((p) => p[1])), y1 = Math.max(...pts.map((p) => p[1]));
+      const step = Math.max((x1 - x0) / 60, (y1 - y0) / 60, 0.0003);
+      const cellKm2 = step * 111.32 * Math.cos(((y0 + y1) / 2) * (Math.PI / 180)) * step * 111.32;
+      let on = 0;
+      for (let x = x0 + step / 2; x < x1; x += step)
+        for (let y = y0 + step / 2; y < y1; y += step)
+          if (booleanPointInPolygon([x, y], f) && booleanPointInPolygon([x, y], isl)) on++;
+      return on * cellKm2 >= 0.3 * f.properties.LANDAREA;
+    });
+    if (!das.length) { log(`  population: no census areas found on ${c.fwa}`); continue; }
+    // characteristics: 1 = population 2021, 24 = aged 65 and over
+    const ids = das.map((f) => f.properties.DGUID).join('+');
+    const csv = (await cached(`census/profile-${c.key.replace(/ /g, '_')}.csv`, async () => {
+      const res = await fetch(`${CP}/A5.${ids}.1.1+24.1`, { headers: { Accept: 'application/vnd.sdmx.data+csv;version=1.0.0', 'Accept-Language': 'en' }, signal: AbortSignal.timeout(120_000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status} from the census profile API`);
+      return Buffer.from(await res.text());
+    })).toString('utf8').split(/\r?\n/).filter(Boolean);
+    const h = csv[0].split(',');
+    const iC = h.indexOf('CHARACTERISTIC'), iV = h.indexOf('OBS_VALUE');
+    const sum = { 1: 0, 24: 0 };
+    for (const line of csv.slice(1)) {
+      const r = line.split(',');
+      sum[r[iC]] += Number(r[iV]) || 0;
+    }
+    if (!sum[1]) { log(`  population: census returned no count for ${c.name}`); continue; }
+    out[c.key] = { pop: { 2021: sum[1] }, s65: { 2021: round(sum[24] / sum[1], 4) }, firstProjection: null, census: true };
+    log(`  ${c.name}: ${das.length} census areas, ${sum[1]} people in 2021, ${Math.round((sum[24] / sum[1]) * 100)}% 65+`);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
 // sources
 
 const SOURCES = {
   async island() {
     const { display } = await getIsland();
     await writeOut('island', { type: 'Feature', properties: {}, geometry: quantizeCoords(display.geometry) });
-    await writeOut('municipalities', MUNICIPALITIES);
+    await writeOut('municipalities', PLACES);
   },
 
   // BC Wildfire Service: historical + current fire perimeters and ignition points.
@@ -443,7 +515,11 @@ const SOURCES = {
     }
     const missing = MUNICIPALITIES.filter((m) => !result[m.key]).map((m) => m.name);
     if (missing.length) log('  population: no match for', missing.join(', '));
-    await writeOut('population', { source: 'BC Stats sub-provincial population estimates & projections (BC Data Catalogue)', munis: result });
+    Object.assign(result, await islandCensus());
+    await writeOut('population', {
+      source: 'BC Stats sub-provincial population estimates & projections (BC Data Catalogue); island communities: Statistics Canada 2021 Census of Population, dissemination areas',
+      munis: result,
+    });
   },
 
   // BC Property Transfer Tax data: monthly fair-market-value statistics per municipality, 2016→.
@@ -483,16 +559,21 @@ const SOURCES = {
         // Workbook years differ in letter case and spacing of the statistic labels.
         const field = WANT[String(v[cStat] ?? '').toUpperCase().replace(/\s+/g, ' ').trim()];
         if (!field) return;
+        // Municipalities by name; island communities by their rural jurisdiction's code ("764 - Gulf Islands Rural").
         const key = normalizeMuniName(v[cMuni]);
-        if (!MUNI_BY_KEY.has(key)) return;
+        const code = String(v[cMuni] ?? '').match(/^\s*(\d+)\s*-/)?.[1];
+        const keys = MUNI_BY_KEY.has(key) ? [key] : (ISLAND_BY_PTT.get(code) ?? []).map((c) => c.key);
+        if (!keys.length) return;
         for (let c = cStat + 1; c < header.length; c++) {
           const m = String(header[c] ?? '').match(/(20\d\d)[-/ ]?(\d\d)/);
           const val = Number(typeof v[c] === 'object' && v[c] ? v[c].result : v[c]);
           if (!m || v[c] == null || v[c] === '' || !Number.isFinite(val)) continue;
           const month = `${m[1]}-${m[2]}`;
-          const slot = ((acc[key] ??= {})[month] ??= { n: 0, res: 0, sum: 0, medW: 0, medN: 0 });
-          if (field === 'median') { slot.medW += val * 1; slot.medN += 1; }
-          else slot[field] += val;
+          for (const k of keys) {
+            const slot = ((acc[k] ??= {})[month] ??= { n: 0, res: 0, sum: 0, medW: 0, medN: 0 });
+            if (field === 'median') { slot.medW += val * 1; slot.medN += 1; }
+            else slot[field] += val;
+          }
         }
       });
     }
@@ -506,7 +587,7 @@ const SOURCES = {
       }
       munis[key] = series;
     }
-    const missing = MUNICIPALITIES.filter((m) => !munis[m.key]).map((m) => m.name);
+    const missing = PLACES.filter((m) => !munis[m.key]).map((m) => m.name);
     if (missing.length) log('  housing: no match for', missing.join(', '));
     await writeOut('housing', {
       source: 'BC Ministry of Finance, Property Transfer Tax Data (BC Data Catalogue) — monthly fair-market value of all property transfers',
@@ -540,10 +621,11 @@ const SOURCES = {
       const year = c[iDate].slice(0, 4);
       if (/^British Columbia/.test(geo)) { ((bc[stat] ??= {})[year] = Number(c[iVal])); continue; }
       // e.g. "Nanaimo, British Columbia, Royal Canadian Mounted Police, municipal [59904]"
+      // Island communities use their rural RCMP detachment (e.g. "Gabriola Island, …, rural").
       const parts = geo.replace(/\s*\[.*\]$/, '').split(/,\s*/);
-      if (parts.at(-1) !== 'municipal') continue;
-      const key = normalizeMuniName(parts[0]);
-      if (!MUNI_BY_KEY.has(key)) continue;
+      const name = normalizeMuniName(parts[0]);
+      const key = parts.at(-1) === 'municipal' && MUNI_BY_KEY.has(name) ? name : parts.at(-1) === 'rural' ? ISLAND_BY_RCMP.get(name)?.key : null;
+      if (!key) continue;
       const g = (byGeo[geo] ??= { key, stats: {} });
       (g.stats[stat] ??= {})[year] = Number(c[iVal]);
     }
@@ -555,8 +637,8 @@ const SOURCES = {
     for (const [, g] of geos) for (const [stat, ys] of Object.entries(g.stats)) Object.assign(((munis[g.key] ??= {})[stat] ??= {}), ys);
     const geosSeen = geos.map(([geo, g]) => `${geo} -> ${g.key}`);
     log('  crime series:', [...geosSeen].join(' | '));
-    const missing = MUNICIPALITIES.filter((m) => !munis[m.key]).map((m) => m.name);
-    if (missing.length) log('  crime: no municipal police series for', missing.join(', '));
+    const missing = PLACES.filter((m) => !munis[m.key]).map((m) => m.name);
+    if (missing.length) log('  crime: no own police series for', missing.join(', '));
     await writeOut('crime', {
       source: 'Statistics Canada, Table 35-10-0063-01 (Crime severity index, police services in British Columbia)',
       bc,
@@ -601,12 +683,12 @@ const SOURCES = {
       await new Promise((r) => setTimeout(r, 1100));
       return fetchBuf(url, { timeout: 60_000 });
     })).toString('utf8'));
-    const coords = [...MUNICIPALITIES, ...facilities].map((p) => `${p.lon},${p.lat}`).join(';');
-    const src = MUNICIPALITIES.map((_, i) => i).join(';');
-    const dst = facilities.map((_, i) => i + MUNICIPALITIES.length).join(';');
+    const coords = [...PLACES, ...facilities].map((p) => `${p.lon},${p.lat}`).join(';');
+    const src = PLACES.map((_, i) => i).join(';');
+    const dst = facilities.map((_, i) => i + PLACES.length).join(';');
     let table = null;
     try {
-      table = await gentle(`table-${MUNICIPALITIES.length}x${facilities.length}`, `${OSRM}/table/v1/driving/${coords}?sources=${src}&destinations=${dst}&annotations=duration,distance`);
+      table = await gentle(`table-${PLACES.length}x${facilities.length}`, `${OSRM}/table/v1/driving/${coords}?sources=${src}&destinations=${dst}&annotations=duration,distance`);
       if (table.code !== 'Ok') throw new Error(table.message ?? table.code);
     } catch (e) {
       log('  OSRM routing unavailable, falling back to straight-line distance:', e.message);
@@ -614,11 +696,12 @@ const SOURCES = {
     }
 
     const towns = {};
-    for (const [i, m] of MUNICIPALITIES.entries()) {
+    for (const [i, m] of PLACES.entries()) {
+      // OSRM returns null where there is no route (e.g. Lasqueti, which has no car ferry).
       const cand = facilities.map((f, j) => ({
         f: j,
-        min: table ? table.durations[i][j] / 60 : null,
-        km: table ? table.distances[i][j] / 1000 : distKm(m.lon, m.lat, f.lon, f.lat),
+        min: table ? (table.durations[i][j] == null ? null : table.durations[i][j] / 60) : null,
+        km: table ? (table.distances[i][j] == null ? null : table.distances[i][j] / 1000) : distKm(m.lon, m.lat, f.lon, f.lat),
       })).filter((c) => c.km != null && (c.min != null || !table));
       cand.sort((a, b) => (table ? a.min - b.min : a.km - b.km));
       // nearest three, plus the nearest round-the-clock ER if it isn't among them
@@ -709,13 +792,13 @@ const SOURCES = {
     const pga = new Array(g.nx * g.ny).fill(null);
     for (let b = 0; b < nodes.length; b += BATCH) {
       const pts = nodes.slice(b, b + BATCH);
-      const vals = await query(`grid-${g.dx}x${g.dy}-${b}`, pts);
+      const vals = await query(`grid-${g.dx}x${g.dy}-n${nodes.length}-${b}`, pts);
       vals.forEach((v, k) => (pga[pts[k].idx] = v.pga2 == null ? null : round(v.pga2, 3)));
     }
 
     const towns = {};
-    const tv = await query(`towns-${MUNICIPALITIES.length}`, MUNICIPALITIES);
-    MUNICIPALITIES.forEach((m, k) => { if (tv[k].pga2 != null) towns[m.key] = [tv[k].pga2, tv[k].pga10, tv[k].sa2]; });
+    const tv = await query(`towns-${PLACES.length}`, PLACES);
+    PLACES.forEach((m, k) => { if (tv[k].pga2 != null) towns[m.key] = [tv[k].pga2, tv[k].pga10, tv[k].sa2]; });
     const sorted = Object.entries(towns).sort((a, b) => b[1][0] - a[1][0]);
     log(`  PGA 2%/50yr: highest ${sorted[0]?.[0]} ${sorted[0]?.[1][0]} g, lowest ${sorted.at(-1)?.[0]} ${sorted.at(-1)?.[1][0]} g`);
 
@@ -962,7 +1045,7 @@ const SOURCES = {
 
     // Towns: nearest grid cell that has data (town centres on the shore can fall in ocean cells).
     const towns = {};
-    for (const m of MUNICIPALITIES) {
+    for (const m of PLACES) {
       let best = null;
       for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
         if (!Number.isFinite(cube.ssp245_txgt_30_p50[0][j]?.[i])) continue;
