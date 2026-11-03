@@ -17,6 +17,12 @@ const HOME = { center: [-125.25, 49.55] as [number, number], zoom: 7.15, pitch: 
 const MUNI_LAYERS = new Set(['population', 'housing', 'crime']);
 // static layers that draw town columns only while focused
 const MUNI_WHEN_FOCUSED = new Set(['hospitals', 'seismic', 'future']);
+// layer menu sections; any layer not listed lands in the last group
+const LAYER_GROUPS: { name: string; ids: string[] }[] = [
+  { name: 'History on the timeline', ids: ['fires', 'quakes', 'rivers', 'climate', 'smoke'] },
+  { name: 'Towns & living', ids: ['population', 'housing', 'crime', 'hospitals'] },
+  { name: 'Hazard & climate outlook', ids: ['seismic', 'normals', 'future'] },
+];
 
 type Mode = 'layer' | 'town' | 'finder';
 
@@ -316,6 +322,7 @@ function closeFinder() {
 
 function swapPanel(fill: () => void) {
   const p = $('panel');
+  if (state.mode !== 'layer') setPanelOpen(true);
   p.classList.add('swap');
   setTimeout(() => {
     p.scrollTop = 0;
@@ -337,33 +344,75 @@ function showLayerPanel() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// rail
+// layer menu
 
-function renderRail() {
-  const rail = $('rail');
-  rail.innerHTML = '';
-  for (const l of layers) {
-    const card = document.createElement('div');
-    card.className = `layer-card${l.id === state.focused ? ' focused' : ''}${l.available ? '' : ' unavailable'}`;
-    card.style.setProperty('--c', l.color);
-    card.setAttribute('role', 'button');
-    card.tabIndex = 0;
-    const [a, b] = l.range;
-    card.innerHTML = `<div class="ic">${l.icon}</div><div><div class="nm">${l.name}</div><div class="rg">${!l.available ? 'data unavailable' : l.static ? l.period ?? 'no timeline' : `${Math.floor(a)}–${Math.floor(b)}`}</div></div><button class="eye${state.visible.has(l.id) ? ' on' : ''}" aria-label="Show ${l.name} on map" title="Show / hide on map"></button>`;
-    card.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).classList.contains('eye')) {
-        if (state.visible.has(l.id)) state.visible.delete(l.id);
-        else state.visible.add(l.id);
-        renderRail();
-        if (focusedLayer().static) setupTimeline();
-        return;
-      }
-      focus(l.id);
-    });
-    card.addEventListener('keydown', (e) => { if (e.key === 'Enter') focus(l.id); });
-    rail.appendChild(card);
+const menuEl = () => $('layer-menu');
+const menuOpen = () => !menuEl().hidden;
+
+function setMenu(open: boolean) {
+  menuEl().hidden = !open;
+  $('layers-btn').setAttribute('aria-expanded', String(open));
+  if (open) menuEl().querySelector<HTMLElement>('.layer-row.focused')?.focus({ preventScroll: true });
+}
+
+function renderLayerMenu() {
+  const f = focusedLayer();
+  $('picker-ic').textContent = f.icon;
+  $('picker-nm').textContent = f.name;
+  const extra = [...state.visible].filter((id) => id !== f.id && byId[id]?.available).length;
+  const ex = $('picker-extra');
+  ex.hidden = !extra;
+  ex.textContent = `+${extra}`;
+  ex.title = `${extra} more layer${extra > 1 ? 's' : ''} overlaid`;
+
+  const menu = menuEl();
+  const listed = new Set(LAYER_GROUPS.flatMap((g) => g.ids));
+  const groups = LAYER_GROUPS.map((g, i) => ({ name: g.name, items: layers.filter((l) => g.ids.includes(l.id) || (i === LAYER_GROUPS.length - 1 && !listed.has(l.id))) }));
+  menu.innerHTML = '';
+  for (const g of groups) {
+    if (!g.items.length) continue;
+    const sec = document.createElement('div');
+    sec.className = 'menu-group';
+    sec.innerHTML = `<div class="menu-gh">${g.name}</div>`;
+    for (const l of g.items) {
+      const row = document.createElement('div');
+      row.className = `layer-row${l.id === state.focused ? ' focused' : ''}${l.available ? '' : ' unavailable'}`;
+      row.style.setProperty('--c', l.color);
+      row.setAttribute('role', 'button');
+      row.tabIndex = 0;
+      const [a, b] = l.range;
+      row.innerHTML = `<div class="ic">${l.icon}</div><div><div class="nm">${l.name}</div><div class="rg">${!l.available ? 'data unavailable' : l.static ? l.period ?? 'no timeline' : `${Math.floor(a)}–${Math.floor(b)}`}</div></div><button class="eye${state.visible.has(l.id) ? ' on' : ''}" aria-label="Overlay ${l.name} on map" title="Overlay on the map"></button>`;
+      row.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).classList.contains('eye')) {
+          if (state.visible.has(l.id)) state.visible.delete(l.id);
+          else state.visible.add(l.id);
+          renderLayerMenu();
+          if (focusedLayer().static) setupTimeline();
+          return;
+        }
+        focus(l.id);
+        setMenu(false);
+      });
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter') { focus(l.id); setMenu(false); $('layers-btn').focus(); } });
+      sec.appendChild(row);
+    }
+    menu.appendChild(sec);
   }
-  rail.insertAdjacentHTML('beforeend', `<div class="rail-hint">Click a layer to explore its story. Use the switch to overlay several at once. Click any town for its report card.</div>`);
+  menu.insertAdjacentHTML('beforeend', `<div class="menu-hint">Pick a layer to explore its story. Use the switch to overlay several at once. Click any town on the map for its report card.</div>`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// story panel visibility
+
+function setPanelOpen(open: boolean) {
+  $('panel').classList.toggle('collapsed', !open);
+  document.body.classList.toggle('no-panel', !open);
+  const btn = $('panel-btn');
+  btn.classList.toggle('on', open);
+  btn.setAttribute('aria-pressed', String(open));
+  btn.title = open ? 'Hide the story panel (P)' : 'Show the story panel (P)';
+  requestAnimationFrame(drawSpark);
+  setTimeout(drawSpark, 300);
 }
 
 function focus(id: string) {
@@ -382,7 +431,7 @@ function focus(id: string) {
     if (state.mode !== 'finder') { state.mode = 'layer'; state.selected = null; }
   }
   document.documentElement.style.setProperty('--accent', l.color);
-  renderRail();
+  renderLayerMenu();
   setupTimeline();
   if (state.mode !== 'finder') showLayerPanel();
 }
@@ -560,6 +609,9 @@ function bindControls() {
   $<HTMLSelectElement>('speed-sel').addEventListener('change', (e) => { state.speed = +(e.target as HTMLSelectElement).value; });
   $('finder-btn').addEventListener('click', () => (state.mode === 'finder' ? closeFinder() : openFinder()));
   $('about-btn').addEventListener('click', () => renderAbout(data));
+  $('layers-btn').addEventListener('click', () => setMenu(!menuOpen()));
+  $('panel-btn').addEventListener('click', () => setPanelOpen($('panel').classList.contains('collapsed')));
+  document.addEventListener('pointerdown', (e) => { if (menuOpen() && !(e.target as HTMLElement).closest('.layer-picker')) setMenu(false); });
   window.addEventListener('resize', () => { drawSpark(); });
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).matches('input, select, textarea')) return;
@@ -567,7 +619,9 @@ function bindControls() {
     const step = timeLayer().monthly ? 1 / 12 : 1;
     if (e.key === 'ArrowRight') { setPlaying(false); setTime(Math.floor(state.time / step + 1e-6) * step + step); }
     if (e.key === 'ArrowLeft') { setPlaying(false); setTime(Math.ceil(state.time / step - 1e-6) * step - step); }
-    if (e.key === 'Escape') { $('modal').hidden = true; }
+    if (e.key === 'Escape') { if (menuOpen()) { setMenu(false); $('layers-btn').focus(); } else $('modal').hidden = true; }
+    if (e.key === 'l' || e.key === 'L') setMenu(!menuOpen());
+    if (e.key === 'p' || e.key === 'P') setPanelOpen($('panel').classList.contains('collapsed'));
   });
 }
 
