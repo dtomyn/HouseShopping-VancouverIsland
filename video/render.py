@@ -252,17 +252,23 @@ class Film:
             self.page.mouse.up()
         self.wait(after)
 
-    def drag(self, start, end, ms=900):
+    def drag(self, start, end, ms=900, button="left"):
         self.move(start)
         self.wait(100)
         self.sfx("click", 0.6)
         self.js("Stage.press()")
-        self.page.mouse.down()
+        self.page.mouse.down(button=button)
         self.wait(60)
         self.move(end, ms)
         self.wait(80)
-        self.page.mouse.up()
+        self.page.mouse.up(button=button)
         self.wait(200)
+
+    def key(self, name, after=300):
+        """A key press in the app, heard as a click."""
+        self.sfx("click", 0.7)
+        self.app.locator("body").press(name)
+        self.wait(after)
 
     def scroll(self, dy, ms=1200):
         frames = max(1, round(ms * self.fps / 1000))
@@ -304,8 +310,8 @@ def open_stage(playwright, port, scale):
         viewport={"width": LAYOUT[0], "height": LAYOUT[1]}, device_scale_factor=scale)
     errors = []
     context.add_init_script(path=str(STAGE / "vt.js"))
-    # Town Finder weights are saved in the browser; every film starts from the defaults.
-    context.add_init_script("try { localStorage.removeItem('island-atlas:weights'); } catch {}")
+    # Town Finder weights, Land Finder filters and the shortlist are saved in the browser; every film starts from the defaults.
+    context.add_init_script("try { ['weights', 'land-filters', 'shortlist'].forEach((k) => localStorage.removeItem('island-atlas:' + k)); } catch {}")
     page = context.pages[0] if context.pages else context.new_page()
     page.on("pageerror", lambda error: errors.append(str(error)))
     # Noon today: the app shows the current year, and a re-run on the same day is identical.
@@ -330,7 +336,7 @@ def facts(page):
       const a = window.atlas, d = a.data;
       const big = d.quakes.rows.filter((q) => /1946/.test(q[5])).sort((x, y) => y[3] - x[3])[0];
       return {
-        layers: a.layers.filter((l) => l.available).length,
+        layers: a.layers.filter((l) => l.available && l.id !== 'island').length,
         towns: d.munis.length,
         islands: d.munis.filter((m) => m.island).length,
         fires: d.fires.perimeters.length + d.fires.points.length,
@@ -476,10 +482,10 @@ def write_script(film, found):
 def write_youtube(film, found, url):
     chapters = "\n".join(f"{clock_label(c['at'])} {c['title']}" for c in film.chapters)
     text = f"""TITLE
-Where should we retire? A century of Vancouver Island in one 3D map | Island Atlas
+How to use Island Atlas: a step-by-step guide
 
 DESCRIPTION
-We wanted to know where on Vancouver Island to retire, so we built a map of everything open data could tell us: {found['fires']:,} wildfires and ignitions since 1919, {found['quakes']:,} earthquakes at their true depth, river floods, smoke, a warming climate, home prices, crime and hospital drive times, for {found['towns']} towns and Gulf and Discovery islands, with climate projections out to 2070.
+A walkthrough of Island Atlas, the 3D map of Vancouver Island and the Gulf and Discovery islands in open data: where to click, step by step. Moving the map, showing and combining data layers, playing the timeline, town reports, ranking towns with Town Finder, searching parcels with Land Finder, the data sources, and the keyboard shortcuts.
 
 Try it yourself: {url or '[add the link]'}
 
@@ -491,7 +497,7 @@ Data: BC Wildfire Service, USGS ComCat, Natural Resources Canada, Environment an
 This is an exploration tool, not real-estate, insurance or hazard advice.
 
 TAGS
-Vancouver Island, retirement, Gulf Islands, open data, data visualization, WebGL, deck.gl, MapLibre, wildfire, earthquake, climate change, BC
+Vancouver Island, tutorial, how to, Gulf Islands, open data, interactive map, retirement, land search, BC
 """
     path = OUT / "youtube.txt"
     path.write_text(text, encoding="utf-8")

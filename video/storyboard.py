@@ -1,4 +1,6 @@
-"""The Island Atlas explainer: every scene's narration, camera, motion and sound, in order.
+"""The Island Atlas how-to video: a step-by-step walkthrough of where to click, in order.
+
+The narration only says what to do and where; it doesn't comment on the data the app shows.
 
 video/render.py plays these scenes against the real app. Each scene has:
   title, shows, camera, motion, sound   what the storyboard page and script.md say about it
@@ -17,36 +19,53 @@ SOUNDS = {}
 
 def spoken(text):
     """What the voice reads: the caption text with symbols written out."""
-    text = text.replace("3D", "three-D").replace("→", "to")
+    text = text.replace("3D", "three-D").replace("→", "to").replace("+1", "plus one")
     return re.sub(r"\s+", " ", text)
 
 
+TOUR = "#4cc9f0"
+MAP = "#8fdcff"
 SPARK = "#ff8a3d"
 QUAKE = "#f9d65c"
-FUTURE = "#e86cff"
 TOWN = "#3ecf8e"
 FINDER = "#a99bff"
+LAND = "#5eead4"
 CEDAR = "#d8a06a"
+KEYS = "#ffb35c"
 
 QUALICUM = [-124.443, 49.348]
+STEPS = 9
 
 
-def chapter(f, n, title, sub, colour):
-    f.js("([n, t, s, c]) => Stage.chapter(n, t, s, c)", [n, title, sub, colour])
+def step(f, n, title, colour):
+    f.js("([n, t, s, c]) => Stage.chapter(n, t, s, c)", [n, title, f"Step {n} of {STEPS}", colour])
     f.sfx("whoosh", 0.35, seconds=0.6, pan_from=-0.8, pan_to=-0.2)
 
 
-def chip(f, icon, head, body, colour, side="left"):
+def hint(f, icon, head, body="", colour=KEYS, side="left"):
+    """An on-screen instruction: what to click or press."""
     f.js("([i, h, b, c, s]) => Stage.chip(i, h, b, c, s)", [icon, head, body, colour, side])
-    f.sfx("blip", 0.8, note=3)
+    f.sfx("blip", 0.6, note=3)
 
 
-def focus_only(f, layer):
-    """Shows one layer on its own, as if picked fresh from the menu."""
-    f.run("id => { atlas.state.visible.clear(); atlas.focus(id); }", layer)
+def spot(f, target):
+    f.js("t => Stage.spot(t)", target)
 
 
-def slider(f, criterion, value):
+def unspot(f):
+    f.js("Stage.spot(null)")
+
+
+def range_at(f, sel, frac, nth=0):
+    """The point at a fraction along a range input, in app pixels."""
+    return f.run("""([sel, frac, nth]) => {
+      const i = document.querySelectorAll(sel)[nth];
+      const r = i.getBoundingClientRect(), thumb = 16;
+      return { x: r.left + thumb / 2 + (r.width - thumb) * frac, y: r.top + r.height / 2 };
+    }""", [sel, frac, nth])
+
+
+def weight_at(f, criterion, value):
     """The point on a Town Finder slider for a weight (0-5), in app pixels."""
     return f.run("""([id, v]) => {
       const i = document.querySelector(`.weight input[data-id="${id}"]`);
@@ -55,308 +74,461 @@ def slider(f, criterion, value):
     }""", [criterion, value])
 
 
+def open_menu_and_pick(f, name):
+    f.click({"sel": "#layers-btn"})
+    f.wait(300)
+    f.click({"sel": ".layer-row", "text": name, "at": [0.4, 0.5]})
+
+
 # ---------------------------------------------------------------------------------------------------
 
-def cold_open(f):
-    # Black. The question writes itself, then the island rises out of the dark as the map flies in.
-    f.wait(500)
-    f.run("() => { atlas.map.stop(); atlas.map.jumpTo({ center: [-126.6, 50.9], zoom: 5.0, pitch: 0, bearing: 0 }); }")
-    f.js("Stage.title('Where should we retire?', '', ['retire?'])")
+def intro(f):
+    f.wait(400)
+    f.run("() => { atlas.map.stop(); atlas.map.jumpTo(atlas.HOME); }")
+    f.js("Stage.title('How to use Island Atlas', 'A step-by-step guide', ['Atlas'])")
     f.sfx("blip", 0.6, note=0)
-    f.say("open-1")
-    f.board("The question", "Black frame; the title rises word by word out of a blur, the last word in the warm gradient.")
-    f.wait(2600)
-    f.js("Stage.fade(0, 2600)")
-    f.run("() => atlas.map.flyTo({ ...atlas.HOME, zoom: 7.3, duration: 8200, curve: 1.5, essential: true })")
-    f.voice_done(150)
+    f.say("intro-1")
+    f.board("Title", "Black frame; the title rises word by word.")
+    f.wait(2200)
+    f.js("Stage.fade(0, 1600)")
     f.js("Stage.hideTitle(900)")
-    f.sfx("riser", 0.65)
-    f.say("open-2")
-    f.wait(1400)
-    f.board("Out of the dark", "The map fades up full-frame as it flies in from the north; fires start to flare as the timeline plays.")
-    f.voice_done(250)
+    f.voice_done(300)
 
 
-def reveal(f):
-    # Impact: the camera pulls back so the app becomes a window floating on the aurora. Stats count up.
-    f.sfx("impact", 0.9)
-    f.mark("pulse")
-    f.camera("rest", 1900, whoosh=0.6)
-    f.wait(500)
-    f.say("reveal-1")
-    found = f.facts
-    f.wait(900)
-    f.js("s => Stage.stats(s)", [
-        {"v": found["layers"], "k": "map layers", "c": "#ffb35c"},
-        {"v": found["towns"], "k": "towns & islands", "c": "#4cc9f0"},
-        {"v": found["fires"] + found["quakes"], "k": "fires & quakes mapped", "c": "#ff6b6b"},
-        {"v": 170, "k": "years, 1900 → 2070", "c": "#b28cff"},
-    ])
-    for i in range(4):
-        f.sfx("blip", 0.7, note=i * 2)
-        f.wait(160)
-    f.board("The reveal", "Pull back from full-frame to the floating window; four stat cards rise and count up from the data.")
-    f.voice_done(500)
-    # set up the next scene under the cards: back to 1919, paused
-    f.run("() => { atlas.setPlaying(false); atlas.setTime(1919); }")
-
-
-def time_machine(f):
-    f.js("Stage.hideStats()")
-    chapter(f, 1, "A century in motion", "Wildfires · 1919 to today", SPARK)
+def tour(f):
+    step(f, 1, "Find your way around", TOUR)
     f.cursor(True)
-    f.camera({"sel": "#timeline", "grow": 40}, 1500, whoosh=0.4, max=1.9)
-    f.wait(700)
+    f.say("tour-1")
+    for lnglat in ([-124.99, 49.69], [-124.443, 49.348], [-123.94, 49.17]):
+        f.move({"lnglat": lnglat}, 900)
+        f.wait(500)
+    f.board("Just the island", "The app opens on the plain island; the cursor touches a few town dots.")
+    f.voice_done(200)
+    f.say("tour-2")
+    spot(f, {"sel": "#layers-btn", "pad": 8})
+    f.move({"sel": "#layers-btn"}, 900)
+    f.board("Layer button", "A spotlight on the Layer button, top left.")
+    f.voice_done(200)
+    f.say("tour-3")
+    spot(f, {"sel": ".top-actions", "pad": 8})
+    for sel in ("#land-btn", "#finder-btn", "#about-btn", "#panel-btn"):
+        f.move({"sel": sel}, 700)
+        f.wait(500)
+    f.board("Top-right buttons", "The spotlight moves to the four buttons at the top right; the cursor touches each.")
+    f.voice_done(200)
+    f.say("tour-4")
+    spot(f, {"sel": "#panel", "pad": 4})
+    f.move({"sel": "#panel", "at": [0.5, 0.4]}, 900)
+    f.board("Side panel", "The spotlight on the side panel.")
+    f.voice_done(200)
+    f.say("tour-5")
+    spot(f, {"sel": "#timeline", "pad": 6})
+    f.move({"sel": "#timeline", "at": [0.5, 0.5]}, 900)
+    f.board("Timeline", "The spotlight on the timeline along the bottom.")
+    f.voice_done(300)
+    unspot(f)
+
+
+def move_map(f):
+    step(f, 2, "Move the map", MAP)
+    f.say("map-1")
+    hint(f, "✥", "Drag", "to move the map", MAP)
+    f.drag({"x": 760, "y": 520}, {"x": 980, "y": 440}, 1300)
+    f.wait(300)
+    f.drag({"x": 980, "y": 440}, {"x": 800, "y": 500}, 1100)
+    f.board("Drag", "The cursor drags the map one way and back.")
+    f.voice_done(200)
+    f.say("map-2")
+    hint(f, "⇕", "Scroll", "to zoom in and out", MAP)
+    f.move({"lnglat": [-124.6, 49.4]}, 700)
+    f.scroll(-900, 1600)
+    f.wait(500)
+    f.scroll(900, 1400)
+    f.board("Scroll", "A scroll wheel zooms in on the middle of the island, then out again.")
+    f.voice_done(200)
+    f.say("map-3")
+    hint(f, "⟲", "Right-drag", "to tilt and turn the view", MAP)
+    f.drag({"x": 800, "y": 520}, {"x": 1000, "y": 420}, 1500, button="right")
+    f.wait(500)
+    f.camera({"sel": ".maplibregl-ctrl-top-right", "grow": 40}, 1200, whoosh=0.3, max=2.2)
+    spot(f, {"sel": ".maplibregl-ctrl-top-right", "pad": 6})
+    f.voice_done(100)
+    f.say("map-4")
+    f.move({"sel": ".maplibregl-ctrl-zoom-in"}, 700)
+    f.wait(400)
+    f.move({"sel": ".maplibregl-ctrl-zoom-out"}, 500)
+    f.wait(400)
+    f.click({"sel": ".maplibregl-ctrl-compass"})
+    f.board("Map buttons", "Zoomed on the map buttons: zoom in, zoom out, and the compass, which is clicked.")
+    f.voice_done(200)
+    unspot(f)
+    f.js("Stage.hideChip()")
+    f.camera("fill", 1200, whoosh=0.3)
+    f.run("() => atlas.map.flyTo({ ...atlas.HOME, duration: 1800 })")
+    f.wait(1900)
+
+
+def layers(f):
+    step(f, 3, "Show a data layer", SPARK)
+    f.say("layer-1")
+    hint(f, "☰", "Click Layer", "top left, or press L", SPARK)
+    f.click({"sel": "#layers-btn"})
+    f.camera({"sel": "#layer-menu", "grow": 16}, 1200, whoosh=0.3, max=1.8)
+    f.board("Layer menu", "The menu opens and the camera zooms in on it.")
+    f.voice_done(200)
+    f.say("layer-2")
+    for nth in range(4):  # Base map, then the three groups of layers
+        f.move({"sel": ".menu-gh", "nth": nth, "at": [0.3, 0.5]}, 700)
+        f.wait(700)
+    f.voice_done(200)
+    f.say("layer-3")
+    f.click({"sel": ".layer-row", "text": "Wildfires", "at": [0.4, 0.5]})
+    f.camera("fill", 1300, whoosh=0.3)
+    f.js("Stage.hideChip()")
+    f.wait(800)
+    spot(f, {"sel": "#panel", "pad": 4})
+    f.board("Wildfires on", "Wildfires picked; the menu closes, the map fills in and the side panel describes the layer.")
+    f.voice_done(300)
+    unspot(f)
+
+
+def timeline(f):
+    step(f, 4, "Play the timeline", SPARK)
+    f.camera({"sel": "#timeline", "grow": 30}, 1300, whoosh=0.3, max=1.9)
     f.say("time-1")
+    hint(f, "▶", "Click play", "or press the space bar", SPARK)
+    f.click({"sel": "#play"})
+    f.board("Play", "Zoomed on the timeline: play is clicked and the years start to run.")
+    f.voice_done(200)
+    f.say("time-2")
+    hint(f, "»", "Speed", "how many years pass each second", SPARK)
     f.click({"sel": "#speed-sel"}, real=False)
     f.run("() => { const s = document.getElementById('speed-sel'); s.value = '8'; s.dispatchEvent(new Event('change')); }")
-    f.wait(300)
-    f.board("Speed and play", "Zoomed on the timeline: the cursor sets 8 years a second, then clicks play.")
+    f.wait(1500)
+    f.voice_done(200)
+    f.say("time-3")
+    hint(f, "⏸", "Pause, then drag the slider", "to jump to any year", SPARK)
     f.click({"sel": "#play"})
-    f.move({"x": 980, "y": 330}, 900, wait=False)
-    f.camera("fill", 1500, whoosh=0.4)
+    f.wait(300)
+    start = f.run("() => { const s = document.getElementById('scrub'); return (+s.value - +s.min) / (+s.max - +s.min); }")
+    f.drag(range_at(f, "#scrub", start), range_at(f, "#scrub", 0.55), 1500)
+    f.board("Scrub", "Paused; the slider is dragged forward through the decades.")
+    f.voice_done(200)
+    f.say("time-4")
+    hint(f, "◆", "Click a marker", "to jump to that event", SPARK)
+    f.click({"sel": '.ev[title*="Cameron"]'})
+    f.camera("fill", 1500, whoosh=0.3)
     f.wait(1600)
-    # a slow push that keeps the year counter in shot
-    f.camera({"cx": 700, "cy": 520, "z": 1.32}, 9000, ease="inOut")
-    f.cursor(False)
-    chip(f, "🔥", f"{f.facts['fires']:,} fires mapped", "Every perimeter and ignition since 1919 · BC Wildfire Service", SPARK)
-    f.wait_until("atlas.state.time > 1985")
-    f.board("A hundred years of fire", "Slow push into the island while the years race by; fires flare white-hot and cool to scars.")
-    f.wait_until("atlas.state.time > 2010.5")
-    f.say("time-2")
-    f.wait_until("atlas.state.time >= 2023.62")
-    f.run("() => atlas.setPlaying(false)")
-    f.js("Stage.hideChip()")
-    f.camera({"sel": ".toast", "grow": 16}, 1300, max=2.0)
-    f.board("Moments that mattered", "Playback stops on June 2023; the camera zooms onto the Cameron Bluffs toast while a shockwave rings out on the map.")
-    f.voice_done(500)
-
-
-def quakes(f):
-    chapter(f, 2, "Beneath the island", "Earthquakes at their true depth", QUAKE)
-    f.camera("fill", 1200, whoosh=0.4)
-    f.cursor(True)
-    f.click({"sel": "#layers-btn"})
-    f.camera({"sel": "#layer-menu", "grow": 12}, 1100, max=1.7)
-    f.say("quake-1")
-    f.wait(900)
-    f.board("Switch layers", "The layer menu, zoomed: grouped layers, each with its own colour and years.")
-    f.click({"sel": ".layer-row", "text": "Earthquakes"})
-    f.move({"x": 1000, "y": 360}, 800, wait=False)
-    f.camera("fill", 1300, whoosh=0.4)
-    f.run("() => atlas.map.easeTo({ center: [-125.6, 49.6], zoom: 7.1, pitch: 72, bearing: 32, duration: 6500 })")
-    f.cursor(False)
-    chip(f, "◉", f"{f.facts['quakes']:,} earthquakes", "M2.5 and up since 1900, drawn at 3× their real depth · USGS", QUAKE, side="left")
-    f.wait(3000)
-    f.board("The ground opens up", "The map tilts to 72° and swings round; quakes hang beneath the island at their real depths.")
-    f.voice_done(300)
-    f.js("Stage.hideChip()")
-    f.cursor(True)
-    f.camera({"sel": "#timeline", "grow": 30}, 1200, max=1.6)
-    f.click({"sel": '.ev[title*="1946"]'})
-    f.say("quake-2")
-    f.camera("fill", 1600)
-    f.move({"x": 1100, "y": 260}, 900, wait=False)
-    f.wait(1700)
-    f.camera({"cx": 800, "cy": 440, "z": 1.35}, 3500)
-    f.board("1946", "Clicking the 1946 marker flies the map to the epicentre; a toast and a shockwave mark it.")
-    f.voice_done(600)
-    f.cursor(False)
-
-
-def future(f):
-    chapter(f, 3, "Looking ahead", "Climate projections · hazards · health", FUTURE)
-    f.camera("fill", 1200, whoosh=0.3)
-    f.run("() => atlas.map.flyTo({ ...atlas.HOME, duration: 2400 })")
-    f.cursor(True)
-    f.click({"sel": "#layers-btn"})
-    f.click({"sel": ".layer-row", "text": "Future climate"})
-    f.run("() => { atlas.state.visible.clear(); atlas.state.visible.add('future'); }")
-    f.say("future-1")
-    f.move({"lnglat": [-124.9936, 49.6866]}, 1200)
-    chip(f, "⇡", "Hot days by the 2050s", "26 downscaled climate models · a projection, not a record", FUTURE, side="left")
-    f.wait(800)
-    f.board("Looking ahead", "Future climate's hatched surface; hovering Courtenay shows its projected hot days with the model range.")
-    f.voice_done(300)
-    f.js("Stage.hideChip()")
-    f.move({"x": 1060, "y": 160}, 700, wait=False)
-    f.say("future-2")
-    for layer, icon, head, colour in (("seismic", "∿", "Shaking hazard", "#e86cff"), ("hospitals", "✚", "Hospital access", "#6c8cff"), ("smoke", "☁", "Wildfire smoke", "#c9b8a0")):
-        focus_only(f, layer)
-        if layer == "smoke":  # its timeline starts in a clear year; show the smokiest
-            f.run("() => atlas.setTime(2017.6)")
-        f.sfx("whoosh", 0.25, seconds=0.5, bright=0.6)
-        f.js("([i, h, c]) => Stage.chip(i, h, '', c)", [icon, head, colour])
-        f.wait(1900)
-    f.board("A click away", "A quick montage: shaking hazard, drive time to a 24/7 ER, and smoke days, each with its own chip.")
-    f.js("Stage.hideChip()")
+    f.camera({"sel": ".toast", "grow": 16}, 1200, max=1.8)
+    f.board("Event", "The Cameron Bluffs marker is clicked; the map flies there and the event card appears.")
     f.voice_done(400)
+    f.js("Stage.hideChip()")
+    f.camera("fill", 1200)
+    f.wait(1200)
+
+
+def switching(f):
+    step(f, 5, "Switch, combine and clear layers", QUAKE)
+    f.run("() => atlas.map.flyTo({ ...atlas.HOME, duration: 1800 })")
+    f.say("sw-1")
+    open_menu_and_pick(f, "Earthquakes")
+    f.wait(900)
+    f.board("Replace", "Earthquakes picked from the menu; the wildfires go away.")
+    f.voice_done(200)
+    f.say("sw-2")
+    hint(f, "◐", "Flip a layer's switch", "to keep it on while you pick others", QUAKE)
+    f.click({"sel": "#layers-btn"})
+    f.camera({"sel": "#layer-menu", "grow": 16}, 1100, whoosh=0.3, max=1.8)
+    f.wait(300)
+    f.click({"sel": ".layer-row", "text": "Earthquakes", "at": [0.93, 0.5]})
+    f.wait(500)
+    f.click({"sel": ".layer-row", "text": "Hospital access", "at": [0.4, 0.5]})
+    f.board("Keep and add", "Zoomed on the menu: the Earthquakes switch is flipped on, then Hospital access is picked.")
+    f.voice_done(200)
+    f.say("sw-3")
+    f.camera({"sel": "#layers-btn", "grow": 60}, 1100, max=2.2)
+    spot(f, {"sel": "#picker-extra", "pad": 6})
+    f.move({"sel": "#picker-extra"}, 700)
+    f.board("+1", "Zoomed on the Layer button: the +1 badge counts the extra layer.")
+    f.voice_done(200)
+    unspot(f)
+    f.say("sw-4")
+    hint(f, "◌", "Pick Just the island", "to clear the map", TOUR)
+    f.click({"sel": "#layers-btn"})
+    f.camera({"sel": "#layer-menu", "grow": 16}, 1100, max=1.8)
+    f.wait(400)
+    f.click({"sel": ".layer-row", "text": "Just the island", "at": [0.4, 0.5]})
+    f.camera("fill", 1200, whoosh=0.3)
+    f.board("Clear", "Just the island is picked; everything comes off the map.")
+    f.voice_done(400)
+    f.js("Stage.hideChip()")
 
 
 def town(f):
-    chapter(f, 4, "A report card for every town", "Prices · safety · climate · care", TOWN)
-    focus_only(f, "fires")
-    # stop playback and clear event cards, which could sit over the town pin
-    f.run("() => { atlas.setPlaying(false); document.getElementById('toast-stack').innerHTML = ''; }")
-    f.run("() => atlas.map.flyTo({ center: [-124.55, 49.27], zoom: 9.1, pitch: 50, bearing: -8, duration: 2600 })")
-    f.wait(2700)
+    step(f, 6, "Open a town's report", TOWN)
+    f.run("() => { document.getElementById('toast-stack').innerHTML = ''; atlas.map.flyTo({ center: [-124.55, 49.27], zoom: 8.6, pitch: 40, bearing: -8, duration: 2000 }); }")
+    f.wait(2100)
     f.say("town-1")
-    f.move({"lnglat": QUALICUM})
-    f.wait(500)
-    f.board("Pick a town", "The cursor finds Qualicum Beach; its tooltip pops up.")
+    hint(f, "●", "Click a town dot", "point at it first to see its name", TOWN)
+    f.move({"lnglat": QUALICUM}, 1100)
+    f.wait(900)
+    f.board("Point at a town", "The cursor rests on Qualicum Beach and its name pops up.")
     f.click()
     f.move({"x": 760, "y": 520}, 900, wait=False)
-    f.wait(1300)
-    f.camera({"sel": "#panel .metric-grid", "grow": 14}, 1500, whoosh=0.4, max=2.0)
+    f.voice_done(200)
     f.say("town-2")
-    f.wait(1600)
-    f.js("t => Stage.spot(t)", {"sel": "#panel .metric", "text": "Emergency room", "pad": 6})
-    f.board("The report card", "Zoomed into the report: a spotlight picks out the drive time to the nearest 24/7 emergency room.")
-    f.wait(2600)
-    f.js("Stage.spot(null)")
+    f.wait(1200)
     f.move({"sel": "#panel", "at": [0.5, 0.6]}, 700)
-    f.scroll(560, 2600)
-    f.board("Trends", "The panel glides down to the warming trend, river record and price and population charts.")
-    f.voice_done(500)
+    f.scroll(700, 2600)
+    f.board("The report", "The map flies to the town and its report fills the side panel; the panel scrolls.")
+    f.voice_done(200)
+    f.say("town-3")
+    hint(f, "×", "Click the X", "to close the report", TOWN)
+    f.click({"sel": "#panel .close-x"})
+    f.board("Close", "The X at the top of the report is clicked.")
+    f.voice_done(300)
+    f.js("Stage.hideChip()")
 
 
 def finder(f):
-    chapter(f, 5, "Rank them your way", "Town Finder", FINDER)
-    f.camera("fill", 1200, whoosh=0.3)
+    step(f, 7, "Rank towns with Town Finder", FINDER)
+    f.say("fi-1")
     f.click({"sel": "#finder-btn"})
-    f.say("finder-1")
-    f.move({"x": 900, "y": 300}, 800, wait=False)
-    f.wait(1400)
-    f.run("() => atlas.map.easeTo({ ...atlas.HOME, zoom: 7.4, pitch: 58, bearing: 12, duration: 9000 })")
-    factors = f.run("() => document.querySelectorAll('#panel .weight').length")
-    chip(f, "◎", "Town Finder", f"{factors} factors, weighted your way · every town and island ranked", FINDER, side="left")
-    f.board("Columns rise", "Every town becomes a column sized by its score, and the map slowly orbits.")
+    f.wait(1200)
+    f.board("Town Finder", "Town Finder opens in the side panel and score columns rise on the map.")
+    f.voice_done(200)
+    f.camera({"sel": "#panel .weights", "grow": 10}, 1300, whoosh=0.3, max=1.9)
+    f.say("fi-2")
+    hint(f, "⇆", "Drag a slider", "0 ignores it · 5 matters most", FINDER)
+    f.wait(1200)
+    f.drag(weight_at(f, "hospital", 2), weight_at(f, "hospital", 5), 1100)
+    f.board("Weights", "Zoomed on the sliders: one is dragged from 2 to 5.")
+    f.voice_done(200)
+    f.say("fi-3")
+    f.camera({"sel": "#panel .chips", "grow": 20}, 1100, max=1.9)
+    f.click({"sel": '#panel [data-preset="sun"]'})
+    f.board("Presets", "A preset button sets all the sliders at once.")
+    f.voice_done(200)
+    f.say("fi-4")
+    hint(f, "≡", "Click a town in the list", "to open its report", FINDER)
+    f.camera("fill", 1300, whoosh=0.3)
+    f.wait(500)
+    # the ranking sits below the sliders: scroll the panel down to it
+    f.move({"sel": "#panel", "at": [0.5, 0.5]}, 700)
+    f.scroll(f.run("() => { const p = document.getElementById('panel'); return document.querySelector('#panel .rank-list').getBoundingClientRect().top - p.getBoundingClientRect().top - 160; }"), 1800)
+    f.move({"sel": "#panel .rank-list li", "at": [0.4, 0.5]}, 700)
+    f.wait(300)
+    f.click({"sel": "#panel .rank-list li", "at": [0.4, 0.5]})
+    f.board("Pick from the ranking", "The top town in the ranking is clicked and its report opens.")
+    f.voice_done(300)
+    f.say("fi-5")
+    f.click({"sel": "#panel .close-x"})
+    f.wait(900)
+    f.click({"sel": "#panel .close-x"})
+    f.board("Back and close", "The report's X goes back to the ranking; the Finder's X closes it.")
     f.voice_done(300)
     f.js("Stage.hideChip()")
-    f.camera({"sel": "#panel .weights", "grow": 10}, 1300, whoosh=0.3, max=1.9)
-    f.wait(500)
-    f.say("finder-2")
-    f.drag(slider(f, "hospital", 2), slider(f, "hospital", 5), 1000)
-    f.wait(300)
-    f.drag(slider(f, "dry", 2), slider(f, "dry", 5), 1000)
-    f.board("Drag the sliders", "Zoomed onto the weights: hospital access and sunshine dragged up to 5.")
-    f.move({"x": 760, "y": 420}, 800, wait=False)
-    f.camera("fill", 1500, whoosh=0.4)
-    f.run("() => atlas.map.easeTo({ bearing: -20, pitch: 60, zoom: 7.6, duration: 7000 })")
+
+
+def land(f):
+    step(f, 8, "Search parcels with Land Finder", LAND)
+    f.say("la-1")
+    f.click({"sel": "#land-btn"})
+    f.wait_until("!!document.querySelector('.land-rail') && !!document.querySelector('#panel .ld-list')", most=20000)
     f.wait(1500)
-    f.cursor(False)
-    f.board("Re-ranked", "Columns grow and shrink to the new weights; the top ten carry labels.")
+    f.board("Land Finder", "Land Finder opens: filters on the left, matches on the right, parcels on the map.")
+    f.voice_done(200)
+    f.say("la-2")
+    spot(f, {"sel": ".land-rail", "pad": 4})
+    f.move({"sel": ".land-rail .lr-count"}, 900)
+    f.voice_done(200)
+    unspot(f)
+    f.say("la-3")
+    hint(f, "⇆", "Drag a slider or click a choice", "every filter works the same way", LAND)
+    f.camera({"sel": ".land-rail", "grow": 10}, 1200, whoosh=0.3, max=1.5)
+    f.drag(range_at(f, ".land-rail .lr-slide input", 0.35), range_at(f, ".land-rail .lr-slide input", 0.2), 1100)
+    f.wait(400)
+    f.click({"sel": ".land-rail .lr-row .chip", "text": "Vancouver Island"})
+    f.board("Filters", "Zoomed on the filters: the size slider is dragged and a choice is clicked; the count updates.")
+    f.voice_done(200)
+    f.js("Stage.hideChip()")
+    f.say("la-4")
+    f.camera({"sel": ".land-rail .lr-head", "grow": 14}, 1100, max=1.9)
+    f.click({"sel": '.land-rail [data-preset="loose"]'})
+    f.wait(900)
+    f.click({"sel": '.land-rail [data-preset="brief"]'})
+    f.board("Presets", "Show everything, then Our brief, at the top of the filters.")
+    f.voice_done(200)
+    f.say("la-5")
+    hint(f, "▤", "Click a match", "to open its report", LAND)
+    f.camera("fill", 1200, whoosh=0.3)
+    f.move({"sel": "#panel .ld-card", "at": [0.4, 0.5]}, 900)
+    f.wait(500)
+    f.click({"sel": "#panel .ld-card", "at": [0.4, 0.5]})
+    f.wait(2400)
+    f.board("A parcel", "The top match is clicked; the map flies to the parcel and its report opens.")
+    f.voice_done(200)
+    f.say("la-6")
+    hint(f, "☆", "Shortlist · Satellite", "buttons under the parcel's chart", LAND)
+    f.camera({"sel": "#panel .ld-actions", "grow": 20}, 1100, whoosh=0.3, max=1.9)
+    f.click({"sel": "#panel .ld-btn.star"})
+    f.wait(500)
+    f.click({"sel": "#panel .ld-btn.sat"})
+    f.wait(700)
+    f.move({"sel": "#panel .ld-actions a", "at": [0.5, 0.5]}, 700)
+    f.wait(400)
+    f.move({"sel": "#panel .ld-actions a", "nth": 1, "at": [0.5, 0.5]}, 600)
+    f.board("Shortlist and satellite", "Zoomed on the buttons: Shortlist and Satellite are clicked, then the two links are pointed at.")
+    f.voice_done(200)
+    f.camera("fill", 1200)
+    f.wait(1400)
+    f.click({"sel": "#panel .ld-btn.sat"})
+    f.say("la-7")
+    hint(f, "‹", "‹ Matches, then ★ Shortlist", "at the top of the panel", LAND)
+    f.click({"sel": "#panel .ld-back"})
+    f.wait(700)
+    f.click({"sel": '#panel [data-tab="short"]'})
+    f.board("Your shortlist", "Back to the matches, then the Shortlist tab shows the starred parcel.")
+    f.voice_done(200)
+    f.say("la-8")
+    hint(f, "×", "Click the X", "to close Land Finder", LAND)
+    f.click({"sel": "#panel .close-x"})
+    f.wait(1600)
     f.voice_done(300)
-    f.camera({"sel": "#panel .rank-list", "grow": 10}, 1300, max=1.8)
-    f.say("finder-3")
-    f.wait(1800)
-    f.board("Your ranking", "The ranked list, islands included.")
-    f.voice_done(500)
+    f.js("Stage.hideChip()")
 
 
 def sources(f):
-    chapter(f, 6, "Every number, traceable", "Data & sources", CEDAR)
-    f.camera("fill", 1200, whoosh=0.3)
-    f.cursor(True)
+    step(f, 9, "See where the data comes from", CEDAR)
+    f.say("so-1")
     f.click({"sel": "#about-btn"})
-    f.wait(900)
-    f.camera({"sel": ".src-round", "grow": 20}, 1600, whoosh=0.4, max=1.6)
-    f.say("sources-1")
-    f.wait(1200)
-    f.board("A cedar round", "Each wedge is a data source and each ring a year, glowing with that source's record.")
-    for nth in (0, 2, 5):
-        f.move({"sel": ".src-card", "nth": nth, "at": [0.3, 0.3]}, 700)
-        f.wait(900)
+    f.wait(1500)
+    f.board("Data & sources", "The sources view opens.")
     f.voice_done(200)
-    f.say("sources-2")
-    f.camera("fill", 1800)
-    f.wait(800)
-    f.board("Sources", "Hovering the source cards lights their wedges.")
-    f.voice_done(400)
+    f.say("so-2")
+    hint(f, "→", "See it on the map", "at the foot of each source", CEDAR)
+    f.move({"sel": ".src-card", "nth": 0, "at": [0.4, 0.3]}, 900)
+    f.wait(1000)
+    f.move({"sel": ".src-go", "nth": 0}, 700)
+    f.wait(300)
+    f.click()
+    f.wait(1200)
+    f.board("See it on the map", "Pointing at a source, then See it on the map opens that layer.")
+    f.voice_done(300)
+    f.js("Stage.hideChip()")
+
+
+def keys(f):
+    f.js("Stage.hideChapter()")
+    f.camera("fill", 800)
+    f.say("keys-1")
+    f.cursor(False)
+    for key, name, colour in (("L", "Layer menu", KEYS), ("Space", "Play and pause", SPARK), ("← →", "Step a year", SPARK),
+                              ("P", "Hide the side panel", TOUR), ("S", "Data & sources", CEDAR), ("Esc", "Close", KEYS)):
+        hint(f, key, name, "", colour)
+        if key == "L":
+            f.key("l", 900)
+            f.key("Escape", 300)
+        elif key == "Space":
+            f.key(" ", 1500)
+            f.key(" ", 300)
+        elif key == "← →":
+            f.key("ArrowRight", 400)
+            f.key("ArrowRight", 600)
+        elif key == "P":
+            f.key("p", 1000)
+            f.key("p", 300)
+        elif key == "S":
+            f.key("s", 1500)
+        else:
+            f.key("Escape", 800)
+        f.wait(200)
+    f.board("Shortcuts", "Each key gets a chip as it is pressed: L, Space, arrows, P, S, Escape.")
+    f.voice_done(300)
+    f.js("Stage.hideChip()")
 
 
 def ending(f):
-    f.js("Stage.hideChapter()")
-    f.click({"sel": ".sources .close-x"})
-    f.cursor(False)
-    f.run("() => { atlas.state.visible.clear(); atlas.focus('fires'); atlas.map.flyTo({ ...atlas.HOME, duration: 4000 }); atlas.setTime(1919); atlas.setPlaying(true); }")
+    f.run("() => { atlas.focus('island'); atlas.map.flyTo({ ...atlas.HOME, duration: 3000 }); }")
     f.camera("rest", 1600, whoosh=0.5)
     f.wait(1700)
-    f.camera({"cx": 800, "cy": 467, "z": 0.62}, 2600)
-    f.js("Stage.fade(0.82, 2200)")
-    f.sfx("impact", 0.55)
+    f.js("Stage.fade(0.82, 2000)")
+    f.sfx("impact", 0.5)
     f.mark("end")
-    f.wait(900)
+    f.wait(700)
     f.js("([u, fine]) => Stage.end('A century of Vancouver Island, in open data', u, fine)",
-         [f.url, "Wildfires · earthquakes · floods · smoke · climate · prices · crime · hospitals<br>Open data from British Columbia, Canada and the USGS · no backend, nothing to install"])
+         [f.url, "Open data from British Columbia, Canada and the USGS · nothing to install"])
     f.say("end-1")
-    f.board("End card", "The window drifts back into the dark; the end card spins up the logo and the address.")
-    f.voice_done(3800)
+    f.board("End card", "The window drifts back; the end card shows the name and address.")
+    f.voice_done(3000)
     f.js("Stage.blackout(1600)")
     f.wait(1800)
 
 
 SCENES = [
-    dict(id="open", title="Cold open", run=cold_open,
-         shows="The question the app was built to answer, and the map flying in.",
-         camera="App full-frame (no window edges). The map's own flight from the north down onto the island.",
-         motion="Kinetic title: words rise out of a blur, 'retire?' in a warm gradient. Fade up from black under it.",
-         sound="A single glassy note, then a riser building toward the reveal. Music pad fades in.",
-         lines={"open-1": "We had one question. Where on Vancouver Island should we retire?",
-                "open-2": "So we asked a century of open data."}),
-    dict(id="reveal", title="Island Atlas", run=reveal,
-         shows="What the app is, in four numbers taken from its data.",
-         camera="Pull back from full-frame to the app as a floating window over a slow aurora and contour lines.",
-         motion="Four stat cards rise in a stagger and count up.",
-         sound="Impact on the pull-back, a whoosh, a blip per card; the arpeggio comes in.",
-         lines={"reveal-1": "This is Island Atlas. {layers} layers of government data, for {towns} towns and islands, from nineteen hundred out to twenty seventy, all in one living, 3D map."}),
-    dict(id="time", title="A century in motion", run=time_machine,
-         shows="The timeline: speed, play, wildfires flaring and scarring, event toasts.",
-         camera="Zoom onto the timeline for the clicks, back to full-frame, a 9-second push in while the years run, then onto the event toast.",
-         motion="Chapter tag slides in; cursor glides on an arc, ripples on each click; fact chip rises from the bottom.",
-         sound="Mouse clicks, whooshes on zooms.",
-         lines={"time-1": "Press play, and a hundred years unfold. Every mapped wildfire flares up, then cools into a burn scar.",
-                "time-2": "Moments that mattered pop up as they pass, like the twenty twenty-three Cameron Bluffs fire, which cut the only highway to the west coast."}),
-    dict(id="quakes", title="Beneath the island", run=quakes,
-         shows="The layer menu, earthquakes at depth, and jumping to a historic event from the timeline.",
-         camera="Zoom onto the layer menu, then full-frame while the map tilts to 72° and swings; zoom to the timeline marker and back.",
-         motion="Map orbit (the app's own camera); toast and shockwave on the 1946 quake.",
-         sound="Clicks, whooshes.",
-         lines={"quake-1": "Switch layers, and the ground opens up. {quakes:,} earthquakes, each drawn at its true depth beneath the island.",
-                "quake-2": "Pick a moment on the timeline, and the atlas takes you there. This is the magnitude {m1946} quake of nineteen forty-six."}),
-    dict(id="future", title="Looking ahead", run=future,
-         shows="Future climate projections, then a quick tour of shaking hazard, hospital access and smoke.",
-         camera="Full-frame on the island.",
-         motion="Hover tooltip on a town; a three-layer montage with a chip for each.",
-         sound="Clicks, a short whoosh per layer change.",
-         lines={"future-1": "It looks ahead, too. Twenty-six climate models, scaled down to the island, project how many scorching days each town can expect by mid-century.",
-                "future-2": "Earthquake shaking hazard, the drive to the nearest emergency room, and wildfire smoke are each a click away."}),
-    dict(id="town", title="A report card for every town", run=town,
-         shows="Clicking a town on the map opens its Town Report.",
-         camera="The map flies to the Oceanside coast; the stage zooms into the report's metric grid and holds while it scrolls.",
-         motion="Spotlight dims everything but the emergency-room figure; the panel glides down.",
-         sound="Click, whoosh.",
-         lines={"town-1": "Click any town for its report card.",
-                "town-2": "Home prices, crime, the local climate and how fast it's warming, nearby fires and quakes, and how many minutes to an emergency room that never closes."}),
-    dict(id="finder", title="Rank them your way", run=finder,
-         shows="The Town Finder: weights, live re-ranking, 3D score columns and the ranked list.",
-         camera="Full-frame while columns rise and the map orbits; zoom onto the sliders for two drags; back out to see the columns change; onto the ranking.",
-         motion="Real slider drags; columns animate to new heights.",
-         sound="Clicks on each grab, whooshes.",
-         lines={"finder-1": "Then let the atlas do the weighing. In the Town Finder, you decide what matters most.",
-                "finder-2": "Want a hospital close by, and more sunshine? Drag the sliders, and every town re-ranks instantly, rising as columns across the map.",
-                "finder-3": "The islands are in the running too, with their ferry dependence counted against them."}),
-    dict(id="sources", title="Every number, traceable", run=sources,
-         shows="Data & sources: the cedar-round chart and source cards.",
-         camera="Zoom onto the cedar round, then back to full-frame.",
-         motion="The view's own entrance animation; hovering cards lights their wedges.",
-         sound="Click, whoosh.",
-         lines={"sources-1": "And every number is traceable. Each data source is a wedge of this cedar round, and every ring is a year of its record.",
-                "sources-2": "Wildfires, earthquakes, rivers, climate, housing and health, all from open public data. No backend, nothing to install."}),
+    dict(id="intro", title="Introduction", run=intro,
+         shows="The title.", camera="App full-frame.", motion="Title rises out of a blur; fade up from black.", sound="A glassy note; music pad fades in.",
+         lines={"intro-1": "Here's how to use Island Atlas, step by step."}),
+    dict(id="tour", title="Find your way around", run=tour,
+         shows="The opening screen and where each control is.", camera="Full-frame.", motion="A spotlight moves from control to control.", sound="Whooshes.",
+         lines={"tour-1": "When the app opens, you see just the island, with a dot for each town.",
+                "tour-2": "The Layer button, at the top left, puts data on the map.",
+                "tour-3": "At the top right are the Land Finder, the Town Finder, Data and sources, and a button that hides the side panel.",
+                "tour-4": "The side panel explains whatever you are looking at.",
+                "tour-5": "And the timeline along the bottom plays the history layers."}),
+    dict(id="map", title="Move the map", run=move_map,
+         shows="Drag, scroll, right-drag and the map buttons.", camera="Full-frame; zoom onto the map buttons.", motion="Real drags and scrolls.", sound="Clicks.",
+         lines={"map-1": "Drag the map to move around.",
+                "map-2": "Scroll to zoom in and out.",
+                "map-3": "Hold the right mouse button and drag to tilt and turn the view.",
+                "map-4": "The buttons at the top right of the map zoom in and out, and the compass turns north back up."}),
+    dict(id="layers", title="Show a data layer", run=layers,
+         shows="Opening the Layer menu and picking Wildfires.", camera="Zoom onto the menu, then full-frame.", motion="Cursor clicks.", sound="Clicks, whooshes.",
+         lines={"layer-1": "To put data on the map, click Layer, or press L.",
+                "layer-2": "Just the island is at the top. Below it, the layers are in three groups: history, towns, and hazards and climate.",
+                "layer-3": "Click one to show it. Let's pick Wildfires. The side panel now describes that layer."}),
+    dict(id="timeline", title="Play the timeline", run=timeline,
+         shows="Play, speed, pause, dragging the slider, and clicking an event marker.", camera="Zoomed on the timeline; full-frame for the event.", motion="Real clicks and a slider drag.", sound="Clicks.",
+         lines={"time-1": "History layers play on the timeline. Click play, or press the space bar.",
+                "time-2": "Use Speed to choose how many years pass each second.",
+                "time-3": "Click pause to stop. Drag the slider to jump to any year.",
+                "time-4": "The marks above the slider are events. Click one, and the map jumps there and shows a card about it. The card closes by itself."}),
+    dict(id="switching", title="Switch, combine and clear layers", run=switching,
+         shows="Replacing a layer, keeping one on with its switch, the +1 badge, and clearing the map.", camera="Zoomed on the menu and the Layer button.", motion="Real clicks.", sound="Clicks.",
+         lines={"sw-1": "Pick another layer, and it replaces the one on the map. Here, Earthquakes.",
+                "sw-2": "To keep a layer on while you look at another, flip its switch on the right. Then pick the next layer.",
+                "sw-3": "The +1 on the Layer button tells you one extra layer is still showing.",
+                "sw-4": "To clear the map, open Layer and pick Just the island."}),
+    dict(id="town", title="Open a town's report", run=town,
+         shows="Pointing at and clicking a town dot, scrolling its report, closing it.", camera="Full-frame.", motion="Hover, click, scroll.", sound="Clicks.",
+         lines={"town-1": "Point at a town dot to see its name, and click it to open the town's report.",
+                "town-2": "The map flies to the town and the report opens in the side panel. Scroll down to see all of it.",
+                "town-3": "Click the X at the top to close it."}),
+    dict(id="finder", title="Rank towns with Town Finder", run=finder,
+         shows="Opening Town Finder, a slider, a preset, opening a town from the ranking, closing.", camera="Zoomed on the sliders and presets; full-frame for the list.", motion="A real slider drag.", sound="Clicks.",
+         lines={"fi-1": "Click Town Finder to rank the towns by what matters to you.",
+                "fi-2": "Each slider sets how much one thing counts, from zero, ignore it, to five, matters most. Drag one, and the ranking updates right away.",
+                "fi-3": "Or click a preset to set them all at once.",
+                "fi-4": "The columns on the map show each town's score. Click a town in the list to open its report.",
+                "fi-5": "Closing the report takes you back to the ranking. Click the X again to leave Town Finder."}),
+    dict(id="land", title="Search parcels with Land Finder", run=land,
+         shows="Land Finder filters, presets, opening a parcel, shortlist, satellite, closing.", camera="Zoomed on the filters, presets and parcel buttons.", motion="Real drags and clicks.", sound="Clicks.",
+         lines={"la-1": "Click Land Finder to search the island's large private parcels.",
+                "la-2": "The filters are on the left. The number at the top shows how many parcels match.",
+                "la-3": "Drag a slider or click a choice to change a filter, and the matches update.",
+                "la-4": "Show everything turns every filter off. Our brief puts them back to the starting set.",
+                "la-5": "The best matches are listed on the right, and drawn on the map. Click one to open its report.",
+                "la-6": "Click Shortlist to save it, and Satellite to see the land from above. The links open listings and Google Maps for that spot.",
+                "la-7": "The arrow at the top goes back to the list, and the Shortlist tab keeps the parcels you saved.",
+                "la-8": "Click the X to close Land Finder."}),
+    dict(id="sources", title="See where the data comes from", run=sources,
+         shows="Opening Data & sources and jumping to a layer from it.", camera="Full-frame.", motion="Hover, click.", sound="Clicks.",
+         lines={"so-1": "Click Data and sources to see where every layer comes from.",
+                "so-2": "Point at a source to read about it, and click See it on the map to open that layer."}),
+    dict(id="keys", title="Keyboard shortcuts", run=keys,
+         shows="The keyboard shortcuts, each pressed in turn.", camera="Full-frame.", motion="A chip for each key.", sound="Key clicks.",
+         lines={"keys-1": "Finally, the shortcuts. L opens the layer menu, space plays and pauses, the arrow keys step a year, P hides the side panel, S opens the sources, and Escape closes things."}),
     dict(id="end", title="End card", run=ending,
-         shows="Title, tagline, address and data credits.",
-         camera="Back to the floating window, then it drifts away into the dark.",
-         motion="Logo ring spins up; title and lines rise word by word.",
-         sound="Soft impact; music resolves and fades.",
-         lines={"end-1": "Island Atlas. A century of Vancouver Island, in open data."}),
+         shows="Title and address.", camera="Back to the floating window.", motion="Logo spins up.", sound="Soft impact; music fades.",
+         lines={"end-1": "That's everything you need. Enjoy exploring."}),
 ]
