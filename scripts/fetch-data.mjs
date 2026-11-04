@@ -1170,12 +1170,20 @@ const SOURCES = {
       towns,
     });
   },
+
+  // Land Finder: private parcels of 5+ acres, scored for waterfront, quiet, safety and drive times to
+  // health care, groceries and gas (scripts/land.mjs). Reads the island, fires, hospitals, seismic and
+  // normals outputs, so it runs last.
+  async land() {
+    const { buildLand } = await import('./land.mjs');
+    await buildLand({ log, cached, writeOut, round, distKm, pool, WFS, BBOX, getIsland, onIsland, OUT });
+  },
 };
 
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future'];
+const order = ['island', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'land'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};

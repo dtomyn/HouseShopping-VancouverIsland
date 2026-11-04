@@ -10,6 +10,7 @@ import { AtlasEvent, AtlasLayer, CURATED_EVENTS, Ctx, PanelHandle, buildLayers }
 import { loadWeights, renderFinder, renderTownReport } from './panels';
 import { openSources, sourcesOpen } from './sources';
 import { Ranked } from './metrics';
+import { closeLand, landClick, landHover, landKey, landLayers, openLand } from './land';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -25,7 +26,7 @@ const LAYER_GROUPS: { name: string; ids: string[] }[] = [
   { name: 'Hazard & climate outlook', ids: ['seismic', 'normals', 'future'] },
 ];
 
-type Mode = 'layer' | 'town' | 'finder';
+type Mode = 'layer' | 'town' | 'finder' | 'land';
 
 const state = {
   time: 1919,
@@ -130,6 +131,8 @@ function initMap() {
 
 function render() {
   if (!overlay) return;
+  // the Land Finder shows only its parcels
+  if (state.mode === 'land') { overlay.setProps({ layers: landLayers() }); return; }
   const c = ctx();
   const out: Layer[] = [];
   for (const l of layers) {
@@ -251,10 +254,13 @@ function onHover(info: PickingInfo) {
   const t = tooltipEl();
   const o: any = info.object;
   state.hovered = o ? o.m?.key ?? o.t?.muni?.key ?? (info.layer?.id.startsWith('towns') ? o.key : null) : null;
+  if (state.mode === 'land' && (!info.object || !info.layer)) landHover(info);
   if (!info.object || !info.layer) { t.hidden = true; return; }
   let html: string | null = null;
   const id = info.layer.id;
-  if (id.startsWith('finder')) {
+  if (state.mode === 'land') {
+    html = landHover(info);
+  } else if (id.startsWith('finder')) {
     const r = info.object as Ranked & { i: number };
     html = `<b>#${r.i + 1} ${r.t.muni.name}</b><br><span class="tk">Score</span> <span class="tv">${Math.round(r.score * 100)}</span><br><span class="tk">Click for town report</span>`;
   } else if (id.startsWith('towns')) {
@@ -272,6 +278,7 @@ function onHover(info: PickingInfo) {
 }
 
 function onClick(info: PickingInfo) {
+  if (state.mode === 'land') { landClick(info); return; }
   const o: any = info.object;
   if (!o) return;
   const key = o.m?.key ?? o.t?.muni?.key ?? (info.layer?.id.startsWith('towns') ? o.key : null);
@@ -311,6 +318,29 @@ function openFinder() {
     });
   });
   if (map.getZoom() > 8.5) map.flyTo({ ...HOME, duration: 1400 });
+}
+
+function openLandFinder() {
+  if (state.mode === 'land') return;
+  setPlaying(false);
+  setMenu(false);
+  if (state.mode === 'finder') { state.ranked = null; $('finder-btn').classList.remove('active'); }
+  state.mode = 'land';
+  state.selected = null;
+  $('land-btn').classList.add('active');
+  setPanelOpen(true);
+  $('tooltip').hidden = true;
+  openLand({ map, panel: $('panel'), beforeId: firstLabelLayer, onClose: closeLandFinder });
+}
+
+function closeLandFinder() {
+  if (state.mode !== 'land') return;
+  closeLand();
+  $('land-btn').classList.remove('active');
+  $('tooltip').hidden = true;
+  state.mode = 'layer';
+  showLayerPanel();
+  map.flyTo({ ...HOME, duration: 1800, essential: true });
 }
 
 function closeFinder() {
@@ -608,7 +638,8 @@ function bindControls() {
   scrub().addEventListener('input', () => { state.time = +scrub().value; });
   scrub().addEventListener('pointerdown', () => setPlaying(false));
   $<HTMLSelectElement>('speed-sel').addEventListener('change', (e) => { state.speed = +(e.target as HTMLSelectElement).value; });
-  $('finder-btn').addEventListener('click', () => (state.mode === 'finder' ? closeFinder() : openFinder()));
+  $('finder-btn').addEventListener('click', () => { if (state.mode === 'land') closeLandFinder(); state.mode === 'finder' ? closeFinder() : openFinder(); });
+  $('land-btn').addEventListener('click', () => (state.mode === 'land' ? closeLandFinder() : openLandFinder()));
   $('about-btn').addEventListener('click', showSources);
   $('layers-btn').addEventListener('click', () => setMenu(!menuOpen()));
   $('panel-btn').addEventListener('click', () => setPanelOpen($('panel').classList.contains('collapsed')));
@@ -616,6 +647,7 @@ function bindControls() {
   window.addEventListener('resize', () => { drawSpark(); });
   window.addEventListener('keydown', (e) => {
     if (sourcesOpen() || (e.target as HTMLElement).matches('input, select, textarea')) return;
+    if (state.mode === 'land') { if (!landKey(e) && e.key === 'Escape') closeLandFinder(); return; }
     if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); }
     const step = timeLayer().monthly ? 1 / 12 : 1;
     if (e.key === 'ArrowRight') { setPlaying(false); setTime(Math.floor(state.time / step + 1e-6) * step + step); }
@@ -644,9 +676,10 @@ async function boot() {
   focus('fires');
   requestAnimationFrame(frame);
   if (location.hash === '#sources') showSources();
+  if (location.hash === '#land') map.once('load', () => setTimeout(openLandFinder, 600));
   // The explainer video (video/render.py) drives the atlas through this handle; only set with ?film.
   if (new URLSearchParams(location.search).has('film'))
-    (window as any).atlas = { map, state, data, layers, focus, openTown, openFinder, setPlaying, setTime, setPanelOpen, setMenu, showSources, HOME };
+    (window as any).atlas = { map, state, data, layers, focus, openTown, openFinder, openLandFinder, closeLandFinder, setPlaying, setTime, setPanelOpen, setMenu, showSources, HOME };
 }
 
 boot();
