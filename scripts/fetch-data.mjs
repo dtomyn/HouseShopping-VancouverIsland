@@ -1171,6 +1171,13 @@ const SOURCES = {
     });
   },
 
+  // Trails & waterfalls: OpenStreetMap footpaths, named hiking routes with elevation profiles, and every
+  // mapped waterfall with Wikidata photos (scripts/trails.mjs).
+  async trails() {
+    const { buildTrails } = await import('./trails.mjs');
+    await buildTrails({ log, cached, writeOut, round, distKm, pool, BBOX, getIsland, onIsland, PLACES });
+  },
+
   // Land Finder: private parcels of 5+ acres, scored for waterfront, quiet, safety and drive times to
   // health care, groceries and gas (scripts/land.mjs). Reads the island, fires, hospitals, seismic and
   // normals outputs, so it runs last.
@@ -1183,7 +1190,7 @@ const SOURCES = {
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'land'];
+const order = ['island', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'land'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};

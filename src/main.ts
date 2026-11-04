@@ -10,7 +10,8 @@ import { AtlasEvent, AtlasLayer, CURATED_EVENTS, Ctx, PanelHandle, buildLayers }
 import { loadWeights, renderFinder, renderTownReport } from './panels';
 import { openSources, sourcesOpen } from './sources';
 import { Ranked } from './metrics';
-import { closeLand, landClick, landHover, landKey, landLayers, openLand } from './land';
+import { closeLand, landClick, landHover, landKey, landLayers, openLand, setLandTrails } from './land';
+import { bindTrails, setTrailView, stopAll as stopTrails, trailsCinema } from './trails';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -21,8 +22,10 @@ const MUNI_LAYERS = new Set(['population', 'housing', 'crime']);
 const MUNI_WHEN_FOCUSED = new Set(['hospitals', 'seismic', 'future']);
 // layer menu sections; any layer not listed lands in the last group
 const LAYER_GROUPS: { name: string; ids: string[] }[] = [
+  { name: 'Base map', ids: ['island'] },
   { name: 'History on the timeline', ids: ['fires', 'quakes', 'rivers', 'climate', 'smoke'] },
   { name: 'Towns & living', ids: ['population', 'housing', 'crime', 'hospitals'] },
+  { name: 'Outdoors', ids: ['trails'] },
   { name: 'Hazard & climate outlook', ids: ['seismic', 'normals', 'future'] },
 ];
 
@@ -32,10 +35,12 @@ const state = {
   time: 1919,
   playing: false,
   speed: 2,
-  focused: 'fires',
+  focused: 'island',
   // the timeline belongs to the last focused time-based layer; static layers leave it alone
   timeLayer: 'fires',
-  visible: new Set<string>(['fires']),
+  visible: new Set<string>(),
+  // layers the user overlaid with a menu switch; they stay on when another layer is picked
+  pinned: new Set<string>(),
   selected: null as string | null,
   hovered: null as string | null,
   mode: 'layer' as Mode,
@@ -117,11 +122,15 @@ function initMap() {
       getCursor: ({ isHovering, isDragging }) => (isDragging ? 'grabbing' : isHovering ? 'pointer' : 'grab'),
     } as any);
     map.addControl(overlay as any);
+    bindTrails({
+      map,
+      openTown,
+      setCinema: (on) => { if (on) { setPlaying(false); setMenu(false); $('tooltip').hidden = true; } },
+    });
 
     $('loader').classList.add('done');
     setTimeout(() => {
       map.flyTo({ ...HOME, duration: 4200, curve: 1.6, essential: true });
-      setTimeout(() => setPlaying(true), 3200);
     }, 300);
   });
 }
@@ -131,6 +140,8 @@ function initMap() {
 
 function render() {
   if (!overlay) return;
+  // flights and orbits over 3D terrain draw with the map's own layers
+  if (trailsCinema()) { overlay.setProps({ layers: [] }); return; }
   // the Land Finder shows only its parcels
   if (state.mode === 'land') { overlay.setProps({ layers: landLayers() }); return; }
   const c = ctx();
@@ -281,6 +292,8 @@ function onClick(info: PickingInfo) {
   if (state.mode === 'land') { landClick(info); return; }
   const o: any = info.object;
   if (!o) return;
+  const owner = info.layer ? layers.find((l) => info.layer!.id.startsWith(l.id)) : null;
+  if (owner?.click?.(info)) return;
   const key = o.m?.key ?? o.t?.muni?.key ?? (info.layer?.id.startsWith('towns') ? o.key : null);
   if (key) openTown(key);
 }
@@ -320,8 +333,23 @@ function openFinder() {
   if (map.getZoom() > 8.5) map.flyTo({ ...HOME, duration: 1400 });
 }
 
+/** Opens a trail route or waterfall from elsewhere (the Town Report). */
+function openOutdoors(kind: 'route' | 'fall', i: number) {
+  if (!byId.trails?.available) return;
+  if (state.mode === 'land') closeLandFinder();
+  if (state.mode === 'finder') closeFinder();
+  state.selected = null;
+  state.mode = 'layer';
+  setTrailView({ kind, i });
+  if (state.focused === 'trails') showLayerPanel(); else focus('trails');
+  const t = data.trails!;
+  if (kind === 'fall') { const f = t.falls[i]; map.flyTo({ center: [f.lon, f.lat], zoom: 12.2, pitch: 60, duration: 1800, essential: true }); }
+  else { const pts = t.routes[i].parts.flat(); const b = pts.reduce((a, p) => [Math.min(a[0], p[0]), Math.min(a[1], p[1]), Math.max(a[2], p[0]), Math.max(a[3], p[1])], [180, 90, -180, -90]); map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 90, bottom: 150, left: 60, right: 440 }, pitch: 50, duration: 1800, maxZoom: 13.5 }); }
+}
+
 function openLandFinder() {
   if (state.mode === 'land') return;
+  stopTrails();
   setPlaying(false);
   setMenu(false);
   if (state.mode === 'finder') { state.ranked = null; $('finder-btn').classList.remove('active'); }
@@ -412,11 +440,12 @@ function renderLayerMenu() {
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
       const [a, b] = l.range;
-      row.innerHTML = `<div class="ic">${l.icon}</div><div><div class="nm">${l.name}</div><div class="rg">${!l.available ? 'data unavailable' : l.static ? l.period ?? 'no timeline' : `${Math.floor(a)}–${Math.floor(b)}`}</div></div><button class="eye${state.visible.has(l.id) ? ' on' : ''}" aria-label="Overlay ${l.name} on map" title="Overlay on the map"></button>`;
+      row.innerHTML = `<div class="ic">${l.icon}</div><div><div class="nm">${l.name}</div><div class="rg">${!l.available ? 'data unavailable' : l.static ? l.period ?? 'no timeline' : `${Math.floor(a)}–${Math.floor(b)}`}</div></div>${l.id === 'island' ? '' : `<button class="eye${state.pinned.has(l.id) ? ' on' : ''}" aria-label="Overlay ${l.name} on map" title="Keep on the map while you pick other layers"></button>`}`;
       row.addEventListener('click', (e) => {
         if ((e.target as HTMLElement).classList.contains('eye')) {
-          if (state.visible.has(l.id)) state.visible.delete(l.id);
-          else state.visible.add(l.id);
+          // the switch keeps a layer on while others are picked; the picked layer always shows
+          if (state.pinned.has(l.id)) { state.pinned.delete(l.id); if (l.id !== state.focused) state.visible.delete(l.id); }
+          else { state.pinned.add(l.id); state.visible.add(l.id); }
           renderLayerMenu();
           if (focusedLayer().static) setupTimeline();
           return;
@@ -429,7 +458,7 @@ function renderLayerMenu() {
     }
     menu.appendChild(sec);
   }
-  menu.insertAdjacentHTML('beforeend', `<div class="menu-hint">Pick a layer to explore its story. Use the switch to overlay several at once. Click any town on the map for its report card.</div>`);
+  menu.insertAdjacentHTML('beforeend', `<div class="menu-hint">Pick a layer to put it on the map; picking another replaces it. Flip a switch to keep a layer on while you pick others. <i>Just the island</i> clears everything. Click any town on the map for its report card.</div>`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -448,10 +477,13 @@ function setPanelOpen(open: boolean) {
 
 function focus(id: string) {
   const l = byId[id];
+  if (id !== 'trails') stopTrails();
   const changed = state.focused !== id;
   state.focused = id;
-  // Focusing shows the layer; other layers stay on only if the user turned them on themselves.
-  state.visible.add(id);
+  // Focusing shows the layer; other layers stay on only if the user switched them on themselves.
+  // "Just the island" clears the map, switches included.
+  if (id === 'island') state.pinned.clear();
+  state.visible = new Set([...state.pinned, ...(id === 'island' ? [] : [id])]);
   if (changed) {
     // a static layer keeps the current time, so other visible layers carry on where they were
     if (!l.static && state.timeLayer !== id) {
@@ -481,7 +513,7 @@ function setupTimeline() {
   if (f.static) {
     // other visible time-based layers keep playing on the last timeline
     const others = layers.filter((x) => !x.static && x.available && state.visible.has(x.id)).map((x) => x.name);
-    note.innerHTML = `<div><b>${f.name}</b> doesn’t change over time</div><span>${others.length ? `${others.join(', ')} shown at <i id="static-year">${Math.floor(state.time)}</i> · Space to play` : 'Pick a timeline layer to travel through history'}</span>`;
+    note.innerHTML = f.id === 'island' && !others.length ? `<div>No history layer on the map</div><span>Open <b>Layer</b> and pick one, like Wildfires, to travel through time</span>` : `<div><b>${f.name}</b> doesn’t change over time</div><span>${others.length ? `${others.join(', ')} shown at <i id="static-year">${Math.floor(state.time)}</i> · Space to play` : 'Pick a timeline layer to travel through history'}</span>`;
   }
   const [a, b] = l.range;
   const s = scrub();
@@ -605,8 +637,10 @@ function toast(ev: AtlasEvent) {
 
 function fireCrossedEvents(prev: number, now: number) {
   if (now <= prev || now - prev > 1.5) return;
+  // island-wide events only pop up while some history layer is on the map
+  const anyTime = layers.some((l) => !l.static && l.available && state.visible.has(l.id));
   for (const ev of events) {
-    if (ev.t > prev && ev.t <= now && (ev.layer === '*' || state.visible.has(ev.layer))) toast(ev);
+    if (ev.t > prev && ev.t <= now && (ev.layer === '*' ? anyTime : state.visible.has(ev.layer))) toast(ev);
   }
 }
 
@@ -668,18 +702,21 @@ function showSources() {
 async function boot() {
   data = await loadAll();
   layers = buildLayers(data);
+  setLandTrails(data.trails);
   byId = Object.fromEntries(layers.map((l) => [l.id, l]));
   events = [...layers.flatMap((l) => (l.available ? l.events() : [])), ...CURATED_EVENTS].sort((a, b) => a.t - b.t);
   state.time = byId.fires.range[0];
   initMap();
   bindControls();
-  focus('fires');
+  focus('island');
   requestAnimationFrame(frame);
+  window.addEventListener('atlas:outdoors', (e) => { const d = (e as CustomEvent).detail; openOutdoors(d.kind, d.i); });
   if (location.hash === '#sources') showSources();
+  if (location.hash === '#trails') map.once('load', () => setTimeout(() => focus('trails'), 600));
   if (location.hash === '#land') map.once('load', () => setTimeout(openLandFinder, 600));
   // The explainer video (video/render.py) drives the atlas through this handle; only set with ?film.
   if (new URLSearchParams(location.search).has('film'))
-    (window as any).atlas = { map, state, data, layers, focus, openTown, openFinder, openLandFinder, closeLandFinder, setPlaying, setTime, setPanelOpen, setMenu, showSources, HOME };
+    (window as any).atlas = { map, state, data, layers, focus, openTown, openFinder, openLandFinder, closeLandFinder, setPlaying, setTime, setPanelOpen, setMenu, showSources, openOutdoors, HOME };
 }
 
 boot();

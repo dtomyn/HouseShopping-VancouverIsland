@@ -564,7 +564,7 @@ function dp(pts, tol) {
   return dpLine(pts, tol);
 }
 
-function dpLine(pts, tol) {
+export function dpLine(pts, tol) {
   if (pts.length < 3) return pts;
   const keep = new Uint8Array(pts.length);
   keep[0] = keep[pts.length - 1] = 1;
@@ -584,7 +584,7 @@ function dpLine(pts, tol) {
 }
 
 /** Terrarium PNG tile -> Float32Array of 256x256 elevations in metres. */
-function decodeTerrarium(buf) {
+export function decodeTerrarium(buf) {
   const u8 = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
   let pos = 8, width = 0, height = 0, ctype = 0;
   const idat = [];

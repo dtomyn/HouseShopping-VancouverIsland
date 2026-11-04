@@ -6,7 +6,12 @@ import * as d3 from 'd3';
 import type maplibregl from 'maplibre-gl';
 import { ArcLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import type { Layer, PickingInfo } from '@deck.gl/core';
-import { fmt } from './data';
+import { Trails, fmt } from './data';
+import { trailMetresNear } from './trails';
+
+let trails: Trails | null = null;
+/** Trail density and waterfalls for the Outdoors filters (from the atlas's trails.json). */
+export function setLandTrails(t: Trails | null) { trails = t; }
 
 type Cat = 'care' | 'er' | 'grocery' | 'gas';
 type Poi = [string, number, number];
@@ -61,6 +66,20 @@ async function load(): Promise<Land> {
     }
     bounds.push(b);
   });
+  // outdoors, worked out here from the trails data: km of footpath within 3 km, nearest waterfall
+  const trail3 = new Float32Array(n).fill(NaN), fallKm = new Float32Array(n).fill(NaN), fallI = new Float32Array(n).fill(NaN);
+  if (trails) {
+    const kx = 111.32 * Math.cos((49.5 * Math.PI) / 180), ky = 110.54;
+    const F = trails.falls;
+    for (let i = 0; i < n; i++) {
+      const lon = num.lon[i], lat = num.lat[i];
+      trail3[i] = Math.round(trailMetresNear(trails, lon, lat, 3) / 100) / 10;
+      let bd = Infinity, bi = -1;
+      for (let k = 0; k < F.length; k++) { const d = Math.hypot((F[k].lon - lon) * kx, (F[k].lat - lat) * ky); if (d < bd) { bd = d; bi = k; } }
+      if (bi >= 0) { fallKm[i] = Math.round(bd * 10) / 10; fallI[i] = bi; }
+    }
+  }
+  num.trail3 = trail3; num.fallKm = fallKm; num.fallI = fallI;
   return { n, json, pid: json.cols.pid, num, polys, bounds };
 }
 
@@ -74,15 +93,17 @@ type F = {
   road: number; air: number; ind: number;
   threat: number; unrated: boolean; flood: boolean; high: number; pga: number; fires: number;
   slope: number; alr: 'any' | 'avoid' | 'only'; islands: 'any' | 'main' | 'islands';
+  trail: number; fall: number;
   budget: number;
 };
-const ANY_MIN = 120, ANY_FIRES = 200, ANY_SLOPE = 45, ANY_PGA = 100;
+const ANY_MIN = 120, ANY_FIRES = 200, ANY_SLOPE = 45, ANY_PGA = 100, ANY_FALL = 40;
 const BRIEF: F = {
   acres: 10, water: 'front', kinds: [true, true, true], front: 30, near: 500,
   care: 45, careKind: 'any', grocery: 45, gas: 45,
   road: 0.3, air: 3, ind: 1,
   threat: 2, unrated: true, flood: true, high: 10, pga: ANY_PGA, fires: ANY_FIRES,
   slope: ANY_SLOPE, alr: 'any', islands: 'any',
+  trail: 0, fall: ANY_FALL,
   budget: 2_000_000,
 };
 const LOOSE: F = { ...BRIEF, acres: 5, water: 'any', care: ANY_MIN, grocery: ANY_MIN, gas: ANY_MIN, road: 0, air: 0, ind: 0, threat: 4, flood: false, high: 0 };
@@ -100,7 +121,7 @@ const saveShort = () => { try { localStorage.setItem(SHORT, JSON.stringify(short
 const keyOf = (i: number) => L!.pid[i] || `${L!.num.lon[i].toFixed(5)},${L!.num.lat[i].toFixed(5)}`;
 
 /** One bit per filter; the funnel groups them into stages. */
-const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15 } as const;
+const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17 } as const;
 type Bit = keyof typeof BIT;
 const STAGES: { id: string; label: string; icon: string; bits: Bit[]; c: string }[] = [
   { id: 'size', label: 'Size', icon: '◇', bits: ['acres'], c: '#a3e635' },
@@ -108,6 +129,7 @@ const STAGES: { id: string; label: string; icon: string; bits: Bit[]; c: string 
   { id: 'reach', label: 'Reach', icon: '✚', bits: ['care', 'grocery', 'gas'], c: '#818cf8' },
   { id: 'quiet', label: 'Quiet', icon: '☾', bits: ['road', 'air', 'ind'], c: '#c084fc' },
   { id: 'safe', label: 'Safe', icon: '⛨', bits: ['threat', 'flood', 'high', 'pga', 'fires'], c: '#fb923c' },
+  { id: 'outdoors', label: 'Trails', icon: '⛰', bits: ['trail', 'fall'], c: '#34d399' },
   { id: 'rules', label: 'Place', icon: '⌂', bits: ['slope', 'alr', 'islands'], c: '#f472b6' },
 ];
 
@@ -139,6 +161,8 @@ function maskOf(i: number): number {
   if (fails(n.slope[i], f.slope, ANY_SLOPE)) m |= 1 << BIT.slope;
   if ((f.alr === 'avoid' && n.alr[i] >= 50) || (f.alr === 'only' && n.alr[i] < 50)) m |= 1 << BIT.alr;
   if ((f.islands === 'main' && n.island[i] !== 0) || (f.islands === 'islands' && n.island[i] === 0)) m |= 1 << BIT.islands;
+  if (f.trail > 0 && !(n.trail3[i] >= f.trail)) m |= 1 << BIT.trail;
+  if (fails(n.fallKm[i], f.fall, ANY_FALL)) m |= 1 << BIT.fall;
   return m;
 }
 
@@ -357,7 +381,7 @@ const waterText = (i: number) => {
 const fmtDist = (m: number) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`);
 const BIT_NAME: Record<Bit, string> = {
   acres: 'size', water: 'water', care: 'health care', grocery: 'groceries', gas: 'gas', road: 'busy road', air: 'airport', ind: 'industry',
-  threat: 'wildfire threat', flood: 'floodplain', high: 'high ground', pga: 'shaking', fires: 'fire history', slope: 'slope', alr: 'farmland reserve', islands: 'island',
+  threat: 'wildfire threat', flood: 'floodplain', high: 'high ground', pga: 'shaking', fires: 'fire history', slope: 'slope', alr: 'farmland reserve', islands: 'island', trail: 'trails nearby', fall: 'waterfall distance',
 };
 const failedNames = (i: number) => (Object.keys(BIT) as Bit[]).filter((b) => masks[i] & (1 << BIT[b])).map((b) => BIT_NAME[b]);
 
@@ -410,6 +434,12 @@ const SECTIONS: Section[] = [
       { kind: 'custom', bit: 'flood', label: 'Floodplain', hint: 'Designated floodplain maps (BC, mostly 1980s–90s; not every river is mapped)', render: renderFlood },
       { kind: 'range', bit: 'high', key: 'high', label: 'High ground', hint: 'Highest point on the parcel above sea level: room to build above storm surge, tsunami run-up and sea-level rise', min: 0, max: 60, step: 1, dir: 'min', value: (i) => L!.num.elevHi[i], show: (v) => (v <= 0 ? 'Any' : `≥ ${v} m`) },
       { kind: 'range', bit: 'pga', key: 'pga', label: 'Earthquake shaking', hint: 'NRCan 2020 hazard: peak shaking with a 2% chance in 50 years, % of gravity', min: 30, max: ANY_PGA, step: 1, dir: 'max', any: ANY_PGA, value: (i) => L!.num.pga[i], show: (v) => (v >= ANY_PGA ? 'Any' : `≤ ${v}% g`) },
+    ],
+  },
+  {
+    id: 'outdoors', title: 'Trails & waterfalls', icon: '⛰', c: '#34d399', rows: [
+      { kind: 'range', bit: 'trail', key: 'trail', label: 'Trails to walk', hint: 'Km of mapped footpath and hiking trail within 3 km of the parcel (OpenStreetMap)', min: 0, max: 40, step: 0.5, dir: 'min', value: (i) => L!.num.trail3[i], show: (v) => (v <= 0 ? 'Any' : `≥ ${v.toFixed(v < 10 ? 1 : 0)} km within 3 km`) },
+      { kind: 'range', bit: 'fall', key: 'fall', label: 'A waterfall nearby', hint: 'Straight-line distance to the nearest mapped waterfall (OpenStreetMap)', min: 0.5, max: ANY_FALL, step: 0.5, dir: 'max', any: ANY_FALL, value: (i) => L!.num.fallKm[i], show: (v) => (v >= ANY_FALL ? 'Any' : `within ${v.toFixed(v < 10 ? 1 : 0)} km`) },
     ],
   },
 ];
@@ -612,11 +642,20 @@ function updateRail() {
   }
 }
 
+// Counts up on its own frames: d3 transitions patch d3.selection as a side effect, which the
+// production build drops (d3 is marked side-effect free), so .interrupt() and .transition() don't exist there.
+const counting = new WeakMap<HTMLElement, number>();
 function animateCount(el: HTMLElement, to: number) {
-  const from = +(el.dataset.v ?? 0);
+  const from = +(el.textContent ?? '').replace(/[^\d.-]/g, '') || +(el.dataset.v ?? 0);
   el.dataset.v = String(to);
-  d3.select(el).interrupt().transition().duration(650).ease(d3.easeCubicOut)
-    .tween('text', () => { const i = d3.interpolateNumber(from, to); return (t: number) => { el.textContent = fmt.int(i(t)); }; });
+  cancelAnimationFrame(counting.get(el) ?? 0);
+  const t0 = performance.now(), ms = 650;
+  const tick = () => {
+    const t = Math.min(1, (performance.now() - t0) / ms);
+    el.textContent = fmt.int(from + (to - from) * d3.easeCubicOut(t));
+    if (t < 1) counting.set(el, requestAnimationFrame(tick));
+  };
+  tick();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -789,6 +828,11 @@ function renderDetail(i: number) {
       ${m('Floodplain', '#38bdf8', n.flood[i] ? 'Mapped' : 'Not mapped', n.flood[i] ? 'part of the parcel is in a designated floodplain' : 'outside designated floodplain maps', !n.flood[i])}
       ${m('Earthquake shaking', '#e86cff', Number.isNaN(n.pga[i]) ? '—' : `${n.pga[i]}% g`, '2% chance in 50 years (NRCan 2020)')}
     </div>
+    ${trails && !Number.isNaN(n.trail3[i]) ? `<h3>Trails &amp; waterfalls</h3>
+    <div class="metric-grid">
+      ${m('Trails to walk', '#34d399', `${n.trail3[i].toFixed(n.trail3[i] < 10 ? 1 : 0)} km`, 'of mapped footpath within 3 km', f.trail <= 0 || n.trail3[i] >= f.trail)}
+      ${(() => { const fl = Number.isNaN(n.fallI[i]) ? null : trails!.falls[n.fallI[i]]; return m('Nearest waterfall', '#8be3ff', Number.isNaN(n.fallKm[i]) ? '—' : `${n.fallKm[i].toFixed(1)} km`, fl ? `${fl.name ?? 'unnamed'}${fl.h ? `, ${Math.round(fl.h)} m drop` : ''}` : '', f.fall >= ANY_FALL || n.fallKm[i] <= f.fall); })()}
+    </div>` : ''}
     <h3>Quiet</h3>
     <div class="metric-grid">
       ${m('Busy road', '#c084fc', `${n.roadKm[i].toFixed(1)} km`, 'from the quietest spot on the land', n.roadKm[i] >= f.road)}
@@ -828,7 +872,14 @@ function drawRadar(el: HTMLElement, pr: ReturnType<typeof parts>, color: string)
   });
   const pts = (scale: number) => axes.map(([key], k) => `${cx + Math.cos(ang(k)) * R * Math.max(0.04, pr[key]) * scale},${cy + Math.sin(ang(k)) * R * Math.max(0.04, pr[key]) * scale}`).join(' ');
   const shape = svg.append('polygon').attr('points', pts(0.05)).attr('fill', color).attr('fill-opacity', 0.25).attr('stroke', color).attr('stroke-width', 2).style('filter', `drop-shadow(0 0 8px ${color})`);
-  shape.transition().duration(900).ease(d3.easeBackOut).attr('points', pts(1));
+  // grows on its own frames (see animateCount for why not a d3 transition)
+  const t0 = performance.now();
+  const grow = () => {
+    const t = Math.min(1, (performance.now() - t0) / 900);
+    shape.attr('points', pts(0.05 + 0.95 * d3.easeBackOut(t)));
+    if (t < 1 && shape.node()!.isConnected) requestAnimationFrame(grow);
+  };
+  requestAnimationFrame(grow);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -842,6 +893,12 @@ function setSatellite(on: boolean) {
     map.addLayer({ id: 'esri-imagery', type: 'raster', source: 'esri-imagery', paint: { 'raster-opacity': 0, 'raster-opacity-transition': { duration: 700 } } as any }, ctx!.beforeId);
   }
   if (map.getLayer('esri-imagery')) map.setPaintProperty('esri-imagery', 'raster-opacity', on ? 0.92 : 0);
+  // once faded out, drop the imagery so it stops loading tiles and its credit leaves the map
+  if (!on) setTimeout(() => {
+    if (satellite) return;
+    if (map.getLayer('esri-imagery')) map.removeLayer('esri-imagery');
+    if (map.getSource('esri-imagery')) map.removeSource('esri-imagery');
+  }, 800);
 }
 
 // ---------------------------------------------------------------------------------------------

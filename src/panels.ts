@@ -54,6 +54,7 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
     </div>
     ${feelsRow(t, data, metric, na)}
     ${futureRow(t, data, metric)}
+    ${outdoorsRow(t, data, metric)}
     ${t.climate?.trend != null ? `<div class="callout" style="--c:#f25f5c">Nearest long-term station (${t.climate.name}) has warmed <b>${fmt.signed(t.climate.trend, 2)} °C per decade</b> since 1950.</div>` : ''}
     ${t.river ? `<div class="callout" style="--c:#4cc9f0"><b>${t.river.name}</b> (${t.river.dist.toFixed(0)} km away) reached 1.5× its normal peak in ${Math.round(t.river.floodShare * 100)}% of years; its record was ${t.river.record.ratio.toFixed(1)}× in ${t.river.record.year}.</div>` : ''}
     ${census ? '' : '<h3>Population (dashed = projection)</h3><div id="tr-pop"></div>'}
@@ -61,6 +62,7 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
     ${t.csi != null ? '<h3>Crime Severity Index</h3><div id="tr-crime"></div>' : ''}
     <p class="note">Distances are from the town centre. Hazard counts describe history, not a forecast — check official floodplain, tsunami and wildfire-interface maps for any specific property.</p>`;
   el.querySelector('.close-x')!.addEventListener('click', opts.onClose);
+  el.querySelectorAll<HTMLElement>('[data-out]').forEach((b) => b.addEventListener('click', () => window.dispatchEvent(new CustomEvent('atlas:outdoors', { detail: { kind: b.dataset.out, i: +b.dataset.i! } }))));
 
   requestAnimationFrame(() => {
     const p = data.population?.munis[key];
@@ -96,6 +98,22 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
       lineChart(el.querySelector('#tr-crime')!, { height: 110, xDomain: [vals[0].x, vals.at(-1)!.x], series: [{ key: 'c', label: m.name, color: '#ff4d8d', values: vals }, { key: 'bc', label: 'BC', color: '#ffffff', dashed: true, width: 1.5, values: bc }] });
     }
   });
+}
+
+/** Trails and waterfalls near the town (OpenStreetMap); each named one opens on the Trails layer. */
+function outdoorsRow(t: TownMetrics, data: Data, metric: (l: string, dot: string, v: string, sub: string) => string) {
+  const o = t.outdoors, T = data.trails;
+  if (!o || !T) return '';
+  const c = '#34d399';
+  const fall = (i: number, d: number) => { const f = T.falls[i]; return `<button class="tr-fall" data-out="fall" data-i="${i}"><span class="tr-drop"></span>${f.name}${f.h ? ` <small>${Math.round(f.h)} m</small>` : ''} <small>· ${d.toFixed(0)} km</small></button>`; };
+  const route = (i: number, d: number) => { const r = T.routes[i]; return `<button class="tr-fall tr-rt" data-out="route" data-i="${i}" style="--c:${['', '#6ee7b7', '#fcd34d', '#fb7185'][r.level]}"><span class="tr-lv"></span>${r.name} <small>${r.km} km · ${d < 1 ? 'in town' : `${d.toFixed(0)} km`}</small></button>`; };
+  return `<h3>Trails &amp; waterfalls nearby</h3>
+    <div class="metric-grid">
+      ${metric('Footpaths', c, `${o.km10.toLocaleString('en-CA')} km`, 'of mapped trail and path within 10 km')}
+      ${metric('Waterfalls', '#8be3ff', `${o.falls30}`, `within 30 km · ${o.named30} named`)}
+    </div>
+    ${o.routes.length ? `<div class="tr-falls" style="margin-top:8px">${o.routes.slice(0, 5).map(([i, d]) => route(i, d)).join('')}</div>` : ''}
+    ${o.falls.length ? `<div class="tr-falls" style="margin-top:6px">${o.falls.map(([i, d]) => fall(i, d)).join('')}</div>` : ''}`;
 }
 
 /** The ferry link for an island (or Alert Bay); towns on Vancouver Island show nothing. */

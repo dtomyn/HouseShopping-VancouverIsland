@@ -1,5 +1,5 @@
 // Derived, per-town statistics shared by the Town Report and the Town Finder.
-import { Data, Facility, FutureTown, Muni, NormalsStation, Smoke, km, trailingMedianPrice } from './data';
+import { Data, Facility, FutureTown, Muni, NormalsStation, Smoke, TrailTown, km, trailingMedianPrice } from './data';
 
 /** A climate-normal value borrowed from the nearest station that reports it. */
 export type NormalPick = { v: number; name: string; dist: number };
@@ -32,6 +32,7 @@ export type TownMetrics = {
   care: CareTrip | null; // nearest hospital or ER of any kind (may be limited hours or need a ferry)
   smoke: SmokePick | null; // high-PM2.5 days a year at the nearest monitor with a recent record
   future: FutureTown | null; // CMIP6 projections at the nearest grid cell: var -> scenario -> [period][p10, p50, p90]
+  outdoors: TrailTown | null; // footpath km within 10 km, waterfalls within 30 km, nearest named falls and routes (OpenStreetMap)
 };
 
 /**
@@ -205,8 +206,9 @@ export function townMetrics(data: Data): TownMetrics[] {
 
     const smoke = data.smoke ? nearestSmoke(data.smoke, m) : null;
     const future = data.future?.towns[m.key] ?? null;
+    const outdoors = data.trails?.towns[m.key] ?? null;
 
-    return { muni: m, price, priceYear, priceChange5y, pop, popYear, popGrowth10y, s65, csi, csiYear: cy ? String(cy) : null, fires15km, burnedHa25km, quakes75km, shaking, climate, river, feels, er, care, smoke, future };
+    return { muni: m, price, priceYear, priceChange5y, pop, popYear, popGrowth10y, s65, csi, csiYear: cy ? String(cy) : null, fires15km, burnedHa25km, quakes75km, shaking, climate, river, feels, er, care, smoke, future, outdoors };
   });
   return cache;
 }
@@ -276,6 +278,8 @@ export const CRITERIA: Criterion[] = [
   // Projection, not history: median of 26 downscaled CMIP6 models for 2041–2070 under the moderate
   // scenario. The range is wide, so it starts at a modest weight.
   { id: 'future', label: 'Mild future summers', hint: 'Fewer projected days over 30 °C in 2041–2070 (moderate emissions, SSP2-4.5, median of 26 climate models)', value: (t) => t.future?.hot.ssp245[2][1] ?? null, higherIsBetter: false, defaultWeight: 1 },
+  // A named waterfall counts as much as 10 km of footpath; both from OpenStreetMap.
+  { id: 'outdoors', label: 'Trails & waterfalls nearby', hint: 'More km of mapped footpath within 10 km, plus named waterfalls within 30 km (each counted like 10 km of trail)', value: (t) => (t.outdoors ? t.outdoors.km10 + 10 * t.outdoors.named30 : null), higherIsBetter: true, defaultWeight: 2 },
   { id: 'seniors', label: 'Retiree community', hint: 'Higher share of residents 65+', value: (t) => t.s65, higherIsBetter: true, defaultWeight: 1 },
   { id: 'services', label: 'Services & amenities', hint: 'Larger town (hospitals, shops, transit)', value: (t) => (t.pop ? Math.log10(t.pop) : null), higherIsBetter: true, defaultWeight: 2 },
 ];

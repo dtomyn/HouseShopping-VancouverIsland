@@ -7,6 +7,7 @@ import type { Layer, PickingInfo } from '@deck.gl/core';
 import { Data, FutureTown, FutureVar, Facility, FirePerimeter, FirePoint, MONTHS, Muni, NormalsStation, Quake, SmokeStation, Trip, fmt, interpYearly, km, lowerBound, trailingMedianPrice } from './data';
 import { barChart, lineChart, rampCSS, scatterChart, stripes, ChartHandle } from './charts';
 import { NormalVar, islandAnomalies, slope, townMetrics } from './metrics';
+import { trailsLayer } from './trails';
 
 /** `hovered` is the municipality key under the pointer (town pin or column), if any. */
 export type Ctx = { time: number; speed: number; data: Data; selected: string | null; hovered: string | null; focusedId: string; clock: number };
@@ -35,6 +36,8 @@ export interface AtlasLayer {
   events: () => AtlasEvent[];
   panel: (el: HTMLElement, ctx: Ctx) => PanelHandle;
   tooltip: (info: PickingInfo) => string | null;
+  /** Handles a click on one of its own map objects; true if it did. */
+  click?: (info: PickingInfo) => boolean;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1944,6 +1947,41 @@ export const CURATED_EVENTS: AtlasEvent[] = [
   { t: 2023.45, layer: '*', title: 'June 2023 — Cameron Bluffs wildfire', body: 'A wildfire above Cameron Lake closes Highway 4 — the only road to Port Alberni, Tofino and Ucluelet — for weeks.', lon: -124.6, lat: 49.29, zoom: 10 },
 ];
 
+// ---------------------------------------------------------------------------------------------
+// JUST THE ISLAND — the plain map the atlas opens on, with nothing overlaid
+
+function islandLayer(data: Data): AtlasLayer {
+  const l: AtlasLayer = {
+    id: 'island',
+    name: 'Just the island',
+    icon: '◌',
+    color: '#4cc9f0',
+    range: [1900, 2026],
+    static: true,
+    period: 'no data overlaid',
+    available: true,
+    build: () => [],
+    spark: () => [],
+    events: () => [],
+    panel(el) {
+      el.innerHTML = `${kicker(l, 'Start here')}
+        <h2>Vancouver Island, plain</h2>
+        <p class="lede">Nothing is overlaid yet. The dots are the ${data.munis.length} towns and islands in the atlas.</p>
+        <ol class="howto">
+          <li><b>Click a town dot</b> for its report card.</li>
+          <li><b>Layer</b> (top left, or press <kbd>L</kbd>) puts one data set on the map. Pick <i>Just the island</i> to clear it again.</li>
+          <li>On a history layer, press <b>▶</b> (or <kbd>Space</kbd>) on the timeline to play the years.</li>
+          <li><b>Town Finder</b> ranks towns by what matters to you; <b>Land Finder</b> filters every parcel of 5+ acres.</li>
+          <li><b>Data &amp; sources</b> shows where every number comes from.</li>
+        </ol>
+        <p class="note">Drag to pan, scroll to zoom, right-drag (or Ctrl-drag) to tilt and turn the map.</p>`;
+      return { update() {} };
+    },
+    tooltip: () => null,
+  };
+  return l;
+}
+
 export function buildLayers(data: Data): AtlasLayer[] {
-  return [firesLayer(data), quakesLayer(data), seismicLayer(data), riversLayer(data), climateLayer(data), normalsLayer(data), futureLayer(data), populationLayer(data), housingLayer(data), crimeLayer(data), hospitalsLayer(data), smokeLayer(data)];
+  return [islandLayer(data), firesLayer(data), quakesLayer(data), seismicLayer(data), riversLayer(data), climateLayer(data), normalsLayer(data), futureLayer(data), populationLayer(data), housingLayer(data), crimeLayer(data), hospitalsLayer(data), smokeLayer(data), trailsLayer(data)];
 }

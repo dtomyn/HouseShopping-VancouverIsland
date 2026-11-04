@@ -210,6 +210,15 @@ const SOURCES: Source[] = [
     read: (d) => d.hospitals && { n: d.hospitals.facilities.length + sum(Object.values(d.hospitals.towns).map((t) => t.length)), what: `${d.hospitals.facilities.length} hospitals and ERs, ${fmt.int(sum(Object.values(d.hospitals.towns).map((t) => t.length)))} routed drives` },
     rings: (d) => d.hospitals ? { [NOW]: { v: 1, label: `${d.hospitals.facilities.length} hospitals and ERs as listed today` } } : {},
   },
+  {
+    id: 'trails', key: 'trails', name: 'Trails & waterfalls', color: '#34d399', group: 'Outdoors',
+    owner: 'OpenStreetMap contributors · Wikidata', title: 'OpenStreetMap footpaths, hiking routes and waterfalls', url: 'https://www.openstreetmap.org/copyright',
+    endpoint: 'overpass-api.de · route=hiking|foot, highway=path|footway|bridleway, waterway=waterfall; wikidata.org wbgetentities (P18 photo, P2048 height)', licence: 'ODbL; Wikidata CC0; photos under their Commons licences',
+    gives: 'Every mapped footpath, the named hiking routes with elevation profiles, and every mapped waterfall, with photos and heights where linked.',
+    read: (d) => d.trails && { n: d.trails.netPaths + d.trails.routes.length + d.trails.falls.length, what: `${fmt.int(d.trails.netPaths)} footpaths (${fmt.int(d.trails.netKm)} km), ${d.trails.routes.length} named routes, ${fmt.int(d.trails.falls.length)} waterfalls (${d.trails.falls.filter((f) => f.img).length} with photos)` },
+    // OpenStreetMap is a map of today, so one ring at the bark
+    rings: (d) => d.trails ? { [NOW]: { v: 1, label: `${fmt.int(d.trails.netKm)} km of footpath and ${fmt.int(d.trails.falls.length)} waterfalls as mapped today` } } : {},
+  },
 ];
 
 const BARK: BarkSource[] = [
@@ -218,7 +227,7 @@ const BARK: BarkSource[] = [
   { name: 'Census 2021', key: 'population', owner: 'Statistics Canada', title: '2021 Census of Population, dissemination areas', url: 'https://www12.statcan.gc.ca/census-recensement/2021/dp-pd/prof/index.cfm', licence: 'Statistics Canada Open Licence', gives: 'Population, 65+ share and average home value for the unincorporated islands.', read: (d) => `${d.munis.filter((m) => m.island).length} island communities` },
   { name: 'Roads', key: 'hospitals', owner: 'OpenStreetMap contributors · OSRM', title: 'OSRM demo router on OpenStreetMap roads', url: 'https://www.openstreetmap.org/copyright', licence: 'ODbL', gives: 'The road routes and free-flow drive times to the nearest ER.' },
   { name: 'Basemap', owner: 'CARTO · OpenStreetMap contributors', title: 'Dark Matter vector basemap', url: 'https://carto.com/attributions', licence: 'ODbL / CARTO terms', gives: 'The dark map, place names and roads under every layer.' },
-  { name: 'Terrain', owner: 'Mapzen · AWS Open Data', title: 'Terrain Tiles (terrarium)', url: 'https://registry.opendata.aws/terrain-tiles/', licence: 'Open, with attribution', gives: 'The shaded relief of the island’s mountains.' },
+  { name: 'Terrain', owner: 'Mapzen · AWS Open Data', title: 'Terrain Tiles (terrarium)', url: 'https://registry.opendata.aws/terrain-tiles/', licence: 'Open, with attribution', gives: 'The shaded relief of the island’s mountains, the 3D terrain for trail flights and waterfall orbits, and trail elevations.' },
 ];
 
 const DERIVED = [
@@ -228,6 +237,7 @@ const DERIVED = [
   ['Ferry waits', 'add half the gap between weekday sailings to the drive when an island has no ER.'],
   ['Borrowed stations', 'a town without its own sunshine or climate station uses the nearest one within 60 km, and its report names it.'],
   ['Future values', 'come from the model grid cell nearest each town, within 15 km.'],
+  ['Trail climbing and times', 'are worked out here: elevations sampled from terrain tiles along each route, and walking time by Naismith’s rule (4.5 km/h plus an hour per 600 m up).'],
   ['Town Finder scores', 'are this atlas’s own blend of the numbers above, weighted by you.'],
 ];
 
@@ -289,7 +299,7 @@ export function openSources(data: Data, opts: { onShow: (layerId: string) => voi
       </div>
     </div>
     <div class="src-list">
-      ${['Hazards', 'Climate', 'People & money'].map((g) => `<h3>${g}</h3>${SOURCES.map((s, i) => s.group !== g ? '' : `
+      ${['Hazards', 'Climate', 'People & money', 'Outdoors'].map((g) => `<h3>${g}</h3>${SOURCES.map((s, i) => s.group !== g ? '' : `
         <article class="src-card${live[i] ? '' : ' off'}" data-i="${i}" tabindex="0" style="--c:${s.color}">
           <header><span class="src-dot"></span><b>${s.name}</b>${status(s.key)}</header>
           <div class="src-owner">${esc(s.owner)}</div>

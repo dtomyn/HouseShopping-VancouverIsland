@@ -21,10 +21,12 @@ Press play and watch 100+ years unfold: wildfires flare and leave burn scars, ea
   | ⌂ Home prices | Monthly median sale value from BC Property Transfer Tax data | 2017 → today |
   | ◆ Crime severity | Statistics Canada Crime Severity Index by police service | 1998 → today |
   | ✚ Hospital access | Hospitals and ERs (24/7 highlighted); town columns = drive minutes to the nearest 24/7 ER; hover/click a town for its road routes | today (static) |
-- **Static layers** (Hospital access, Climate normals, Shaking hazard, Future climate) don't change over time: focusing one dims the timeline, and any other visible layers keep playing underneath.
+  | ⛰ Trails & waterfalls | Every mapped footpath as a glowing web with hikers moving along it; named hiking routes coloured by effort; waterfalls as beams of falling water, as tall as their drop where it's known. Click a route for its elevation profile and a **3D flight** along it over satellite imagery on real terrain; click a waterfall to **orbit it in 3D**; **Waterfall tour** flies to each photographed fall in turn | mapped today (static) |
+- **Starts on just the island** — nothing is overlaid until you pick a layer. Picking a layer replaces the one on the map; flip a layer's switch in the menu to keep it on while you pick others, and pick *Just the island* to clear everything.
+- **Static layers** (Hospital access, Climate normals, Shaking hazard, Future climate, Trails & waterfalls) don't change over time: focusing one dims the timeline, and any other visible layers keep playing underneath.
 - **Timeline** with play/pause, speeds, a sparkline of the focused layer, and clickable historic events (the 1946 M7.3 quake, the 1964 Port Alberni tsunami, the 2021 heat dome…). Events pop up as toasts and send a shockwave across the map as playback passes them.
-- **Town Report** — click any town for a report card: prices, population, 65+ share, crime, nearby wildfire and quake history, official earthquake shaking hazard, local climate and warming trend, nearest river's flood record, drive time to the nearest 24/7 emergency room, and projected hot days, temperature, frost and summer rain for the 2050s (with model ranges).
-- **Town Finder** — weight what matters to you (affordability, safety, wildfire exposure, shaking hazard, past quakes, warmth, sunshine, snow & frost, hospital access, mild future summers, retiree community, services) and every municipality is ranked and raised as 3D columns on the map. Weights persist in your browser.
+- **Town Report** — click any town for a report card: prices, population, 65+ share, crime, nearby wildfire and quake history, official earthquake shaking hazard, local climate and warming trend, nearest river's flood record, drive time to the nearest 24/7 emergency room, projected hot days, temperature, frost and summer rain for the 2050s (with model ranges), and the trails and waterfalls nearby (each opens on the map).
+- **Town Finder** — weight what matters to you (affordability, safety, wildfire exposure, shaking hazard, past quakes, warmth, sunshine, snow & frost, hospital access, mild future summers, trails & waterfalls nearby, retiree community, services) and every municipality is ranked and raised as 3D columns on the map. Weights persist in your browser.
 - **Gulf and Discovery islands** — Salt Spring, Galiano, Thetis, Penelakut (Kuper), Gabriola, Lasqueti, Denman and Quadra are included alongside the island's municipalities (list in `scripts/municipalities.mjs`). Every map layer is clipped to them too. They are unincorporated, so a few figures come from other sources and are labelled in their reports:
   - population and 65+ share from the 2021 Census (dissemination areas on each island)
   - crime from the island's rural RCMP detachment (Salt Spring, Gabriola, Quadra; Galiano shares the Outer Gulf Islands detachment)
@@ -37,6 +39,7 @@ Press play and watch 100+ years unfold: wildfires flare and leave burn scars, ea
   - **Within reach**: drive minutes to the nearest clinic or hospital (or 24/7 ER), grocery store and gas station (OSRM on OpenStreetMap roads)
   - **Quiet**: distance from the quietest spot on the land to a busy road, from airports and float bases, and from industry and quarries
   - **Safety**: BC Wildfire Service strategic threat rating on or within 500 m of the parcel, fire starts nearby since 1990, mapped floodplains, highest ground above sea level, earthquake shaking hazard
+  - **Trails & waterfalls**: km of mapped footpath within 3 km, and distance to the nearest waterfall (both off by default)
   - **Budget**: BC publishes no per-parcel prices, so the budget checks the asking prices you add to shortlisted parcels; each parcel links to listings near it
 
   Behind every slider is a histogram of the parcels that value would let through given all the other filters, and a funnel along the bottom shows how each step narrows the island and which one cuts the most. Matches glow on the map and rank by a score; a parcel's report has a radar of its strengths, drive-time arcs to the places it relies on, satellite imagery, and a shortlist with your notes and asking price (kept in the browser).
@@ -64,6 +67,7 @@ The pre-built data in `public/data/` is committed, so the app runs immediately.
 ```bash
 npm run data              # all sources
 npm run data fires crime  # just some
+npm run data trails       # trails, routes and waterfalls (about 7 minutes from an empty cache)
 ```
 
 `scripts/fetch-data.mjs` downloads from the sources below, clips everything to Vancouver Island, and writes compact JSON to `public/data/`. Raw downloads are cached in `.cache/` (delete it to force a refresh). If a source is down, that layer is left as it was and the app shows its status in **Data & sources**.
@@ -74,7 +78,7 @@ A workflow is included at `.github/workflows/deploy.yml`. In your repo's **Setti
 
 ### The explainer video
 
-A narrated YouTube explainer is filmed from the real app by script, so it can be re-rendered after any change to the app or the data. The scenes, narration, camera moves and sounds are in `video/storyboard.py`; `video/render.py` plays them against the built app inside a framed "stage" (`video/stage/`) with a virtual clock stepped one frame at a time. It adds a moving cursor with click sounds, Screen Studio–style zooms, titles, chapter tags and fact chips, and a synthesized music bed that ducks under the voice. The narration is read by [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) running locally, and the numbers in it are taken from the data.
+A narrated, step-by-step how-to video is filmed from the real app by script, so it can be re-rendered after any change to the app or the data. It walks through where to click (the screen, moving the map, layers, the timeline, town reports, Town Finder, Land Finder, sources and shortcuts) without commenting on the data. The scenes, narration, camera moves and sounds are in `video/storyboard.py`; `video/render.py` plays them against the built app inside a framed "stage" (`video/stage/`) with a virtual clock stepped one frame at a time. It adds a moving cursor with click sounds, Screen Studio–style zooms, titles, step tags and on-screen click hints, and a synthesized music bed that ducks under the voice. The narration is read by [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) running locally.
 
 One-time setup (needs Microsoft Edge for GPU rendering):
 
@@ -112,6 +116,7 @@ Everything lands in `video/out/`: `island-atlas-explainer.mp4` (1440p), `-1080p.
 | Coastline | BC Freshwater Atlas islands | OGL – British Columbia |
 | Land Finder parcels | ParcelMap BC parcel fabric (private parcels of 5+ acres) | OGL – British Columbia |
 | Land Finder water, hazards and rules | Freshwater Atlas coastline, lakes and rivers; BC Wildfire Service Provincial Strategic Threat Analysis; BC floodplain maps; Agricultural Land Reserve; BC airports | OGL – British Columbia |
+| Trails & waterfalls | OpenStreetMap via Overpass: `route=hiking`/`foot` relations, footpaths (`highway=path`, `bridleway` and unpaved `footway`), `waterway=waterfall`; photos and heights from Wikidata (P18, P2048) and photos geotagged on Wikimedia Commons whose file name matches the fall; elevations from Mapzen / AWS terrain tiles; 3D-view imagery from Esri World Imagery | ODbL; Wikidata CC0; photos under their own Commons licences; imagery © Esri, Maxar, Earthstar Geographics |
 | Land Finder services and roads | OpenStreetMap via Overpass (grocery stores, gas, clinics, busy roads, industry); drive times from the OSRM demo router; terrain from Mapzen / AWS terrain tiles | ODbL; public terrain tiles |
 
 Basemap © OpenStreetMap contributors © CARTO. Terrain tiles: Mapzen / AWS Open Data.

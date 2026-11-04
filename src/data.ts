@@ -80,6 +80,30 @@ export type Future = {
   vals: { [V in FutureVar]: Record<string, (number | null)[][][]> };
   towns: Record<string, FutureTown>;
 };
+/**
+ * A named hiking route from OpenStreetMap. `parts` are the mapped pieces as drawn; `line` is one
+ * ordered line through them (for the elevation profile and the fly-through), `prof` its elevations
+ * in metres at even steps over `lineKm`. `level`: 1 easy, 2 moderate, 3 hard (from length, climb and
+ * any sac_scale). `falls`: indexes into Trails.falls within 600 m of the route.
+ */
+export type TrailRoute = {
+  id: number; name: string; km: number; up: number; down: number; hi: number; lo: number; hrs: number; level: 1 | 2 | 3; loop: boolean;
+  net: string | null; op: string | null; web: string | null; wiki: string | null; desc: string | null; ref: string | null;
+  parts: [number, number][][]; line: [number, number][]; lineKm: number; prof: number[]; falls: number[];
+};
+/** A mapped waterfall: height in m where tagged (OSM or Wikidata), ground elevation, metres to the nearest mapped path, routes within 600 m, a Commons photo file name. */
+export type Waterfall = { osm: string; name: string | null; lon: number; lat: number; h: number | null; elev: number; path: number | null; routes: number[]; wiki: string | null; img: string | null };
+/** Per town: km of footpath within 10 km, waterfalls (and named ones) within 30 km, the nearest named falls and routes as [index, km]. */
+export type TrailTown = { km10: number; falls30: number; named30: number; falls: [number, number][]; routes: [number, number][] };
+export type Trails = {
+  source: string; netKm: number; netPaths: number;
+  routes: TrailRoute[]; falls: Waterfall[]; towns: Record<string, TrailTown>;
+  /** metres of footpath per grid cell (sparse [cell index, metres]; index = row * nx + col from the south-west) */
+  grid: { west: number; south: number; d: number; nx: number; cells: [number, number][] };
+};
+/** The whole footpath network (trails-net.json, loaded on demand): each way is [name index or -1, sac 0–3, x0, y0, dx, dy, …] in 1/q degrees from west/south. */
+export type TrailNet = { west: number; south: number; q: number; names: string[]; ways: number[][] };
+
 export type CrimeSeries = { csi?: Record<string, number>; vcsi?: Record<string, number>; nvcsi?: Record<string, number> };
 
 export type Data = {
@@ -97,6 +121,7 @@ export type Data = {
   seismic: Seismic | null;
   smoke: Smoke | null;
   future: Future | null;
+  trails: Trails | null;
   manifest: Record<string, { ok: boolean; updated?: string; lastError?: string }>;
 };
 
@@ -113,7 +138,7 @@ async function load<T>(name: string): Promise<T | null> {
 }
 
 export async function loadAll(): Promise<Data> {
-  const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, manifest] = await Promise.all([
+  const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, manifest] = await Promise.all([
     load<GeoJSON.Feature>('island'),
     load<Muni[]>('municipalities'),
     load<any>('fires'),
@@ -128,6 +153,7 @@ export async function loadAll(): Promise<Data> {
     load<Seismic>('seismic'),
     load<Smoke>('smoke'),
     load<Future>('future'),
+    load<Trails>('trails'),
     load<any>('manifest'),
   ]);
 
@@ -143,8 +169,12 @@ export async function loadAll(): Promise<Data> {
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, manifest: manifest ?? {} };
 }
+
+let netPromise: Promise<TrailNet | null> | null = null;
+/** The full footpath network is a few MB, so it loads the first time the trails layer is shown. */
+export const loadTrailNet = () => (netPromise ??= load<TrailNet>('trails-net'));
 
 // ---------------------------------------------------------------------------------------------
 // shared helpers
