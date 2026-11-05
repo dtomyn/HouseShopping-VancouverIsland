@@ -596,3 +596,5 @@ body.cinema .vignette { background: radial-gradient(ellipse at 50% 45%, transpar
 @media (prefers-reduced-motion: reduce) {
   .tr-big::after, .tr-hero img, .tt-img img, .tr-hero-fx, .tr-hiker, .tr-fallpin i { animation: none; }
 }
+/* the map credits move to the top corner in 3D views, clear of the flight panel and tour card */
+body.cinema .maplibregl-ctrl-bottom-right { top: 8px; bottom: auto !important; right: 8px !important; }

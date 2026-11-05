@@ -16,6 +16,9 @@ Setup (once):
   .venv/Scripts/python.exe video/render.py --stills 5,40,90  test frames as JPEGs.
   .venv/Scripts/python.exe video/render.py                  2560x1440 master + 1080p copy + everything above.
 
+  .venv/Scripts/python.exe video/render.py --film trails    the supplemental Trails & waterfalls film (video/storyboard_trails.py);
+                                                            every option above works with it, and its files are named island-atlas-trails-*.
+
 Options: --url puts an address on the end card and in youtube.txt. --no-build skips `npm run build`.
 Narration is made once per line with Kokoro and cached in video/out/vo; a line is remade only when its text changes.
 To use a real voice, save video/out/vo/recorded/<id>.wav (ids are in script.md); the picture retimes to fit.
@@ -25,6 +28,7 @@ import base64
 import datetime
 import hashlib
 import html
+import importlib
 import http.server
 import json
 import pathlib
@@ -49,6 +53,10 @@ OUT = VIDEO / "out"
 STAGE = VIDEO / "stage"
 DIST = ROOT / "dist"
 NAME = "island-atlas-explainer"
+# The storyboard page, script and YouTube text get this prefix; the main film keeps plain names.
+PREFIX = ""
+# --film picks a storyboard module: video/storyboard.py, or video/storyboard_<film>.py
+FILMS = {"main": "storyboard", "trails": "storyboard_trails"}
 LAYOUT = (1920, 1080)
 SCALE_MASTER, SCALE_PREVIEW, SCALE_BOARD = 4 / 3, 0.5, 2 / 3  # 2560x1440, 960x540, 1280x720
 VOICE_DIR = OUT / "vo"
@@ -346,6 +354,9 @@ def facts(page):
       };
     }""")
     found["fires_k"] = found["fires"] // 1000
+    # a storyboard can read more numbers from the app for its narration
+    if getattr(storyboard, "FACTS", None):
+        found.update(app.evaluate(storyboard.FACTS))
     return found
 
 
@@ -469,12 +480,12 @@ def write_captions(film):
 
 def write_script(film, found):
     total = film.marks["total"] * 1000
-    parts = [f"# Island Atlas explainer: narration script\n\n{clock_label(total)} in all. Written by `video/render.py` from `video/storyboard.py`, "
+    parts = [f"# {getattr(storyboard, 'SCRIPT_TITLE', 'Island Atlas explainer: narration script')}\n\n{clock_label(total)} in all. Written by `video/render.py` from `video/storyboard.py`, "
              f"with numbers from the data extract of {found['extract']}. To replace a line with a real recording, save it as `video/out/vo/recorded/<id>.wav`.\n"]
     for c in film.chapters:
         parts.append(f"\n## {clock_label(c['at'])} {c['title']}\n\n**Shows:** {c['shows']}\n\n**Camera:** {c['camera']}\n\n**Motion:** {c['motion']}\n\n**Sound:** {c['sound']}\n")
         parts.extend(f"\n`{clock_label(s['at'])}` `{s['id']}` {s['text']}\n" for s in film.voiced if s["scene"] == c["id"])
-    path = OUT / "script.md"
+    path = OUT / f"{PREFIX}script.md"
     path.write_text("".join(parts), encoding="utf-8")
     print("wrote", path, flush=True)
 
@@ -499,7 +510,9 @@ This is an exploration tool, not real-estate, insurance or hazard advice.
 TAGS
 Vancouver Island, tutorial, how to, Gulf Islands, open data, interactive map, retirement, land search, BC
 """
-    path = OUT / "youtube.txt"
+    if getattr(storyboard, "youtube", None):
+        text = storyboard.youtube(found, url, chapters)
+    path = OUT / f"{PREFIX}youtube.txt"
     path.write_text(text, encoding="utf-8")
     print("wrote", path, flush=True)
 
@@ -561,7 +574,7 @@ def write_storyboard(film, found):
     page = (
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
         f"<title>Island Atlas Storyboard</title><style>{STORYBOARD_CSS}</style></head><body><main>"
-        "<h1>Island Atlas: explainer storyboard</h1>"
+        f"<h1>{html.escape(getattr(storyboard, 'BOARD_TITLE', 'Island Atlas: explainer storyboard'))}</h1>"
         f"<p class=\"lede\">A {clock_label(total)} narrated explainer for YouTube. Every frame below is a real frame of the render, captured by "
         "<code>video/render.py --storyboard</code>. Scenes, narration, camera and sound come from <code>video/storyboard.py</code>, and the numbers from the app's data "
         f"(extract of {html.escape(found['extract'])}), so this page and the film are rebuilt together.</p>"
@@ -569,7 +582,7 @@ def write_storyboard(film, found):
         f"<span>{sum(1 for s in film.sounds if s['name'] == 'click')} clicks</span><span>2560×1440 master · 1080p copy · 30 fps</span></div>"
         f"<div class=\"strip\">{''.join(strip)}</div><div class=\"strip-k\">{''.join(keys)}</div>"
         + "".join(parts) + "</main></body></html>")
-    path = OUT / "storyboard.html"
+    path = OUT / f"{PREFIX}storyboard.html"
     path.write_text(page, encoding="utf-8")
     print("wrote", path, round(path.stat().st_size / 1e6, 1), "MB", flush=True)
 
@@ -638,7 +651,13 @@ def main():
     parser.add_argument("--stills", help="comma-separated seconds to save as JPEGs")
     parser.add_argument("--no-build", action="store_true", help="use the existing dist/")
     parser.add_argument("--video-only", action="store_true", help="skip the storyboard pass (when storyboard.html is already up to date)")
+    parser.add_argument("--film", choices=sorted(FILMS), default="main", help="which storyboard to film (default: the main how-to)")
     args = parser.parse_args()
+    global storyboard, NAME, PREFIX
+    if args.film != "main":
+        storyboard = importlib.import_module(FILMS[args.film])
+        NAME = storyboard.NAME
+        PREFIX = f"{NAME}-"
     OUT.mkdir(parents=True, exist_ok=True)
     if not args.no_build:
         build()

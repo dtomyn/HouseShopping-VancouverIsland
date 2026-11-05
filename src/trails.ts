@@ -734,7 +734,7 @@ function startFlight(data: Data, i: number) {
   let climbed = 0, lastE = elevAt(r, g, 0);
   const zoom = g.total > 60 ? 12.4 : g.total > 20 ? 13 : 13.8;
   const look = Math.max(0.35, g.total / 40);
-  const fmtT = (h: number) => `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
+  const fmtT = (h: number) => { const m = Math.round(h * 60); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`; };
   let userTilt = 0;
   const onDrag = () => { userTilt = performance.now(); };
   m.on('dragstart', onDrag);

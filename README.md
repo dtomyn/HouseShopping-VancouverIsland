@@ -97,6 +97,13 @@ Put `kokoro-v1.0.onnx` and `voices-v1.0.bin` from the kokoro-onnx releases in `.
 
 Everything lands in `video/out/`: `island-atlas-explainer.mp4` (1440p), `-1080p.mp4`, `storyboard.html`, `script.md`, `.srt` captions and `youtube.txt`. `--only finder` renders one scene, `--stills 10,60` saves test frames, `--url` puts the site's address on the end card. A line's voice is only regenerated when its text changes; drop a real recording at `video/out/vo/recorded/<line-id>.wav` and the picture retimes to fit it. The app exposes `window.atlas` for the renderer only when loaded with `?film`.
 
+A supplemental film covers just the Trails & waterfalls layer (turning it on, reading the map, opening and orbiting a waterfall, a route's elevation profile, the 3D trail flight, the waterfall tour, and trails in town reports and both finders), in the same voice and style. Its scenes are in `video/storyboard_trails.py`; every option above works with `--film trails`, and its files are named `island-atlas-trails*`:
+
+```bash
+.venv/Scripts/python.exe video/render.py --film trails            # 1440p master, 1080p copy, storyboard, script, captions
+.venv/Scripts/python.exe video/render.py --film trails --preview  # quick 960×540 cut with sound
+```
+
 ## Data sources
 
 | Layer | Source | Licence |

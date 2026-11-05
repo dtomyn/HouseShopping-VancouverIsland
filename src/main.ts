@@ -117,6 +117,8 @@ function initMap() {
     overlay = new MapboxOverlay({
       interleaved: true,
       layers: [],
+      // a few pixels of slack, so a thin trail line is easy to point at
+      pickingRadius: 6,
       onHover,
       onClick,
       getCursor: ({ isHovering, isDragging }) => (isDragging ? 'grabbing' : isHovering ? 'pointer' : 'grab'),

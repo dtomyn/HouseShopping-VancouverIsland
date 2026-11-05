@@ -367,6 +367,8 @@ export async function buildTrails(h) {
   // one named fall mapped twice (top and foot, or node and Wikidata point): keep the better-documented one
   const score = (f) => (f.img ? 4 : 0) + (f.h ? 2 : 0) + (f.wiki ? 1 : 0);
   falls = falls.filter((f) => !f.name || !falls.some((g) => g !== f && g.name === f.name && near([f.lon, f.lat], [g.lon, g.lat], 1500) && (score(g) > score(f) || (score(g) === score(f) && falls.indexOf(g) < falls.indexOf(f)))));
+  // the unnamed tiers of a named fall (Della Falls drops in three) belong to it
+  falls = falls.filter((f) => f.name || !falls.some((g) => g.name && near([f.lon, f.lat], [g.lon, g.lat], 200)));
 
   await loadTiles(falls.map((f) => [f.lon, f.lat]));
   // nearest mapped path to each fall, via a coarse grid of path midpoints
