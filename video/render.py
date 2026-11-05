@@ -57,6 +57,8 @@ NAME = "island-atlas-explainer"
 PREFIX = ""
 # --film picks a storyboard module: video/storyboard.py, or video/storyboard_<film>.py
 FILMS = {"main": "storyboard", "trails": "storyboard_trails"}
+# The live site (GitHub Pages), linked from the YouTube descriptions unless --url gives another address.
+SITE = "https://dtomyn.github.io/HouseShopping-VancouverIsland/"
 LAYOUT = (1920, 1080)
 SCALE_MASTER, SCALE_PREVIEW, SCALE_BOARD = 4 / 3, 0.5, 2 / 3  # 2560x1440, 960x540, 1280x720
 VOICE_DIR = OUT / "vo"
@@ -491,6 +493,7 @@ def write_script(film, found):
 
 
 def write_youtube(film, found, url):
+    url = url or SITE
     chapters = "\n".join(f"{clock_label(c['at'])} {c['title']}" for c in film.chapters)
     text = f"""TITLE
 How to use Island Atlas: a step-by-step guide
