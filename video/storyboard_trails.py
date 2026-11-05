@@ -320,23 +320,39 @@ def ending(f):
 
 def youtube(found, url, chapters):
     return f"""TITLE
-Island Atlas: exploring trails and waterfalls in 3D
+Island Atlas add-on: Trails & Waterfalls in 3D | Vancouver Island
 
 DESCRIPTION
-A short follow-up to the Island Atlas how-to: the new Trails & waterfalls layer. Every mapped footpath on Vancouver Island and the shortlisted Gulf and Discovery islands ({found['tr_km']:,} km), {found['tr_routes']} named hiking routes, and {found['tr_falls']} waterfalls. How to open a waterfall and orbit it in 3D, read a trail's elevation profile, fly the trail over satellite imagery on real terrain, take the waterfall tour, and use trails and waterfalls in town reports, Town Finder and Land Finder.
+New in Island Atlas: a Trails & Waterfalls layer. This short add-on picks up where the main how-to guide leaves off, so if you're new to the app, start there:
+▶ How to use Island Atlas: a step-by-step guide: {MAIN_VIDEO}
+
+The new layer maps every footpath on Vancouver Island and the Gulf and Discovery islands: {found['tr_km']:,} km of trail, {found['tr_routes']} named hiking routes coloured by effort, and {found['tr_falls']} waterfalls drawn as beams of light, as tall as their drop where it's known. The tallest, {found['tr_tall']}, drops {found['tr_tall_h']} m.
+
+In this video:
+• Turn on the layer and read the map
+• Open a waterfall and orbit it in 3D
+• Follow a trail and read its elevation profile
+• Fly the trail in 3D, over satellite imagery on the real terrain
+• Take the waterfall tour of {found['tr_tour']} photographed falls
+• Find trails and waterfalls in town reports, Town Finder and Land Finder
 
 Try it yourself: {url or '[add the link]'}
 
-Everything in this video is the real application, filmed frame by frame. The narration uses a synthetic voice (Kokoro).
-
+Chapters
 {chapters}
 
+Everything in this video is the real application, filmed frame by frame. The narration uses a synthetic voice (Kokoro).
+
 Data: trails and waterfalls © OpenStreetMap contributors (ODbL); photos and heights from Wikidata (CC0) and Wikimedia Commons (each photo under its own licence); terrain from Mapzen / AWS Terrain Tiles; imagery © Esri, Maxar, Earthstar Geographics. Basemap © OpenStreetMap contributors © CARTO. Data extract {found['extract']}.
-Trails can be closed, overgrown, on private land or seasonal: check BC Parks or the local trail society before you go.
+Trails can be closed, overgrown, on private land or seasonal: check BC Parks, Recreation Sites and Trails BC, or the local trail society before you go. This is an exploration tool, not trail or safety advice.
 
 TAGS
-Vancouver Island, hiking, waterfalls, trails, Della Falls, 3D map, tutorial, open data, Gulf Islands, BC
+Island Atlas, Vancouver Island, hiking, hiking trails, waterfalls, Della Falls, Strathcona Park, 3D map, trail map, Gulf Islands, BC hiking, open data, OpenStreetMap, tutorial
 """
+
+
+# where the main how-to lives on YouTube, for the add-on's description; fill in once it's published
+MAIN_VIDEO = "[add the link to the main video]"
 
 
 SCENES = [
