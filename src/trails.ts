@@ -9,6 +9,7 @@ import { TripsLayer } from '@deck.gl/geo-layers';
 import type { Layer, PickingInfo } from '@deck.gl/core';
 import { Data, TrailNet, TrailRoute, Trails, Waterfall, fmt, km, loadTrailNet } from './data';
 import type { AtlasLayer, PanelHandle } from './layers';
+import { esc, safeUrl } from './html';
 
 type RGBA = [number, number, number, number];
 const rgb = (c: string, a = 255): RGBA => { const o = d3.rgb(c); return [o.r, o.g, o.b, a]; };
@@ -19,10 +20,12 @@ export const TRAIL_COLOR = '#34d399';
 const FALL_COLOR = '#8be3ff';
 const LEVEL = { 1: { name: 'Easy', c: '#6ee7b7' }, 2: { name: 'Moderate', c: '#fcd34d' }, 3: { name: 'Hard', c: '#fb7185' } } as const;
 const SAC_NAME = ['', 'hiking trail', 'mountain hiking', 'demanding / alpine'];
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const photo = (file: string, w = 640) => `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file)}?width=${w}`;
 const commonsPage = (file: string) => `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(file.replace(/ /g, '_'))}`;
-const wikiUrl = (w: string) => { const [lang, ...t] = w.split(':'); return `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(t.join(':').replace(/ /g, '_'))}`; };
+/** An OSM/Wikidata "lang:Title" tag as a Wikipedia link, or null when the language code isn't one. */
+const wikiUrl = (w: string) => { const [lang, ...t] = w.split(':'); return /^[a-z]{2,3}(-[a-z]+)*$/i.test(lang) && t.length ? `https://${lang.toLowerCase()}.wikipedia.org/wiki/${encodeURIComponent(t.join(':').replace(/ /g, '_'))}` : null; };
+/** The page for a fall: its OpenStreetMap node/way, or its Wikidata item when only Wikidata maps it. */
+const fallPage = (f: Waterfall) => (f.osm.startsWith('wikidata/') ? { url: `https://www.wikidata.org/wiki/${encodeURIComponent(f.osm.slice(9))}`, label: 'Wikidata' } : { url: `https://www.openstreetmap.org/${f.osm.split('/').map(encodeURIComponent).join('/')}`, label: 'OpenStreetMap' });
 const fallName = (f: Waterfall) => f.name ?? 'Unnamed waterfall';
 /** Falls with a photo, one per photo (a fall mapped twice can share one). */
 const photographed = (falls: Waterfall[]) => { const seen = new Set<string>(); return falls.filter((f) => f.img && !seen.has(f.img) && !!seen.add(f.img)); };
@@ -534,10 +537,11 @@ function renderRoute(el: HTMLElement, data: Data, i: number) {
   const r = T!.routes[i], falls = T!.falls, g = geoOf(r, falls);
   const lv = LEVEL[r.level];
   const near = data.munis.map((m) => ({ m, d: km(m.lon, m.lat, r.line[0][0], r.line[0][1]) })).sort((a, b) => a.d - b.d)[0];
-  const osm = `https://www.openstreetmap.org/relation/${r.id}`;
+  const osm = `https://www.openstreetmap.org/relation/${Number(r.id)}`;
+  const web = safeUrl(r.web), wiki = r.wiki ? wikiUrl(r.wiki) : null;
   el.innerHTML = `
     ${backBar()}
-    <div class="kicker" style="--c:${lv.c}">${lv.name} · ${r.loop ? 'loop' : 'one way'}${r.net ? ` · ${({ iwn: 'international', nwn: 'national', rwn: 'regional', lwn: 'local' } as Record<string, string>)[r.net] ?? r.net} route` : ''}</div>
+    <div class="kicker" style="--c:${lv.c}">${lv.name} · ${r.loop ? 'loop' : 'one way'}${r.net ? ` · ${({ iwn: 'international', nwn: 'national', rwn: 'regional', lwn: 'local' } as Record<string, string>)[r.net] ?? esc(r.net)} route` : ''}</div>
     <h2>${esc(r.name)}</h2>
     ${r.desc ? `<p class="lede">${esc(r.desc)}</p>` : ''}
     <div class="metric-grid">
@@ -551,8 +555,8 @@ function renderRoute(el: HTMLElement, data: Data, i: number) {
     <button class="tr-fly"><span>▶</span> Fly this trail in 3D</button>
     ${r.falls.length ? `<h3>Waterfalls along the way</h3><div class="tr-falls">${g.fallsAt.sort((a, b) => a.d - b.d).map(({ i: fi, d }) => `<button class="tr-fall" data-fall="${fi}"><span class="tr-drop"></span>${esc(fallName(falls[fi]))} <small>km ${d.toFixed(1)}${falls[fi].h ? ` · ${Math.round(falls[fi].h!)} m` : ''}</small></button>`).join('')}</div>` : ''}
     <div class="ld-actions">
-      ${r.web ? `<a class="ld-btn" target="_blank" rel="noopener" href="${esc(r.web)}">Website ↗</a>` : ''}
-      ${r.wiki ? `<a class="ld-btn" target="_blank" rel="noopener" href="${wikiUrl(r.wiki)}">Wikipedia ↗</a>` : ''}
+      ${web ? `<a class="ld-btn" target="_blank" rel="noopener noreferrer" href="${esc(web)}">Website ↗</a>` : ''}
+      ${wiki ? `<a class="ld-btn" target="_blank" rel="noopener" href="${esc(wiki)}">Wikipedia ↗</a>` : ''}
       <a class="ld-btn" target="_blank" rel="noopener" href="${osm}">OpenStreetMap ↗</a>
       <a class="ld-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${r.line[0][1].toFixed(5)},${r.line[0][0].toFixed(5)}">Directions to the trailhead ↗</a>
     </div>
@@ -566,6 +570,7 @@ function renderRoute(el: HTMLElement, data: Data, i: number) {
 function renderFall(el: HTMLElement, data: Data, i: number) {
   const f = T!.falls[i];
   const near = data.munis.map((m) => ({ m, d: km(m.lon, m.lat, f.lon, f.lat) })).sort((a, b) => a.d - b.d)[0];
+  const wiki = f.wiki ? wikiUrl(f.wiki) : null, page = fallPage(f);
   const access = f.path == null || f.path > 2000 ? 'No mapped path within 2 km: off-trail or by water' : f.path < 60 ? 'Right on a mapped trail' : `${fmt.int(f.path)} m from the nearest mapped path`;
   el.innerHTML = `
     ${backBar()}
@@ -580,8 +585,8 @@ function renderFall(el: HTMLElement, data: Data, i: number) {
     <button class="tr-fly"><span>⟳</span> Orbit it in 3D</button>
     ${f.routes.length ? `<h3>Routes that pass it</h3><ol class="tr-routes">${f.routes.map((ri) => { const r = T!.routes[ri]; return `<li data-route="${ri}" style="--c:${LEVEL[r.level].c}"><span class="tr-lv"></span><span class="tr-nm"><b>${esc(r.name)}</b><small>${r.km} km · ↑${fmt.int(r.up)} m · ${hrsText(r.hrs)}</small></span>${miniProfile(r)}</li>`; }).join('')}</ol>` : ''}
     <div class="ld-actions">
-      ${f.wiki ? `<a class="ld-btn" target="_blank" rel="noopener" href="${wikiUrl(f.wiki)}">Wikipedia ↗</a>` : ''}
-      <a class="ld-btn" target="_blank" rel="noopener" href="https://www.openstreetmap.org/${f.osm}">OpenStreetMap ↗</a>
+      ${wiki ? `<a class="ld-btn" target="_blank" rel="noopener" href="${esc(wiki)}">Wikipedia ↗</a>` : ''}
+      <a class="ld-btn" target="_blank" rel="noopener" href="${esc(page.url)}">${page.label} ↗</a>
       <a class="ld-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/@${f.lat},${f.lon},1200m/data=!3m1!1e3">Satellite ↗</a>
     </div>
     <p class="note">Waterfall locations and names from OpenStreetMap${f.img || f.h ? '; photo and height from the linked Wikidata item where OpenStreetMap had none' : ''}. Many falls are on steep, slippery ground: stay behind barriers and off wet rock.</p>`;

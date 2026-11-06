@@ -2,6 +2,7 @@
 import * as d3 from 'd3';
 import { Data, fmt, trailingMedianPrice } from './data';
 import { lineChart } from './charts';
+import { esc } from './html';
 import { CRITERIA, TownMetrics, erFerryWait, rankTowns, townMetrics } from './metrics';
 
 const STORE_KEY = 'island-atlas:weights';
@@ -105,8 +106,8 @@ function outdoorsRow(t: TownMetrics, data: Data, metric: (l: string, dot: string
   const o = t.outdoors, T = data.trails;
   if (!o || !T) return '';
   const c = '#34d399';
-  const fall = (i: number, d: number) => { const f = T.falls[i]; return `<button class="tr-fall" data-out="fall" data-i="${i}"><span class="tr-drop"></span>${f.name}${f.h ? ` <small>${Math.round(f.h)} m</small>` : ''} <small>· ${d.toFixed(0)} km</small></button>`; };
-  const route = (i: number, d: number) => { const r = T.routes[i]; return `<button class="tr-fall tr-rt" data-out="route" data-i="${i}" style="--c:${['', '#6ee7b7', '#fcd34d', '#fb7185'][r.level]}"><span class="tr-lv"></span>${r.name} <small>${r.km} km · ${d < 1 ? 'in town' : `${d.toFixed(0)} km`}</small></button>`; };
+  const fall = (i: number, d: number) => { const f = T.falls[i]; return `<button class="tr-fall" data-out="fall" data-i="${i}"><span class="tr-drop"></span>${esc(f.name)}${f.h ? ` <small>${Math.round(f.h)} m</small>` : ''} <small>· ${d.toFixed(0)} km</small></button>`; };
+  const route = (i: number, d: number) => { const r = T.routes[i]; return `<button class="tr-fall tr-rt" data-out="route" data-i="${i}" style="--c:${['', '#6ee7b7', '#fcd34d', '#fb7185'][r.level]}"><span class="tr-lv"></span>${esc(r.name)} <small>${r.km} km · ${d < 1 ? 'in town' : `${d.toFixed(0)} km`}</small></button>`; };
   return `<h3>Trails &amp; waterfalls nearby</h3>
     <div class="metric-grid">
       ${metric('Footpaths', c, `${o.km10.toLocaleString('en-CA')} km`, 'of mapped trail and path within 10 km')}
@@ -121,7 +122,7 @@ function ferryMetric(t: TownMetrics, metric: (l: string, dot: string, v: string,
   const f = t.muni.ferry;
   if (!f) return '';
   const v = f.car ? `${f.sailings} sailings a day` : 'No car ferry';
-  return metric('Ferry', '#4cc9f0', v, `last boat home ${f.last} · ${f.min} min crossing<br>${f.routes}`);
+  return metric('Ferry', '#4cc9f0', v, `last boat home ${esc(f.last)} · ${f.min} min crossing<br>${esc(f.routes)}`);
 }
 
 /** Nearest 24/7 emergency room by road, from the pipeline's OSRM drive times. */

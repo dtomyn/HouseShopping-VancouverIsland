@@ -8,6 +8,7 @@ import { Data, FutureTown, FutureVar, Facility, FirePerimeter, FirePoint, MONTHS
 import { barChart, lineChart, rampCSS, scatterChart, stripes, ChartHandle } from './charts';
 import { NormalVar, islandAnomalies, slope, townMetrics } from './metrics';
 import { trailsLayer } from './trails';
+import { esc } from './html';
 
 /** `hovered` is the municipality key under the pointer (town pin or column), if any. */
 export type Ctx = { time: number; speed: number; data: Data; selected: string | null; hovered: string | null; focusedId: string; clock: number };
@@ -65,7 +66,7 @@ export function nearestTown(munis: Muni[], lon: number, lat: number) {
 }
 
 const kicker = (l: AtlasLayer, text: string) => `<div class="kicker" style="--c:${l.color}">${text}</div>`;
-const sourceLine = (s: string) => `<div class="source">Source: ${s}</div>`;
+const sourceLine = (s: string) => `<div class="source">Source: ${esc(s)}</div>`;
 const mk = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -377,7 +378,7 @@ function quakesLayer(data: Data): AtlasLayer {
       el.insertAdjacentHTML('beforeend', `<h3>Magnitude over time</h3>`);
       const set = deferChart(el.appendChild(mk('div')), (c) =>
         scatterChart(c, {
-          data: rows.map((q) => ({ x: q[4], y: q[3], r: Math.max(1.2, (q[3] - 2) ** 1.6 * 0.8), color: depthColor(q[2]), label: `<b>M${q[3]}</b> · ${Math.floor(q[4])}<br>${q[5]}<br><span class="tk">depth</span> <span class="tv">${q[2]} km</span>` })),
+          data: rows.map((q) => ({ x: q[4], y: q[3], r: Math.max(1.2, (q[3] - 2) ** 1.6 * 0.8), color: depthColor(q[2]), label: `<b>M${q[3]}</b> · ${Math.floor(q[4])}<br>${esc(q[5])}<br><span class="tk">depth</span> <span class="tv">${q[2]} km</span>` })),
           xDomain: [1900, 2027], yDomain: [2.5, 8], height: 150, yFormat: (v) => `M${v}`,
         }),
       );
@@ -407,7 +408,7 @@ function quakesLayer(data: Data): AtlasLayer {
       const q = info.object as Quake;
       if (!q || !info.layer?.id.startsWith('quakes')) return null;
       const d = new Date(Date.UTC(Math.floor(q[4]), 0, 1) + (q[4] % 1) * 365.25 * 864e5);
-      return `<b>M${q[3]} earthquake</b><br>${q[5]}<br><span class="tk">Date</span> <span class="tv">${d.toISOString().slice(0, 10)}</span><br><span class="tk">Depth</span> <span class="tv">${q[2]} km</span>`;
+      return `<b>M${q[3]} earthquake</b><br>${esc(q[5])}<br><span class="tk">Date</span> <span class="tv">${d.toISOString().slice(0, 10)}</span><br><span class="tk">Depth</span> <span class="tv">${q[2]} km</span>`;
     },
   };
   return l;
@@ -1049,7 +1050,7 @@ function riversLayer(data: Data): AtlasLayer {
         .slice(0, 5);
       el.insertAdjacentHTML('beforeend', `
         <h3>Most extreme peaks on record</h3>
-        <div class="legend" style="display:grid;gap:6px">${records.map((d) => `<span><b>${d.r.toFixed(1)}×</b> · ${d.s.name} <span class="tk">(${d.s.peakDates[d.y] ?? d.y})</span></span>`).join('')}</div>
+        <div class="legend" style="display:grid;gap:6px">${records.map((d) => `<span><b>${d.r.toFixed(1)}×</b> · ${esc(d.s.name)} <span class="tk">(${esc(d.s.peakDates[d.y] ?? d.y)})</span></span>`).join('')}</div>
         <h3>Peak flow vs. normal</h3>
         <div class="ramp" style="background:${rampCSS((t) => ratioColor(0.4 + t * 2.1))}"></div>
         <div class="ramp-labels"><span>0.4×</span><span>1×</span><span>1.5×</span><span>2.5×+</span></div>
@@ -1074,7 +1075,7 @@ function riversLayer(data: Data): AtlasLayer {
       if (!o || !info.layer?.id.startsWith('rivers')) return null;
       const s = o.s ?? o;
       const rec = Object.entries(s.peaks as Record<string, number>).reduce((a, b) => (b[1] > a[1] ? b : a));
-      return `<b>${s.name}</b><br><span class="tk">Gauge</span> <span class="tv">${s.id}</span>${o.r != null ? `<br><span class="tk">This year</span> <span class="tv">${o.r.toFixed(2)}× normal</span>` : ''}<br><span class="tk">Normal annual peak</span> <span class="tv">${s.median} m³/s</span><br><span class="tk">Record</span> <span class="tv">${rec[1]} m³/s (${rec[0]})</span>`;
+      return `<b>${esc(s.name)}</b><br><span class="tk">Gauge</span> <span class="tv">${esc(s.id)}</span>${o.r != null ? `<br><span class="tk">This year</span> <span class="tv">${o.r.toFixed(2)}× normal</span>` : ''}<br><span class="tk">Normal annual peak</span> <span class="tv">${s.median} m³/s</span><br><span class="tk">Record</span> <span class="tv">${rec[1]} m³/s (${rec[0]})</span>`;
     },
   };
   return l;
@@ -1182,7 +1183,7 @@ function climateLayer(data: Data): AtlasLayer {
       if (!o || !info.layer?.id.startsWith('climate')) return null;
       const s = o.s;
       const yrs = Object.keys(s.temp);
-      return `<b>${s.name}</b><br><span class="tk">This year</span> <span class="tv">${fmt.signed(o.a, 2)} °C vs normal</span><br><span class="tk">1961–90 normal</span> <span class="tv">${s.baseline.toFixed(1)} °C</span><br><span class="tk">Record</span> <span class="tv">${yrs[0]}–${yrs.at(-1)}</span>`;
+      return `<b>${esc(s.name)}</b><br><span class="tk">This year</span> <span class="tv">${fmt.signed(o.a, 2)} °C vs normal</span><br><span class="tk">1961–90 normal</span> <span class="tv">${s.baseline.toFixed(1)} °C</span><br><span class="tk">Record</span> <span class="tv">${yrs[0]}–${yrs.at(-1)}</span>`;
     },
   };
   return l;
@@ -1292,7 +1293,7 @@ function normalsLayer(data: Data): AtlasLayer {
         hero(3, med != null ? fmtV(med) : '–', 'island median');
         const max = d3.max(r, (s) => val(s)!) ?? 1;
         body.innerHTML = `<h3>${cur.best} · ${cur.label}</h3>
-          <ol class="rank-list">${r.map((s, i) => `<li><span class="rk">${i + 1}</span><span><span class="nm">${s.name}</span>${s.yrs < 20 ? `<br><span class="rd">${s.yrs} yrs of record</span>` : ''}</span><span><div class="bar"><i style="width:${Math.round((val(s)! / max) * 100)}%;background:${cur.ramp(val(s)!)}"></i></div><div class="bar-v">${fmt.int(val(s)!)}</div></span></li>`).join('')}</ol>
+          <ol class="rank-list">${r.map((s, i) => `<li><span class="rk">${i + 1}</span><span><span class="nm">${esc(s.name)}</span>${s.yrs < 20 ? `<br><span class="rd">${s.yrs} yrs of record</span>` : ''}</span><span><div class="bar"><i style="width:${Math.round((val(s)! / max) * 100)}%;background:${cur.ramp(val(s)!)}"></i></div><div class="bar-v">${fmt.int(val(s)!)}</div></span></li>`).join('')}</ol>
           <div class="ramp" style="background:${rampCSS((t) => cur.ramp(cur.domain[0] + t * (cur.domain[1] - cur.domain[0])))}"></div>
           <div class="ramp-labels"><span>${cur.domain[0]} ${cur.unit}</span><span>${cur.domain[1]}+ ${cur.unit}</span></div>
           ${cur.key === 'sun' ? `<div class="callout" style="--c:${color}">Only ${r.length} island stations measure sunshine. The Town Report and Town Finder borrow the nearest one (within 60 km) and name it.</div>` : ''}`;
@@ -1313,7 +1314,7 @@ function normalsLayer(data: Data): AtlasLayer {
       if (!o || !info.layer?.id.startsWith('normals')) return null;
       const row = (k: string, v: string | null) => (v ? `<br><span class="tk">${k}</span> <span class="tv">${v}</span>` : '');
       const n = (v: number | undefined, u: string) => (v != null ? `${fmt.int(v)} ${u}` : null);
-      return `<b>${o.name}</b>${row('Sunshine', n(o.sun, 'h/yr'))}${row('Rain days', n(o.wetDays, '/yr'))}${row('Frost days', n(o.frostDays, '/yr'))}${row('Snowfall', n(o.snow, 'cm/yr'))}${row('Precipitation', n(o.precip, 'mm/yr'))}${row('Jan / Jul mean', o.tJan != null && o.tJul != null ? `${o.tJan.toFixed(1)} / ${o.tJul.toFixed(1)} °C` : null)}${row('Wettest month', o.wet ? `${MONTHS[o.wet[0] - 1]} (${fmt.int(o.wet[1])} mm)` : null)}<br><span class="tk">${p0}–${p1} normals${o.yrs < 20 ? ` · ${o.yrs} yrs of record` : ''}</span>`;
+      return `<b>${esc(o.name)}</b>${row('Sunshine', n(o.sun, 'h/yr'))}${row('Rain days', n(o.wetDays, '/yr'))}${row('Frost days', n(o.frostDays, '/yr'))}${row('Snowfall', n(o.snow, 'cm/yr'))}${row('Precipitation', n(o.precip, 'mm/yr'))}${row('Jan / Jul mean', o.tJan != null && o.tJul != null ? `${o.tJan.toFixed(1)} / ${o.tJul.toFixed(1)} °C` : null)}${row('Wettest month', o.wet ? `${MONTHS[o.wet[0] - 1]} (${fmt.int(o.wet[1])} mm)` : null)}<br><span class="tk">${p0}–${p1} normals${o.yrs < 20 ? ` · ${o.yrs} yrs of record` : ''}</span>`;
     },
   };
   return l;
@@ -1736,11 +1737,11 @@ function hospitalsLayer(data: Data): AtlasLayer {
       const small = fac.filter((f) => f.ed !== '24/7');
       el.insertAdjacentHTML('beforeend', `
         <h3>${routed ? 'Drive' : 'Distance'} to the nearest 24/7 emergency room</h3>
-        <ol class="rank-list">${rows.map((r, i) => `<li><span class="rk">${i + 1}</span><span><span class="nm">${r.m.name}</span><br><span class="rd">${r.e.name} · ${Math.round(r.e.km)} km${r.e.ferry ? " · by ferry, plus the wait" : ""}</span></span><span><div class="bar"><i style="width:${Math.round((r.v / max) * 100)}%;background:${ramp(r.v)}"></i></div><div class="bar-v">${Math.round(r.v)}</div></span></li>`).join('')}</ol>
+        <ol class="rank-list">${rows.map((r, i) => `<li><span class="rk">${i + 1}</span><span><span class="nm">${r.m.name}</span><br><span class="rd">${esc(r.e.name)} · ${Math.round(r.e.km)} km${r.e.ferry ? " · by ferry, plus the wait" : ""}</span></span><span><div class="bar"><i style="width:${Math.round((r.v / max) * 100)}%;background:${ramp(r.v)}"></i></div><div class="bar-v">${Math.round(r.v)}</div></span></li>`).join('')}</ol>
         <div class="ramp" style="background:${rampCSS((t) => ramp(5 + t * 85))}"></div>
         <div class="ramp-labels"><span>5 ${unit}</span><span>30</span><span>90+ ${unit}</span></div>
         <div class="legend"><span><i class="sw" style="background:#fff;box-shadow:0 0 0 2px ${color}"></i>24/7 ER</span><span><i class="sw" style="background:#101626;box-shadow:0 0 0 2px #a9b6ff"></i>24/7, call ahead</span><span><i class="sw" style="background:#101626;box-shadow:0 0 0 2px #7d879c"></i>limited hours</span><span>dashed route = ferry</span></div>
-        ${small.length ? `<div class="callout" style="--c:${color}">Smaller sites: ${small.map((f) => `<b>${f.city}</b> (${f.hours})`).join('; ')}. They are left out of the ranking above.</div>` : ''}
+        ${small.length ? `<div class="callout" style="--c:${color}">Smaller sites: ${small.map((f) => `<b>${esc(f.city)}</b> (${esc(f.hours)})`).join('; ')}. They are left out of the ranking above.</div>` : ''}
         <p class="note">${routed ? 'Drive times are the OSRM router’s estimate for normal free-flowing traffic on OpenStreetMap roads, from the town centre. They don’t include ferry waits, winter driving, or closures such as Highway 4 or the Malahat.' : 'No routing service was reachable when this data was built, so these are straight-line distances, not drive times.'} Opening hours are as listed by HealthLinkBC; rural ERs sometimes close temporarily for staffing, and services (surgery, maternity, cardiac care) differ by hospital — check Island Health before relying on one.</p>
         ${sourceLine(`${H.source}. ${H.routingSource ?? 'Straight-line distances.'}`)}`);
       return { update() {} };
@@ -1750,12 +1751,12 @@ function hospitalsLayer(data: Data): AtlasLayer {
       if (!info.object || !id.startsWith('hospitals')) return null;
       if (id === 'hospitals-sites') {
         const f = info.object as Facility;
-        return `<b>${f.name}</b><br><span class="tk">${f.hospital ? 'Hospital' : 'Health centre'} · ${f.city}</span><br><span class="tk">Emergency</span> <span class="tv">${f.ed ? ED_LABEL[f.ed] : 'none listed'}</span>${f.hours && f.ed !== '24/7' ? `<br><span class="tk">${f.hours}</span>` : ''}`;
+        return `<b>${esc(f.name)}</b><br><span class="tk">${f.hospital ? 'Hospital' : 'Health centre'} · ${esc(f.city)}</span><br><span class="tk">Emergency</span> <span class="tv">${f.ed ? ED_LABEL[f.ed] : 'none listed'}</span>${f.hours && f.ed !== '24/7' ? `<br><span class="tk">${esc(f.hours)}</span>` : ''}`;
       }
       const o: any = info.object;
       const e = er.get(o.m?.key);
       if (!e) return null;
-      return `<b>${o.m.name}</b><br><span class="tk">Nearest 24/7 ER</span> <span class="tv">${e.min != null ? `${e.min} min` : `${Math.round(e.km)} km`}</span><br><span class="tk">${e.name} · ${Math.round(e.km)} km by ${e.min != null ? 'road' : 'straight line'}</span><br><span class="tk">Click for town report</span>`;
+      return `<b>${o.m.name}</b><br><span class="tk">Nearest 24/7 ER</span> <span class="tv">${e.min != null ? `${e.min} min` : `${Math.round(e.km)} km`}</span><br><span class="tk">${esc(e.name)} · ${Math.round(e.km)} km by ${e.min != null ? 'road' : 'straight line'}</span><br><span class="tk">Click for town report</span>`;
     },
   };
   return l;
@@ -1902,13 +1903,13 @@ function smokeLayer(data: Data): AtlasLayer {
         .sort((p, q) => p.a - q.a || q.n - p.n);
       el.insertAdjacentHTML('beforeend', `
         <h3>Smokiest years</h3>
-        <div class="legend" style="display:grid;gap:6px">${worst.map((y) => { const r = isl.get(y)!, top = topStation(y); return `<span><b>${y}</b> · ${r[4].toFixed(1)} days on average${top ? ` <span class="tk">(${short(top.s.name)}: ${top.v[3]} days, worst day ${Math.round(top.v[1] ?? 0)} µg/m³)</span>` : ''}</span>`; }).join('')}</div>
+        <div class="legend" style="display:grid;gap:6px">${worst.map((y) => { const r = isl.get(y)!, top = topStation(y); return `<span><b>${y}</b> · ${r[4].toFixed(1)} days on average${top ? ` <span class="tk">(${esc(short(top.s.name))}: ${top.v[3]} days, worst day ${Math.round(top.v[1] ?? 0)} µg/m³)</span>` : ''}</span>`; }).join('')}</div>
         <h3>Fire-season days over the objective</h3>
         <div class="ramp" style="background:${rampCSS((t) => ramp(t * 20))}"></div>
         <div class="ramp-labels"><span>0</span><span>3</span><span>10</span><span>20+</span></div>
         <div class="callout" style="--c:${color}"><b>Why ${thr} µg/m³?</b> It is British Columbia’s Ambient Air Quality Objective for PM2.5 averaged over 24 hours, adopted in 2009. (BC judges compliance on the 98th-percentile day of a year; here we simply count every day above it.) The map counts May–October only, when it is mostly wildfire smoke. Several valley towns also cross it in winter from wood-stove smoke trapped under cold air — hover a column, or open a Town Report, for all-year counts.</div>
         <h3>Station coverage</h3>
-        <div class="legend" style="display:grid;gap:4px;font-size:12px">${cov.map((c) => `<span>${c.s.name} <span class="tk">${c.a === c.b ? c.a : `${c.a}–${c.b}`} · ${c.n} yr${c.n === 1 ? '' : 's'}</span></span>`).join('')}</div>
+        <div class="legend" style="display:grid;gap:4px;font-size:12px">${cov.map((c) => `<span>${esc(c.s.name)} <span class="tk">${c.a === c.b ? c.a : `${c.a}–${c.b}`} · ${c.n} yr${c.n === 1 ? '' : 's'}</span></span>`).join('')}</div>
         <p class="note">Monitors are few, cluster on the east coast, and opened in different years, so the island average mixes different sets of stations — early years rest on Victoria alone and the west coast and north island are barely measured. A station-year counts only when at least 75% of its days have data (and a day needs 18 of 24 hours). Instruments changed over time; older TEOM monitors tended to read low in smoke and cold weather, so early years may undercount.</p>
         ${sourceLine(S.source)}`);
       return {
@@ -1931,7 +1932,7 @@ function smokeLayer(data: Data): AtlasLayer {
       const full = Object.keys(s.y).filter((y) => s.y[y][0] != null);
       const yr = shownYear, v = s.y[yr];
       const now = v ? (v[0] != null ? `<br><span class="tk">${yr}</span> <span class="tv">${v[3]} days over ${thr} in May–Oct (${v[0]} all year)</span><br><span class="tk">Worst day</span> <span class="tv">${v[1]} µg/m³</span>` : `<br><span class="tk">${yr}</span> <span class="tv">only ${Math.round(v[2] * 100)}% of days measured</span>`) : '';
-      return `<b>${s.name}</b>${now}<br><span class="tk">Full years</span> <span class="tv">${full.length ? `${full.length} (${full[0]}–${full.at(-1)})` : 'none'}</span>`;
+      return `<b>${esc(s.name)}</b>${now}<br><span class="tk">Full years</span> <span class="tv">${full.length ? `${full.length} (${full[0]}–${full.at(-1)})` : 'none'}</span>`;
     },
   };
   return l;
