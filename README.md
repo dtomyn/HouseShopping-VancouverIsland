@@ -62,6 +62,10 @@ npm run dev
 
 The pre-built data in `public/data/` is committed, so the app runs immediately.
 
+### Dev container (optional)
+
+`.devcontainer/devcontainer.json` gives you a ready-made Linux environment with Node 22 (the version the GitHub Pages build uses) and `curl` for the data pipeline. With Docker Desktop running, open the folder in VS Code and run **Dev Containers: Reopen in Container**. It installs dependencies with `npm ci` into its own `node_modules` volume, so the Windows copy is left alone. `npm run dev`, `npm run build` and `npm run data` all work inside it, and port 5173 is forwarded to your browser. The explainer video isn't set up in the container because it needs Microsoft Edge with a real GPU, so render it on Windows as described below.
+
 ### Refreshing the data
 
 ```bash
