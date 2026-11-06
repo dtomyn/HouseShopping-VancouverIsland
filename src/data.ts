@@ -14,6 +14,8 @@ export type Muni = {
  * Island, the last departure back ("HH:MM"), the shortest crossing in minutes, and whether cars go.
  */
 export type Ferry = { car: boolean; sailings: number; last: string; min: number; routes: string; schedule: string };
+/** ferries.json: BC Ferries links worked out from the operator's GTFS timetable feed. */
+export type Ferries = { source: { url: string; version: string; start: string; end: string; dates: string[] }; places: Record<string, Ferry> };
 /** How an island's price was estimated: 2021 Census average owner value, scaled onto a rural sales area. */
 export type IslandPrice = { area: string; census: number; owners: number; calib: number; factor: number };
 
@@ -122,6 +124,7 @@ export type Data = {
   smoke: Smoke | null;
   future: Future | null;
   trails: Trails | null;
+  ferries: Ferries | null;
   manifest: Record<string, { ok: boolean; updated?: string; lastError?: string }>;
 };
 
@@ -138,7 +141,7 @@ async function load<T>(name: string): Promise<T | null> {
 }
 
 export async function loadAll(): Promise<Data> {
-  const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, manifest] = await Promise.all([
+  const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, manifest] = await Promise.all([
     load<GeoJSON.Feature>('island'),
     load<Muni[]>('municipalities'),
     load<any>('fires'),
@@ -154,6 +157,7 @@ export async function loadAll(): Promise<Data> {
     load<Smoke>('smoke'),
     load<Future>('future'),
     load<Trails>('trails'),
+    load<Ferries>('ferries'),
     load<any>('manifest'),
   ]);
 
@@ -166,10 +170,13 @@ export async function loadAll(): Promise<Data> {
     }
     fires.perimeters = flat;
   }
+  // Timetable-feed ferry links replace any typed into the place list (only Lasqueti's is typed now).
+  for (const m of munis ?? []) if (ferries?.places[m.key]) m.ferry = ferries.places[m.key];
+
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, manifest: manifest ?? {} };
 }
 
 let netPromise: Promise<TrailNet | null> | null = null;

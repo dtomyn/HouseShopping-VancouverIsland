@@ -224,7 +224,7 @@ const SOURCES: Source[] = [
 
 const BARK: BarkSource[] = [
   { name: 'Coastline', key: 'island', owner: 'GeoBC', title: 'Freshwater Atlas islands', url: 'https://catalogue.data.gov.bc.ca/dataset/freshwater-atlas-islands', licence: OGL_BC, gives: 'The outline every layer is clipped to: Vancouver Island and the shortlisted Gulf and Discovery islands.' },
-  { name: 'Ferries', key: 'island', owner: 'BC Ferries · Western Pacific Marine', title: 'Published seasonal schedules', url: 'https://www.bcferries.com/routes-fares/schedules', licence: 'Transcribed by hand', gives: 'Weekday sailings, the last boat home and crossing times, typed into scripts/municipalities.mjs.', read: (d) => `${d.munis.filter((m) => m.ferry).length} ferry links` },
+  { name: 'Ferries', key: 'ferries', owner: 'BC Ferries (feed by Trillium Solutions) · Western Pacific Marine', title: 'BC Ferries GTFS timetable feed; Lasqueti’s timetable typed by hand', url: 'https://www.transit.land/feeds/f-c0-bcferries~bc~ca', licence: 'Public GTFS feed (no licence stated)', gives: 'Weekday sailings, the last boat home and crossing times, counted from a typical weekday in the feed; Lasqueti’s passenger ferry has no feed, so it is typed into scripts/municipalities.mjs.', read: (d) => `${d.munis.filter((m) => m.ferry).length} ferry links${d.ferries ? `, feed valid to ${d.ferries.source.end.slice(0, 4)}-${d.ferries.source.end.slice(4, 6)}-${d.ferries.source.end.slice(6)}` : ''}` },
   { name: 'Census 2021', key: 'population', owner: 'Statistics Canada', title: '2021 Census of Population, dissemination areas', url: 'https://www12.statcan.gc.ca/census-recensement/2021/dp-pd/prof/index.cfm', licence: 'Statistics Canada Open Licence', gives: 'Population, 65+ share and average home value for the unincorporated islands.', read: (d) => `${d.munis.filter((m) => m.island).length} island communities` },
   { name: 'Roads', key: 'hospitals', owner: 'OpenStreetMap contributors · OSRM', title: 'OSRM demo router on OpenStreetMap roads', url: 'https://www.openstreetmap.org/copyright', licence: 'ODbL', gives: 'The road routes and free-flow drive times to the nearest ER.' },
   { name: 'Basemap', owner: 'CARTO · OpenStreetMap contributors', title: 'Dark Matter vector basemap', url: 'https://carto.com/attributions', licence: 'ODbL / CARTO terms', gives: 'The dark map, place names and roads under every layer.' },
@@ -611,3 +611,4 @@ export function openSources(data: Data, opts: { onShow: (layerId: string) => voi
   requestAnimationFrame(step);
   el.querySelector<HTMLElement>('.close-x')!.focus({ preventScroll: true });
 }
+

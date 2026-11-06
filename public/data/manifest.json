@@ -1,62 +1,66 @@
 {
   "island": {
     "ok": true,
-    "updated": "2026-11-03T18:58:29.480Z"
+    "updated": "2026-11-06T16:05:44.563Z"
   },
   "quakes": {
     "ok": true,
-    "updated": "2026-11-03T18:32:03.785Z"
+    "updated": "2026-11-06T16:05:47.922Z"
   },
   "fires": {
     "ok": true,
-    "updated": "2026-11-03T18:32:03.023Z"
+    "updated": "2026-11-06T16:05:46.475Z"
   },
   "rivers": {
     "ok": true,
-    "updated": "2026-11-03T18:32:04.807Z"
+    "updated": "2026-11-06T16:05:48.143Z"
   },
   "climate": {
     "ok": true,
-    "updated": "2026-11-03T18:32:04.840Z"
+    "updated": "2026-11-06T16:05:48.190Z"
   },
   "population": {
     "ok": true,
-    "updated": "2026-11-03T18:55:05.253Z"
+    "updated": "2026-11-06T16:06:04.733Z"
   },
   "housing": {
     "ok": true,
-    "updated": "2026-11-03T18:56:30.498Z"
+    "updated": "2026-11-06T16:06:18.201Z"
   },
   "crime": {
     "ok": true,
-    "updated": "2026-11-03T18:32:22.760Z"
+    "updated": "2026-11-06T16:06:19.502Z"
   },
   "normals": {
     "ok": true,
-    "updated": "2026-11-03T18:32:04.893Z"
+    "updated": "2026-11-06T16:05:48.244Z"
   },
   "hospitals": {
     "ok": true,
-    "updated": "2026-11-03T18:32:56.842Z"
+    "updated": "2026-11-06T16:06:21.625Z"
   },
   "seismic": {
     "ok": true,
-    "updated": "2026-11-03T18:37:08.851Z"
+    "updated": "2026-11-06T16:10:31.864Z"
   },
   "smoke": {
     "ok": true,
-    "updated": "2026-11-03T18:37:10.144Z"
+    "updated": "2026-11-06T16:10:32.859Z"
   },
   "future": {
     "ok": true,
-    "updated": "2026-11-03T18:37:10.434Z"
+    "updated": "2026-11-06T16:10:33.048Z"
   },
   "land": {
     "ok": true,
-    "updated": "2026-11-04T01:32:25.941Z"
+    "updated": "2026-11-06T16:35:51.581Z"
   },
   "trails": {
     "ok": true,
-    "updated": "2026-11-04T23:21:39.578Z"
+    "updated": "2026-11-06T16:10:37.103Z"
+  },
+  "ferries": {
+    "ok": true,
+    "updated": "2026-11-06T16:05:44.762Z"
   }
 }

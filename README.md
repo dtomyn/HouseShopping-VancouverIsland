@@ -27,12 +27,12 @@ Press play and watch 100+ years unfold: wildfires flare and leave burn scars, ea
 - **Timeline** with play/pause, speeds, a sparkline of the focused layer, and clickable historic events (the 1946 M7.3 quake, the 1964 Port Alberni tsunami, the 2021 heat dome…). Events pop up as toasts and send a shockwave across the map as playback passes them.
 - **Town Report** — click any town for a report card: prices, population, 65+ share, crime, nearby wildfire and quake history, official earthquake shaking hazard, local climate and warming trend, nearest river's flood record, drive time to the nearest 24/7 emergency room, projected hot days, temperature, frost and summer rain for the 2050s (with model ranges), and the trails and waterfalls nearby (each opens on the map).
 - **Town Finder** — weight what matters to you (affordability, safety, wildfire exposure, shaking hazard, past quakes, warmth, sunshine, snow & frost, hospital access, mild future summers, trails & waterfalls nearby, retiree community, services) and every municipality is ranked and raised as 3D columns on the map. Weights persist in your browser.
-- **Gulf and Discovery islands** — Salt Spring, Galiano, Thetis, Penelakut (Kuper), Gabriola, Lasqueti, Denman and Quadra are included alongside the island's municipalities (list in `scripts/municipalities.mjs`). Every map layer is clipped to them too. They are unincorporated, so a few figures come from other sources and are labelled in their reports:
+- **Gulf and Discovery islands** — Salt Spring, Galiano, Thetis, Gabriola, Lasqueti, Denman and Quadra are included alongside the island's municipalities (list in `scripts/municipalities.mjs`). Every map layer is clipped to them too. They are unincorporated, so a few figures come from other sources and are labelled in their reports:
   - population and 65+ share from the 2021 Census (dissemination areas on each island)
   - crime from the island's rural RCMP detachment (Salt Spring, Gabriola, Quadra; Galiano shares the Outer Gulf Islands detachment)
   - sale prices are estimates: each island's 2021 Census average home value, scaled to match transfer-tax medians and moved since with its rural area's sales
   - ER access through the ferry route when there is no ER on the island; the Town Finder adds half the gap between sailings for the wait
-  - ferry links (weekday sailings, last boat home, crossing time, car ferry or not) feed a *Not ferry-dependent* factor in the Town Finder
+  - ferry links (weekday sailings, last boat home, crossing time, car ferry or not) feed a *Not ferry-dependent* factor in the Town Finder. BC Ferries links are counted from the operator's GTFS timetable feed on a typical weekday in the next two weeks, so `npm run data ferries` picks up each new season; Lasqueti's passenger ferry has no feed and is typed into `scripts/municipalities.mjs`
 - **Land Finder** (button top right, or `#land` in the URL) — every private parcel of 5+ acres on Vancouver Island and the shortlisted islands (about 29,000, from ParcelMap BC), filtered live. Every criterion is a slider or switch, starting from our brief: 10+ acres, waterfront, within 45 minutes' drive of health care, groceries and gas, quiet, and safe:
   - **The land**: size, slope, Agricultural Land Reserve share, Vancouver Island or the small islands
   - **Waterfront**: ocean, lake or river frontage (boundary within 35 m of the Freshwater Atlas shoreline) and how much, or distance to water
@@ -72,6 +72,7 @@ The pre-built data in `public/data/` is committed, so the app runs immediately.
 npm run data              # all sources
 npm run data fires crime  # just some
 npm run data trails       # trails, routes and waterfalls (about 7 minutes from an empty cache)
+npm run data ferries      # ferry links from BC Ferries' timetable feed (re-run when the season changes)
 ```
 
 `scripts/fetch-data.mjs` downloads from the sources below, clips everything to Vancouver Island, and writes compact JSON to `public/data/`. Raw downloads are cached in `.cache/` (delete it to force a refresh). If a source is down, that layer is left as it was and the app shows its status in **Data & sources**.
@@ -125,6 +126,7 @@ A supplemental film covers just the Trails & waterfalls layer (turning it on, re
 | Crime | Statistics Canada Table 35-10-0063-01 | Statistics Canada Open Licence |
 | Hospital access | BC Ministry of Health / HealthLinkBC “Hospitals in BC” + “Emergency Rooms in BC” (BC Data Catalogue); drive times from the public OSRM demo router on OpenStreetMap roads | OGL – British Columbia; routes © OpenStreetMap contributors (ODbL) |
 | Coastline | BC Freshwater Atlas islands | OGL – British Columbia |
+| Ferries | BC Ferries GTFS timetable feed, maintained by Trillium Solutions (`data.trilliumtransit.com/gtfs/bcferries-bc-ca/bcferries-bc-ca.zip`, re-fetched each month); Lasqueti from Western Pacific Marine's timetable, typed by hand | Public feed, no licence stated |
 | Land Finder parcels | ParcelMap BC parcel fabric (private parcels of 5+ acres) | OGL – British Columbia |
 | Land Finder water, hazards and rules | Freshwater Atlas coastline, lakes and rivers; BC Wildfire Service Provincial Strategic Threat Analysis; BC floodplain maps; Agricultural Land Reserve; BC airports | OGL – British Columbia |
 | Trails & waterfalls | OpenStreetMap via Overpass: `route=hiking`/`foot` relations, footpaths (`highway=path`, `bridleway` and unpaved `footway`), `waterway=waterfall`; photos and heights from Wikidata (P18, P2048) and photos geotagged on Wikimedia Commons whose file name matches the fall; elevations from Mapzen / AWS terrain tiles; 3D-view imagery from Esri World Imagery | ODbL; Wikidata CC0; photos under their own Commons licences; imagery © Esri, Maxar, Earthstar Geographics |

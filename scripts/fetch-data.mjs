@@ -1171,6 +1171,12 @@ const SOURCES = {
     });
   },
 
+  // Ferries: each island's weekday link to Vancouver Island from BC Ferries' GTFS feed (scripts/ferries.mjs).
+  async ferries() {
+    const { buildFerries } = await import('./ferries.mjs');
+    await buildFerries({ log, cached, writeOut });
+  },
+
   // Trails & waterfalls: OpenStreetMap footpaths, named hiking routes with elevation profiles, and every
   // mapped waterfall with Wikidata photos (scripts/trails.mjs).
   async trails() {
@@ -1190,7 +1196,7 @@ const SOURCES = {
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'land'];
+const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'land'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};
