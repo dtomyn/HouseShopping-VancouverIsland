@@ -630,7 +630,13 @@ function toast(ev: AtlasEvent) {
   el.style.setProperty('--c', ev.layer === '*' ? '#ffffff' : byId[ev.layer]?.color ?? '#fff');
   const yr = Math.floor(ev.t);
   const mo = MONTHS[Math.floor((ev.t % 1) * 12)];
-  el.innerHTML = `<div class="td">${mo} ${yr}</div><div class="tt">${ev.title}</div><div class="tb">${ev.body}</div>`;
+  // Event text is plain (some of it built from data, like quake places), so it goes in as text.
+  for (const [cls, text] of [['td', `${mo} ${yr}`], ['tt', ev.title], ['tb', ev.body]]) {
+    const d = document.createElement('div');
+    d.className = cls;
+    d.textContent = text;
+    el.appendChild(d);
+  }
   stack.prepend(el);
   while (stack.children.length > 3) stack.lastElementChild!.remove();
   setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 6500);

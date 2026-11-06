@@ -5,6 +5,7 @@
 import * as d3 from 'd3';
 import { Data, fmt } from './data';
 import { islandAnomalies } from './metrics';
+import { esc } from './html';
 
 type Ring = { v: number; label: string; proj?: boolean };
 type Source = {
@@ -609,9 +610,4 @@ export function openSources(data: Data, opts: { onShow: (layerId: string) => voi
   };
   requestAnimationFrame(step);
   el.querySelector<HTMLElement>('.close-x')!.focus({ preventScroll: true });
-}
-
-function esc(s: string) {
-  const map: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
-  return s.replace(/[&<>"]/g, (ch: string) => map[ch]);
 }

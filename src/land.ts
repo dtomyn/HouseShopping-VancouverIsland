@@ -8,6 +8,7 @@ import { ArcLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/la
 import type { Layer, PickingInfo } from '@deck.gl/core';
 import { Trails, fmt } from './data';
 import { trailMetresNear } from './trails';
+import { esc } from './html';
 
 let trails: Trails | null = null;
 /** Trail density and waterfalls for the Outdoors filters (from the atlas's trails.json). */
@@ -110,13 +111,23 @@ const LOOSE: F = { ...BRIEF, acres: 5, water: 'any', care: ANY_MIN, grocery: ANY
 const STORE = 'island-atlas:land-filters';
 const SHORT = 'island-atlas:shortlist';
 
-let f: F = { ...BRIEF };
-try { const s = JSON.parse(localStorage.getItem(STORE) ?? 'null'); if (s && typeof s === 'object') f = { ...BRIEF, ...s }; } catch { /* storage unavailable */ }
+let f: F = { ...BRIEF, kinds: [...BRIEF.kinds] }; // own copy: the water-kind buttons toggle it in place
+// Saved filters from an older version may lack keys or carry stale ones: keep only known keys whose
+// type still matches, so a bad entry falls back to the brief instead of breaking the rail.
+try {
+  const s = JSON.parse(localStorage.getItem(STORE) ?? 'null');
+  if (s && typeof s === 'object') {
+    for (const k of Object.keys(BRIEF) as (keyof F)[]) {
+      const v = s[k], d = BRIEF[k];
+      if (Array.isArray(d) ? Array.isArray(v) && v.length === d.length && v.every((x: unknown) => typeof x === 'boolean') : typeof v === typeof d && (typeof v !== 'number' || Number.isFinite(v))) (f as any)[k] = v;
+    }
+  }
+} catch { /* storage unavailable */ }
 const saveF = () => { try { localStorage.setItem(STORE, JSON.stringify(f)); } catch { /* ignore */ } };
 
 type Short = Record<string, { price?: number; note?: string; t: number }>;
 let shortlist: Short = {};
-try { shortlist = JSON.parse(localStorage.getItem(SHORT) ?? '{}') ?? {}; } catch { /* ignore */ }
+try { const s = JSON.parse(localStorage.getItem(SHORT) ?? '{}'); if (s && typeof s === 'object' && !Array.isArray(s)) shortlist = s; } catch { /* ignore */ }
 const saveShort = () => { try { localStorage.setItem(SHORT, JSON.stringify(shortlist)); } catch { /* ignore */ } };
 const keyOf = (i: number) => L!.pid[i] || `${L!.num.lon[i].toFixed(5)},${L!.num.lat[i].toFixed(5)}`;
 
@@ -363,18 +374,18 @@ export function landClick(info: PickingInfo): boolean {
 }
 
 // ---------------------------------------------------------------------------------------------
-// text helpers
+// text helpers (they return HTML: place, water and shop names come from OpenStreetMap, so they're escaped)
 
 const minText = (v: number) => (Number.isNaN(v) ? 'no road' : `${v} min`);
 const placeOf = (i: number) => {
   const n = L!.num, names = L!.json.names;
-  const island = names.island[n.island[i]];
-  const near = n.townKm[i] < 1.5 ? `in ${names.place[n.town[i]]}` : `${n.townKm[i].toFixed(0)} km from ${names.place[n.town[i]]}`;
-  return island === 'Vancouver Island' ? near : `${island} · ${near}`;
+  const island = names.island[n.island[i]], town = esc(names.place[n.town[i]]);
+  const near = n.townKm[i] < 1.5 ? `in ${town}` : `${n.townKm[i].toFixed(0)} km from ${town}`;
+  return island === 'Vancouver Island' ? near : `${esc(island)} · ${near}`;
 };
 const waterText = (i: number) => {
   const n = L!.num, names = L!.json;
-  const name = n.waterName[i] >= 0 ? names.names.water[n.waterName[i]] : '';
+  const name = n.waterName[i] >= 0 ? esc(names.names.water[n.waterName[i]]) : '';
   if (n.water[i] > 0) return `${names.waterKinds[n.water[i]]} frontage${name && name !== 'Ocean' ? ` on ${name}` : ''}`;
   return n.waterM[i] < 3000 ? `${fmtDist(n.waterM[i])} to water${name && name !== 'Ocean' ? ` (${name})` : ''}` : 'no water within 3 km';
 };
@@ -785,7 +796,7 @@ function renderDetail(i: number) {
     const v = mins(i, cat);
     const limit = cat === 'grocery' ? f.grocery : cat === 'gas' ? f.gas : f.care;
     const ok = Number.isNaN(v) ? false : limit >= ANY_MIN || v <= limit;
-    return `<div class="ld-trip${ok ? '' : ' warn'}" style="--c:rgb(${CAT_COLOR[cat].join(',')})"><span class="ti">${CAT_ICON[cat]}</span><span class="tn"><b>${CAT_LABEL[cat]}</b><br>${poi ? poi[0] : 'no road route'}</span><span class="tm">${Number.isNaN(v) ? '—' : v}<small>${Number.isNaN(v) ? '' : 'min'}</small></span></div>`;
+    return `<div class="ld-trip${ok ? '' : ' warn'}" style="--c:rgb(${CAT_COLOR[cat].join(',')})"><span class="ti">${CAT_ICON[cat]}</span><span class="tn"><b>${CAT_LABEL[cat]}</b><br>${poi ? esc(poi[0]) : 'no road route'}</span><span class="tm">${Number.isNaN(v) ? '—' : v}<small>${Number.isNaN(v) ? '' : 'min'}</small></span></div>`;
   };
   const lat = n.lat[i].toFixed(5), lon = n.lon[i].toFixed(5);
   p.innerHTML = `
@@ -796,8 +807,8 @@ function renderDetail(i: number) {
       <div>
         <div class="kicker" style="--c:${RAMP(s)}">${masks[i] ? 'Outside your filters' : `Match #${matches.indexOf(i) + 1} of ${fmt.int(matches.length)}`}</div>
         <h2>${n.acres[i].toFixed(1)} acres${n.water[i] ? `<br><span class="wb k${n.water[i]}">${waterText(i)}</span>` : ''}</h2>
-        <div class="ld-place">${placeOf(i)} · ${J.names.place[n.place[i]]}</div>
-        ${L!.pid[i] ? `<div class="ld-pid">PID ${L!.pid[i]}</div>` : ''}
+        <div class="ld-place">${placeOf(i)} · ${esc(J.names.place[n.place[i]])}</div>
+        ${L!.pid[i] ? `<div class="ld-pid">PID ${esc(L!.pid[i])}</div>` : ''}
       </div>
       ${ring(s, 74)}
     </div>
@@ -809,7 +820,7 @@ function renderDetail(i: number) {
       <a class="ld-btn" target="_blank" rel="noopener" href="https://www.realtor.ca/map#ZoomLevel=14&Center=${lat}%2C${lon}&view=list&TransactionTypeId=2">Listings near here ↗</a>
       <a class="ld-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/@${lat},${lon},800m/data=!3m1!1e3">Google Maps ↗</a>
     </div>
-    ${sh ? `<div class="ld-notes"><label>Asking price <input type="text" inputmode="numeric" placeholder="e.g. 1,850,000" value="${sh.price ? sh.price.toLocaleString('en-CA') : ''}"></label>${sh.price ? `<span class="ld-price${sh.price > f.budget ? ' over' : ''}">${sh.price > f.budget ? `${fmt.money(sh.price - f.budget)} over budget` : `${fmt.money(f.budget - sh.price)} under budget`}</span>` : ''}<textarea placeholder="Notes: listing link, viewing date, well, septic…">${sh.note ?? ''}</textarea></div>` : ''}
+    ${sh ? `<div class="ld-notes"><label>Asking price <input type="text" inputmode="numeric" placeholder="e.g. 1,850,000" value="${sh.price ? sh.price.toLocaleString('en-CA') : ''}"></label>${sh.price ? `<span class="ld-price${sh.price > f.budget ? ' over' : ''}">${sh.price > f.budget ? `${fmt.money(sh.price - f.budget)} over budget` : `${fmt.money(f.budget - sh.price)} under budget`}</span>` : ''}<textarea placeholder="Notes: listing link, viewing date, well, septic…">${esc(sh.note)}</textarea></div>` : ''}
     <h3>Within reach</h3>
     <div class="ld-trip-list">${trip(f.careKind === 'er' ? 'er' : 'care')}${f.careKind === 'er' ? trip('care') : trip('er')}${trip('grocery')}${trip('gas')}</div>
     <h3>The land</h3>
@@ -831,14 +842,14 @@ function renderDetail(i: number) {
     ${trails && !Number.isNaN(n.trail3[i]) ? `<h3>Trails &amp; waterfalls</h3>
     <div class="metric-grid">
       ${m('Trails to walk', '#34d399', `${n.trail3[i].toFixed(n.trail3[i] < 10 ? 1 : 0)} km`, 'of mapped footpath within 3 km', f.trail <= 0 || n.trail3[i] >= f.trail)}
-      ${(() => { const fl = Number.isNaN(n.fallI[i]) ? null : trails!.falls[n.fallI[i]]; return m('Nearest waterfall', '#8be3ff', Number.isNaN(n.fallKm[i]) ? '—' : `${n.fallKm[i].toFixed(1)} km`, fl ? `${fl.name ?? 'unnamed'}${fl.h ? `, ${Math.round(fl.h)} m drop` : ''}` : '', f.fall >= ANY_FALL || n.fallKm[i] <= f.fall); })()}
+      ${(() => { const fl = Number.isNaN(n.fallI[i]) ? null : trails!.falls[n.fallI[i]]; return m('Nearest waterfall', '#8be3ff', Number.isNaN(n.fallKm[i]) ? '—' : `${n.fallKm[i].toFixed(1)} km`, fl ? `${esc(fl.name ?? 'unnamed')}${fl.h ? `, ${Math.round(fl.h)} m drop` : ''}` : '', f.fall >= ANY_FALL || n.fallKm[i] <= f.fall); })()}
     </div>` : ''}
     <h3>Quiet</h3>
     <div class="metric-grid">
       ${m('Busy road', '#c084fc', `${n.roadKm[i].toFixed(1)} km`, 'from the quietest spot on the land', n.roadKm[i] >= f.road)}
       ${m('Airport', '#c084fc', `${n.airKm[i].toFixed(1)} km`, 'nearest airport, airstrip or float base', n.airKm[i] >= f.air)}
       ${m('Industry', '#c084fc', `${n.indKm[i].toFixed(1)} km`, 'nearest industrial land or quarry', n.indKm[i] >= f.ind)}
-      ${m('Nearest town', '#94a3b8', `${n.townKm[i].toFixed(0)} km`, J.names.place[n.town[i]])}
+      ${m('Nearest town', '#94a3b8', `${n.townKm[i].toFixed(0)} km`, esc(J.names.place[n.town[i]]))}
     </div>
     <p class="note">Score ${s}/100 blends size ${Math.round(pr.size * 100)}, water ${Math.round(pr.water * 100)}, reach ${Math.round(pr.reach * 100)}, quiet ${Math.round(pr.quiet * 100)}, safety ${Math.round(pr.safety * 100)} and sun ${Math.round(pr.sun * 100)}. Boundaries from ParcelMap BC are for orientation, not survey. Drive times are free-flow estimates.</p>
     </div>`;
@@ -913,7 +924,7 @@ export async function openLand(c: NonNullable<typeof ctx>) {
   try {
     L ??= await (loading ??= load());
   } catch (e) {
-    c.panel.innerHTML = `<button class="close-x" aria-label="Close">×</button><div class="kicker">Land Finder</div><h2>No parcel data yet</h2><div class="unavail">Run <code>npm run data land</code> to build <code>public/data/land.json</code>. (${(e as Error).message})</div>`;
+    c.panel.innerHTML = `<button class="close-x" aria-label="Close">×</button><div class="kicker">Land Finder</div><h2>No parcel data yet</h2><div class="unavail">Run <code>npm run data land</code> to build <code>public/data/land.json</code>. (${esc((e as Error).message)})</div>`;
     c.panel.querySelector('.close-x')!.addEventListener('click', () => c.onClose());
     return;
   }
