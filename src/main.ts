@@ -13,7 +13,7 @@ import { loadWeights, renderFinder, renderTownReport } from './panels';
 import { openSources, sourcesOpen } from './sources';
 import { Ranked } from './metrics';
 import { closeLand, landClick, landHover, landKey, landLayers, openLand, setLandTrails } from './land';
-import { bindTrails, flyTrailView, goTrailView, setTrailView, stopAll as stopTrails, trailsCinema, type TrailView } from './trails';
+import { bindTrails, flyTrailView, goTrailView, leaveTrails, setTrailView, trailsCinema, type TrailView } from './trails';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
@@ -370,7 +370,7 @@ function openTrailView(v: TrailView) {
 
 function openLandFinder() {
   if (state.mode === 'land') return;
-  stopTrails();
+  leaveTrails();
   setPlaying(false);
   setMenu(false);
   if (state.mode === 'finder') { state.ranked = null; $('finder-btn').classList.remove('active'); }
@@ -498,7 +498,7 @@ function setPanelOpen(open: boolean) {
 
 function focus(id: string) {
   const l = byId[id];
-  if (id !== 'trails') stopTrails();
+  if (id !== 'trails') leaveTrails();
   const changed = state.focused !== id;
   state.focused = id;
   // Focusing shows the layer; other layers stay on only if the user switched them on themselves.
