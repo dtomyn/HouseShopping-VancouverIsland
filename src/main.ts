@@ -1,6 +1,8 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+// MapLibre 6 loads its worker from a separate module file; let Vite emit it and tell MapLibre where it is.
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { ColumnLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import type { Layer, PickingInfo } from '@deck.gl/core';
@@ -12,6 +14,8 @@ import { openSources, sourcesOpen } from './sources';
 import { Ranked } from './metrics';
 import { closeLand, landClick, landHover, landKey, landLayers, openLand, setLandTrails } from './land';
 import { bindTrails, setTrailView, stopAll as stopTrails, trailsCinema } from './trails';
+
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -73,6 +77,14 @@ function initMap() {
     attributionControl: { compact: true },
     canvasContextAttributes: { antialias: true },
   } as any);
+  // deck.gl 9.4's MapLibre adapter still reads map.transform, which MapLibre 6 no longer exposes.
+  // Hand it the two fields it uses, from public APIs. Drop this once deck.gl supports MapLibre 6.
+  if ((map as any).transform === undefined) {
+    Object.defineProperty(map, 'transform', {
+      configurable: true,
+      get: () => ({ height: map.getCanvas().clientHeight, elevation: map.getCenterElevation() }),
+    });
+  }
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 
   map.on('load', () => {

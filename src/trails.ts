@@ -3,7 +3,7 @@
 // as a beam of falling water. A route can be flown in 3D over the real terrain, a waterfall orbited,
 // and the photographed falls toured one after another. Data from scripts/trails.mjs.
 import * as d3 from 'd3';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { ColumnLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { TripsLayer } from '@deck.gl/geo-layers';
 import type { Layer, PickingInfo } from '@deck.gl/core';
