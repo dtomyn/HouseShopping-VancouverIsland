@@ -463,9 +463,14 @@ function renderLayerMenu() {
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
       const [a, b] = l.range;
-      row.innerHTML = `<div class="ic">${l.icon}</div><div><div class="nm">${l.name}</div><div class="rg">${!l.available ? 'data unavailable' : l.static ? l.period ?? 'no timeline' : `${Math.floor(a)}–${Math.floor(b)}`}</div></div>${l.id === 'island' ? '' : `<button class="eye${state.pinned.has(l.id) ? ' on' : ''}" aria-label="Overlay ${l.name} on map" title="Keep on the map while you pick other layers"></button>`}`;
+      // "Just the island" is the empty map: picked only when nothing else is on, otherwise a reset
+      const clear = l.id === 'island' && state.focused !== 'island';
+      if (l.id === 'island') { row.title = clear ? 'Turn every layer off' : 'Nothing else is on the map'; row.classList.toggle('reset', clear); }
+      row.innerHTML = `<div class="ic">${l.icon}</div><div><div class="nm">${clear ? 'Clear the map' : l.name}</div><div class="rg">${clear ? 'back to just the island' : !l.available ? 'data unavailable' : l.static ? l.period ?? 'no timeline' : `${Math.floor(a)}–${Math.floor(b)}`}</div></div>${l.id === 'island' ? '' : `<button class="eye${state.pinned.has(l.id) ? ' on' : ''}" aria-label="Overlay ${l.name} on map" title="Keep on the map while you pick other layers"></button>`}`;
       row.addEventListener('click', (e) => {
         if ((e.target as HTMLElement).classList.contains('eye')) {
+          // on an empty map the first layer switched on becomes the picked one (its story and timeline)
+          if (state.focused === 'island' && !state.pinned.has(l.id)) { state.pinned.add(l.id); focus(l.id); return; }
           // the switch keeps a layer on while others are picked; the picked layer always shows
           if (state.pinned.has(l.id)) { state.pinned.delete(l.id); if (l.id !== state.focused) state.visible.delete(l.id); }
           else { state.pinned.add(l.id); state.visible.add(l.id); }
@@ -481,7 +486,7 @@ function renderLayerMenu() {
     }
     menu.appendChild(sec);
   }
-  menu.insertAdjacentHTML('beforeend', `<div class="menu-hint">Pick a layer to put it on the map; picking another replaces it. Flip a switch to keep a layer on while you pick others. <i>Just the island</i> clears everything. Click any town on the map for its report card.</div>`);
+  menu.insertAdjacentHTML('beforeend', `<div class="menu-hint">Pick a layer to put it on the map; picking another replaces it. Flip a switch to keep a layer on while you pick others. <i>Clear the map</i> at the top turns everything off. Click any town on the map for its report card.</div>`);
 }
 
 // ---------------------------------------------------------------------------------------------

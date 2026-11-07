@@ -57,6 +57,9 @@ a { color: #9cc7ff; }
 .layer-row:hover, .layer-row:focus-visible { background: rgba(255,255,255,.05); outline: none; }
 .layer-row.focused { background: linear-gradient(90deg, color-mix(in srgb, var(--c) 22%, transparent), transparent 85%); }
 .layer-row.focused::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 3px; background: var(--c); box-shadow: 0 0 10px var(--c); }
+.layer-row.reset { border: 1px dashed var(--line-strong); }
+.layer-row.reset .nm { color: var(--ink-2); }
+.layer-row.reset:hover { border-color: var(--ink-3); }
 .layer-row .ic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-size: 14px; background: color-mix(in srgb, var(--c) 18%, transparent); color: var(--c); }
 .layer-row .nm { font-weight: 600; font-size: 13px; }
 .layer-row .rg { color: var(--ink-3); font-size: 11px; margin-top: 1px; font-family: var(--mono); }
