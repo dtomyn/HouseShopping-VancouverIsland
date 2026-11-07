@@ -3,7 +3,7 @@
 // parcels its value would let through given every other filter (a crossfilter), and the funnel shows
 // which filter is doing the most cutting. Data from scripts/land.mjs (public/data/land.json).
 import * as d3 from 'd3';
-import type maplibregl from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
 import { ArcLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import type { Layer, PickingInfo } from '@deck.gl/core';
 import { Trails, fmt } from './data';
