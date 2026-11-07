@@ -39,12 +39,13 @@ const state = {
   time: 1919,
   playing: false,
   speed: 2,
+  // the active layer: its story is in the panel and, if it changes over time, the timeline is its.
+  // 'island' means no layer is active (the map may still have layers switched on).
   focused: 'island',
-  // the timeline belongs to the last focused time-based layer; static layers leave it alone
+  // the timeline belongs to the last active time-based layer; static layers leave it alone
   timeLayer: 'fires',
+  // the layers switched on in the menu: exactly what's drawn on the map
   visible: new Set<string>(),
-  // layers the user overlaid with a menu switch; they stay on when another layer is picked
-  pinned: new Set<string>(),
   selected: null as string | null,
   hovered: null as string | null,
   mode: 'layer' as Mode,
@@ -364,8 +365,6 @@ function openTrailView(v: TrailView) {
   state.selected = null;
   state.mode = 'layer';
   setTrailView(v);
-  // clicked on trails shown as an overlay: keep the layer being looked at on the map too (its switch turns on)
-  if (state.focused !== 'trails' && state.focused !== 'island' && state.pinned.has('trails')) state.pinned.add(state.focused);
   if (state.focused === 'trails') showLayerPanel(); else focus('trails');
   flyTrailView(v);
 }
@@ -420,9 +419,21 @@ function showLayerPanel() {
   swapPanel(() => {
     const p = $('panel');
     p.style.setProperty('--c', l.color);
+    const on = layers.filter((x) => x.id !== 'island' && x.available && state.visible.has(x.id));
+    if (l.id === 'island' && on.length) { panelHandle = null; renderOnMap(p, on); return; }
     panelHandle = l.panel(p, ctx());
     panelHandle.update(ctx());
   });
+}
+
+/** No active layer but some on the map: list them, each a click away from its story and timeline. */
+function renderOnMap(p: HTMLElement, on: AtlasLayer[]) {
+  p.innerHTML = `<div class="kicker">On the map</div>
+    <h2>${on.length} layer${on.length > 1 ? 's' : ''} switched on</h2>
+    <p class="lede">None of them is picked, so there’s no story or timeline showing. Click one to see its story${on.some((x) => !x.static) ? ' and play its years' : ''}.</p>
+    <div class="onmap">${on.map((x) => `<button class="layer-row" data-id="${x.id}" style="--c:${x.color}"><div class="ic">${x.icon}</div><div><div class="nm">${x.name}</div><div class="rg">${x.static ? x.period ?? 'no timeline' : `${Math.floor(x.range[0])}–${Math.floor(x.range[1])} · timeline`}</div></div><span class="onmap-go">›</span></button>`).join('')}</div>
+    <p class="note">Open <b>Layer</b> to switch layers on and off, or <i>Clear the map</i> to start over.</p>`;
+  p.querySelectorAll<HTMLElement>('[data-id]').forEach((b) => b.addEventListener('click', () => focus(b.dataset.id!)));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -439,13 +450,16 @@ function setMenu(open: boolean) {
 
 function renderLayerMenu() {
   const f = focusedLayer();
+  const on = [...state.visible].filter((id) => byId[id]?.available);
+  // no active layer but some on the map: say how many are on rather than "Just the island"
+  const loose = f.id === 'island' && on.length > 0;
   $('picker-ic').textContent = f.icon;
-  $('picker-nm').textContent = f.name;
-  const extra = [...state.visible].filter((id) => id !== f.id && byId[id]?.available).length;
+  $('picker-nm').textContent = loose ? `${on.length} layer${on.length > 1 ? 's' : ''} on` : f.name;
+  const extra = on.filter((id) => id !== f.id).length;
   const ex = $('picker-extra');
-  ex.hidden = !extra;
+  ex.hidden = !extra || loose;
   ex.textContent = `+${extra}`;
-  ex.title = `${extra} more layer${extra > 1 ? 's' : ''} overlaid`;
+  ex.title = `${extra} more layer${extra > 1 ? 's' : ''} on the map`;
 
   const menu = menuEl();
   const listed = new Set(LAYER_GROUPS.flatMap((g) => g.ids));
@@ -463,30 +477,24 @@ function renderLayerMenu() {
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
       const [a, b] = l.range;
-      // "Just the island" is the empty map: picked only when nothing else is on, otherwise a reset
-      const clear = l.id === 'island' && state.focused !== 'island';
-      if (l.id === 'island') { row.title = clear ? 'Turn every layer off' : 'Nothing else is on the map'; row.classList.toggle('reset', clear); }
-      row.innerHTML = `<div class="ic">${l.icon}</div><div><div class="nm">${clear ? 'Clear the map' : l.name}</div><div class="rg">${clear ? 'back to just the island' : !l.available ? 'data unavailable' : l.static ? l.period ?? 'no timeline' : `${Math.floor(a)}–${Math.floor(b)}`}</div></div>${l.id === 'island' ? '' : `<button class="eye${state.pinned.has(l.id) ? ' on' : ''}" aria-label="Overlay ${l.name} on map" title="Keep on the map while you pick other layers"></button>`}`;
+      // "Just the island" is the empty map: selected only when nothing is on, otherwise a reset
+      const clear = l.id === 'island' && on.length > 0;
+      if (l.id === 'island') { row.title = clear ? 'Turn every layer off' : 'Nothing is on the map'; row.classList.toggle('reset', clear); row.classList.toggle('focused', !clear); }
+      const isOn = state.visible.has(l.id);
+      if (l.id !== 'island') row.title = l.id === state.focused ? 'Showing its story and timeline' : `Show its story${l.static ? '' : ' and timeline'}${isOn ? '' : ' (switches it on)'}`;
+      row.innerHTML = `<div class="ic">${l.icon}</div><div><div class="nm">${clear ? 'Clear the map' : l.name}</div><div class="rg">${clear ? 'back to just the island' : !l.available ? 'data unavailable' : l.static ? l.period ?? 'no timeline' : `${Math.floor(a)}–${Math.floor(b)}`}</div></div>${l.id === 'island' ? '' : `<button class="eye${isOn ? ' on' : ''}" role="switch" aria-checked="${isOn}" aria-label="${l.name} on the map" title="${isOn ? 'Take it off the map' : 'Put it on the map'}"></button>`}`;
+      const pick = () => { if (l.id === 'island') clearMap(); else focus(l.id); };
       row.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).classList.contains('eye')) {
-          // on an empty map the first layer switched on becomes the picked one (its story and timeline)
-          if (state.focused === 'island' && !state.pinned.has(l.id)) { state.pinned.add(l.id); focus(l.id); return; }
-          // the switch keeps a layer on while others are picked; the picked layer always shows
-          if (state.pinned.has(l.id)) { state.pinned.delete(l.id); if (l.id !== state.focused) state.visible.delete(l.id); }
-          else { state.pinned.add(l.id); state.visible.add(l.id); }
-          renderLayerMenu();
-          if (focusedLayer().static) setupTimeline();
-          return;
-        }
-        focus(l.id);
+        if ((e.target as HTMLElement).classList.contains('eye')) { setLayerOn(l.id, !state.visible.has(l.id)); return; }
+        pick();
         setMenu(false);
       });
-      row.addEventListener('keydown', (e) => { if (e.key === 'Enter') { focus(l.id); setMenu(false); $('layers-btn').focus(); } });
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === row) { pick(); setMenu(false); $('layers-btn').focus(); } });
       sec.appendChild(row);
     }
     menu.appendChild(sec);
   }
-  menu.insertAdjacentHTML('beforeend', `<div class="menu-hint">Pick a layer to put it on the map; picking another replaces it. Flip a switch to keep a layer on while you pick others. <i>Clear the map</i> at the top turns everything off. Click any town on the map for its report card.</div>`);
+  menu.insertAdjacentHTML('beforeend', `<div class="menu-hint">The switch puts a layer on the map or takes it off. Click a layer’s name to show its story and its timeline; the other layers stay on. <i>Clear the map</i> at the top turns everything off. Click any town on the map for its report card.</div>`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -503,15 +511,13 @@ function setPanelOpen(open: boolean) {
   setTimeout(drawSpark, 300);
 }
 
+/** Make a layer the active one (switching it on if it was off); other layers on the map stay on. 'island': no active layer. */
 function focus(id: string) {
   const l = byId[id];
   if (id !== 'trails') leaveTrails();
   const changed = state.focused !== id;
   state.focused = id;
-  // Focusing shows the layer; other layers stay on only if the user switched them on themselves.
-  // "Just the island" clears the map, switches included.
-  if (id === 'island') state.pinned.clear();
-  state.visible = new Set([...state.pinned, ...(id === 'island' ? [] : [id])]);
+  if (id !== 'island') state.visible.add(id);
   if (changed) {
     // a static layer keeps the current time, so other visible layers carry on where they were
     if (!l.static && state.timeLayer !== id) {
@@ -525,6 +531,32 @@ function focus(id: string) {
   renderLayerMenu();
   setupTimeline();
   if (state.mode !== 'finder') showLayerPanel();
+}
+
+/** A menu switch: put a layer on the map or take it off. */
+function setLayerOn(id: string, on: boolean) {
+  if (on) {
+    // with no active layer, the layer switched on becomes the active one
+    if (state.focused === 'island') return focus(id);
+    state.visible.add(id);
+  } else {
+    state.visible.delete(id);
+    if (id === 'trails') leaveTrails();
+    // switching off the active layer takes its story and timeline away too
+    if (id === state.focused) {
+      if (!byId[id].static) setPlaying(false);
+      return focus('island');
+    }
+  }
+  renderLayerMenu();
+  setupTimeline();
+}
+
+/** "Clear the map": every layer off, nothing active. */
+function clearMap() {
+  state.visible.clear();
+  setPlaying(false);
+  focus('island');
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -541,7 +573,8 @@ function setupTimeline() {
   if (f.static) {
     // other visible time-based layers keep playing on the last timeline
     const others = layers.filter((x) => !x.static && x.available && state.visible.has(x.id)).map((x) => x.name);
-    note.innerHTML = f.id === 'island' && !others.length ? `<div>No history layer on the map</div><span>Open <b>Layer</b> and pick one, like Wildfires, to travel through time</span>` : `<div><b>${f.name}</b> doesn’t change over time</div><span>${others.length ? `${others.join(', ')} shown at <i id="static-year">${Math.floor(state.time)}</i> · Space to play` : 'Pick a timeline layer to travel through history'}</span>`;
+    note.innerHTML = f.id === 'island' && !others.length ? `<div>No history layer on the map</div><span>Open <b>Layer</b> and pick one, like Wildfires, to travel through time</span>`
+      : f.id === 'island' ? `<div>No layer picked</div><span>Click ${others.length > 1 ? 'one of the layers on the map' : `<b>${others[0]}</b>`} in the panel or the <b>Layer</b> menu for its timeline</span>` : `<div><b>${f.name}</b> doesn’t change over time</div><span>${others.length ? `${others.join(', ')} shown at <i id="static-year">${Math.floor(state.time)}</i> · Space to play` : 'Pick a timeline layer to travel through history'}</span>`;
   }
   const [a, b] = l.range;
   const s = scrub();
@@ -750,7 +783,7 @@ async function boot() {
   if (location.hash === '#land') map.once('load', () => setTimeout(openLandFinder, 600));
   // The explainer video (video/render.py) drives the atlas through this handle; only set with ?film.
   if (new URLSearchParams(location.search).has('film'))
-    (window as any).atlas = { map, state, data, layers, focus, openTown, openFinder, openLandFinder, closeLandFinder, setPlaying, setTime, setPanelOpen, setMenu, showSources, openOutdoors, HOME };
+    (window as any).atlas = { map, state, data, layers, focus, clearMap, openTown, openFinder, openLandFinder, closeLandFinder, setPlaying, setTime, setPanelOpen, setMenu, showSources, openOutdoors, HOME };
 }
 
 boot();

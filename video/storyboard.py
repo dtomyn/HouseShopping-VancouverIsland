@@ -231,19 +231,19 @@ def switching(f):
     step(f, 5, "Switch, combine and clear layers", QUAKE)
     f.run("() => atlas.map.flyTo({ ...atlas.HOME, duration: 1800 })")
     f.say("sw-1")
-    open_menu_and_pick(f, "Earthquakes")
-    f.wait(900)
-    f.board("Replace", "Earthquakes picked from the menu; the wildfires go away.")
-    f.voice_done(200)
-    f.say("sw-2")
-    hint(f, "◐", "Flip a layer's switch", "to keep it on while you pick others", QUAKE)
+    hint(f, "◐", "Flip a layer's switch", "to put it on the map or take it off", QUAKE)
     f.click({"sel": "#layers-btn"})
     f.camera({"sel": "#layer-menu", "grow": 16}, 1100, whoosh=0.3, max=1.8)
     f.wait(300)
     f.click({"sel": ".layer-row", "text": "Earthquakes", "at": [0.93, 0.5]})
-    f.wait(500)
-    f.click({"sel": ".layer-row", "text": "Hospital access", "at": [0.4, 0.5]})
-    f.board("Keep and add", "Zoomed on the menu: the Earthquakes switch is flipped on, then Hospital access is picked.")
+    f.wait(700)
+    f.board("Switch on", "Zoomed on the menu: the Earthquakes switch is flipped on; the wildfires stay on the map too.")
+    f.voice_done(200)
+    f.say("sw-2")
+    f.click({"sel": ".layer-row", "text": "Earthquakes", "at": [0.4, 0.5]})
+    f.camera("fill", 1100, whoosh=0.3)
+    f.wait(600)
+    f.board("Pick", "Earthquakes' name is clicked: the menu closes, the panel and the timeline switch to earthquakes, the wildfires stay on.")
     f.voice_done(200)
     f.say("sw-3")
     f.camera({"sel": "#layers-btn", "grow": 60}, 1100, max=2.2)
@@ -253,13 +253,13 @@ def switching(f):
     f.voice_done(200)
     unspot(f)
     f.say("sw-4")
-    hint(f, "◌", "Pick Just the island", "to clear the map", TOUR)
+    hint(f, "◌", "Clear the map", "at the top of the Layer menu", TOUR)
     f.click({"sel": "#layers-btn"})
     f.camera({"sel": "#layer-menu", "grow": 16}, 1100, max=1.8)
     f.wait(400)
-    f.click({"sel": ".layer-row", "text": "Just the island", "at": [0.4, 0.5]})
+    f.click({"sel": ".layer-row", "text": "Clear the map", "at": [0.4, 0.5]})
     f.camera("fill", 1200, whoosh=0.3)
-    f.board("Clear", "Just the island is picked; everything comes off the map.")
+    f.board("Clear", "Clear the map is clicked; everything comes off the map.")
     f.voice_done(400)
     f.js("Stage.hideChip()")
 
@@ -449,7 +449,7 @@ def keys(f):
 
 
 def ending(f):
-    f.run("() => { atlas.focus('island'); atlas.map.flyTo({ ...atlas.HOME, duration: 3000 }); }")
+    f.run("() => { atlas.clearMap(); atlas.map.flyTo({ ...atlas.HOME, duration: 3000 }); }")
     f.camera("rest", 1600, whoosh=0.5)
     f.wait(1700)
     f.js("Stage.fade(0.82, 2000)")
@@ -495,10 +495,10 @@ SCENES = [
                 "time-4": "The marks above the slider are events. Click one, and the map jumps there and shows a card about it. The card closes by itself."}),
     dict(id="switching", title="Switch, combine and clear layers", run=switching,
          shows="Replacing a layer, keeping one on with its switch, the +1 badge, and clearing the map.", camera="Zoomed on the menu and the Layer button.", motion="Real clicks.", sound="Clicks.",
-         lines={"sw-1": "Pick another layer, and it replaces the one on the map. Here, Earthquakes.",
-                "sw-2": "To keep a layer on while you look at another, flip its switch on the right. Then pick the next layer.",
-                "sw-3": "The +1 on the Layer button tells you one extra layer is still showing.",
-                "sw-4": "To clear the map, open Layer and pick Just the island."}),
+         lines={"sw-1": "Each layer has a switch. Flip Earthquakes on, and it joins the wildfires on the map.",
+                "sw-2": "Click a layer's name to show its story and its timeline. The other layers stay on.",
+                "sw-3": "The +1 on the Layer button tells you one more layer is on the map.",
+                "sw-4": "To clear the map, open Layer and click Clear the map at the top."}),
     dict(id="town", title="Open a town's report", run=town,
          shows="Pointing at and clicking a town dot, scrolling its report, closing it.", camera="Full-frame.", motion="Hover, click, scroll.", sound="Clicks.",
          lines={"town-1": "Point at a town dot to see its name, and click it to open the town's report.",

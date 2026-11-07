@@ -254,7 +254,7 @@ Fixed feature colours: Finder violet `#a99bff` / `#7b61ff`; deep finder teal→l
 |---|---|
 | `.glass` | `--glass` bg, `backdrop-filter: blur(14px) saturate(140%)`, 1px `--line` border, `--radius`, `--shadow` |
 | `.pill-btn` | radius 999px, 8×14px padding, `--line-strong` border, glass bg, 600 weight 12.5px |
-| Layer menu | 330px dropdown, glass-strong, grouped with uppercase group heads; rows = 28px tinted icon tile, name, mono year range, and a switch ("eye") to pin the layer on; focused row has a `--c` gradient and a glowing 3px left bar; ends with a hint line |
+| Layer menu | 330px dropdown, glass-strong, grouped with uppercase group heads; rows = 28px tinted icon tile, name, mono year range, and an on/off switch (`role="switch"`). The active row has a `--c` gradient and a glowing 3px left bar. The top row is the base map: highlighted as "Just the region" when nothing is on, otherwise a dashed-outline "Clear the map" reset. Ends with a hint line. Behaviour in §5.3 |
 | Hero stats | 2-column grid of tiles: big Fraunces value, small label |
 | Metric tile (reports) | label with coloured dot, Fraunces 19px value, 11px sub-line |
 | Callout | 2px `--c` left border, faint bg, 12.5px |
@@ -263,7 +263,7 @@ Fixed feature colours: Finder violet `#a99bff` / `#7b61ff`; deep finder teal→l
 | Source line | top border, 11px `--ink-3`, "Source: …" — every layer panel ends with one |
 | Range bar | track + translucent band (10th–90th percentile) + white tick (median) + grey tick (today) |
 | Projection badge | dashed `--c` border, hatched background, uppercase "Projection, not a record" |
-| Static note | when a static layer is focused, the timeline greys out (opacity .16) and a centred note says it doesn't change over time and names its period |
+| Static note | when the active layer is static, or no layer is active, the timeline greys out (opacity .16) and a centred note says why: "X doesn't change over time", "No layer picked — click one for its timeline", or "No history layer on the map" |
 | Rank list | rank number (mono), name + sub-line, gradient score bar (`#7b61ff → #3ecf8e`) with mono 0–100 |
 | Switch | 34×19 track; checked = `--c` with glow; springy thumb |
 | Modal | dimmed blurred backdrop, glass sheet ≤760px, Fraunces title |
@@ -343,10 +343,9 @@ Panel recipe for every layer: kicker (layer colour) → h2 → lede (what you're
 ```ts
 const state = {
   time, playing, speed,
-  focused: 'base',            // the layer in the panel and picker
-  timeLayer: '<first time layer>',  // owns the timeline; static layers leave it alone
-  visible: new Set<string>(), // what's drawn
-  pinned: new Set<string>(),  // switched on in the menu; survive picking another layer
+  focused: 'base',            // the ACTIVE layer: its story in the panel, its timeline; 'base' = none active
+  timeLayer: '<first time layer>',  // last active time-based layer; static layers leave it alone
+  visible: new Set<string>(), // the layers switched on — exactly what's drawn (never contains 'base')
   selected, hovered,          // place keys
   mode: 'layer' | 'place' | 'finder' | 'deep',
   ranked, beacons,
@@ -357,9 +356,25 @@ One `requestAnimationFrame` loop: advance time when playing (`dt × speed`, stop
 
 ### 5.3 Layer behaviour
 
-- **Picking** a layer replaces the visible one; **pinned** layers stay. "Just the region" clears everything. The picker shows `+N` for extra visible layers.
-- **Static layers**: focusing one dims the timeline with a note; the timeline keeps the last time-based layer's range, so pinned time layers keep animating underneath.
-- **Place layers** draw their own columns, so plain place pins hide while one is visible. Some static layers draw place columns only while focused.
+**On the map vs. active.** Every layer has two independent facts, and the UI shows each in exactly one place:
+
+| | Meaning | Shown by | Changed by |
+|---|---|---|---|
+| **On the map** | drawn on the map (any number of layers) | the row's switch | the switch, and nothing else turns a layer off |
+| **Active** | its story is in the side panel and, if it's a time layer, the timeline is its (at most one) | the highlighted row and the picker button's name | clicking the row's name |
+
+Rules, all in two functions (`setLayerOn(id, on)` for the switch, `focus(id)` for a name click) plus `clearMap()`:
+
+1. **Switch on** → add to `visible`. If no layer is active, it also becomes active (so the first layer you turn on gives you its story and timeline straight away). Otherwise it's just added; the active layer doesn't change.
+2. **Click a name** → make it active, switching it on if it was off. Other layers stay on; nothing is replaced. The menu closes.
+3. **Switch off** → remove from `visible`. If it was the active layer, there's no active layer any more: stop playback, the panel and timeline drop it (`focus('base')`, which must not clear `visible`).
+4. **Clear the map** (the top row while anything is on) → empty `visible`, stop playback, no active layer.
+5. **No active layer but some on** → the picker reads "N layers on", the timeline shows "No layer picked", and the panel lists the layers that are on, each a click away from becoming active. Never show "Just the region" as selected while anything is on.
+6. **Picker badge** `+N` = layers on the map besides the active one.
+7. **Anything that opens a layer from elsewhere** (a map click on an overlay's feature, a link in a Place Report) calls `focus(id)`: it becomes active and every other layer stays on. A feature is clickable whenever its layer is on the map, not only while it's active; the exceptions are full-coverage rasters, which would swallow clicks meant for thin lines underneath, so they're pickable only while active.
+
+- **Static layers**: when the active layer is static, the timeline dims with a note; the timeline keeps the last active time layer's range, so time layers that are still on keep animating underneath.
+- **Place layers** draw their own columns, so plain place pins hide while one is on the map. Some static layers draw place columns only while active.
 - **Events**: curated (`CURATED_EVENTS`) + each layer's `events()`. Diamonds on the track; click to jump (map flies to lon/lat/zoom). Crossing one during playback shows a toast and a beacon.
 - **Hover** anything for a tooltip; **click** a place dot → Place Report.
 
@@ -393,7 +408,7 @@ Full-screen overlay (`S`, `#sources`): left = intro (kicker, big title, lede, st
 
 ### 5.8 Film handle
 
-When loaded with `?film`, expose `window.<atlasId> = { map, state, data, layers, focus, openPlace, openFinder, openDeep, closeDeep, setPlaying, setTime, setPanelOpen, setMenu, showSources, HOME }` for the video renderer only.
+When loaded with `?film`, expose `window.<atlasId> = { map, state, data, layers, focus, clearMap, openPlace, openFinder, openDeep, closeDeep, setPlaying, setTime, setPanelOpen, setMenu, showSources, HOME }` for the video renderer only.
 
 ---
 
@@ -489,7 +504,7 @@ dict(id="timeline", title="Play the timeline", run=timeline,
 | 2 | Move the map | Drag, scroll-zoom, right-drag tilt/turn, zoom onto the map buttons (chips for each gesture). |
 | 3 | Show a data layer | Zoom onto the menu; open Layer (or `L`); explain groups; pick the headline layer; panel updates. |
 | 4 | Play the timeline | Play, change speed, pause, drag the slider, click an event diamond → map jumps, toast shows. |
-| 5 | Switch, combine and clear | Pick another layer (replaces); flip a switch to keep one on; point at the `+1`; pick "Just the region". |
+| 5 | Switch, combine and clear | Flip a second layer's switch on (it joins the map); click its name (it becomes active, the first stays on); point at the `+1`; click "Clear the map". |
 | 6 | Open a place's report | Hover a dot (name), click; map flies; scroll the report; close. |
 | 7 | Rank places with the Finder | Open; drag one slider (ranking updates); click a preset; point at the columns; open a place; close twice. |
 | 8 | Deep finder (if any) | Filters, the count, a slider, presets, open an item, shortlist, satellite, back, Shortlist tab, close. |
@@ -527,11 +542,11 @@ Options: `--only <scene ids>`, `--start <scene>`, `--stills 10,60`, `--url`, `--
 
 Do one milestone at a time; each ends with `npm run build` passing and the app checked in the browser.
 
-1. **Scaffold**: Vite + TS, `index.html` shell, `style.css` tokens and components (Part 4), map with basemap, hillshade, outline glow, loader and intro flight. Empty layer menu with "Just the region". Place dots with tooltips.
+1. **Scaffold**: Vite + TS, `index.html` shell, `style.css` tokens and components (Part 4), map with basemap, hillshade, outline glow, loader and intro flight. Empty layer menu with "Just the region" (becomes "Clear the map" once anything is on). Place dots with tooltips.
 2. **Pipeline skeleton**: `fetch-data.mjs` helpers, `base` and `places` stages, manifest. Prove from an empty cache.
 3. **First time layer** end to end: stage → JSON → `AtlasLayer` (map, sparkline, panel with chart + playhead, tooltip) → timeline play/scrub/speed/keys.
 4. **Events**: curated + data-driven, diamonds, toasts, beacons.
-5. **Remaining layers** from the brief, one per step; static-layer support when the first static one arrives; pinning and `+N`.
+5. **Remaining layers** from the brief, one per step; static-layer support when the first static one arrives; the on-the-map vs. active rules of §5.3 and `+N`.
 6. **Place Report** (metrics) → **Place Finder** (criteria, ranking, presets, columns, localStorage).
 7. **Data & sources** view with the chosen metaphor.
 8. **Deep finder** (if in the brief).
@@ -549,4 +564,5 @@ Do one milestone at a time; each ends with `npm run build` passing and the app c
 - [ ] `rm -rf .cache && npm run data` works with no manual steps; a broken source doesn't break the rest.
 - [ ] All outside text escaped; CSP present in the build; deploy workflow least-privilege.
 - [ ] Usable at phone width (panel docks above the timeline).
+- [ ] Layer menu: a switch only turns a layer on or off; a name click makes it active without turning others off; switching off the active layer drops its timeline; "Just the region" is never highlighted while a layer is on; overlay features are clickable.
 - [ ] Film renders at 1440p + 1080p with storyboard, script, captions and YouTube text; narration only says where to click.

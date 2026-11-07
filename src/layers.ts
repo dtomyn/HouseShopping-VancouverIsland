@@ -1970,7 +1970,7 @@ function islandLayer(data: Data): AtlasLayer {
         <p class="lede">Nothing is overlaid yet. The dots are the ${data.munis.length} towns and islands in the atlas.</p>
         <ol class="howto">
           <li><b>Click a town dot</b> for its report card.</li>
-          <li><b>Layer</b> (top left, or press <kbd>L</kbd>) puts one data set on the map. Pick <i>Just the island</i> to clear it again.</li>
+          <li><b>Layer</b> (top left, or press <kbd>L</kbd>): flip a switch to put a data set on the map, and click its name for its story and timeline. <i>Clear the map</i> turns them all off.</li>
           <li>On a history layer, press <b>▶</b> (or <kbd>Space</kbd>) on the timeline to play the years.</li>
           <li><b>Town Finder</b> ranks towns by what matters to you; <b>Land Finder</b> filters every parcel of 5+ acres.</li>
           <li><b>Data &amp; sources</b> shows where every number comes from.</li>

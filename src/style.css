@@ -57,6 +57,10 @@ a { color: #9cc7ff; }
 .layer-row:hover, .layer-row:focus-visible { background: rgba(255,255,255,.05); outline: none; }
 .layer-row.focused { background: linear-gradient(90deg, color-mix(in srgb, var(--c) 22%, transparent), transparent 85%); }
 .layer-row.focused::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 3px; background: var(--c); box-shadow: 0 0 10px var(--c); }
+.onmap { display: grid; gap: 4px; margin: 4px 0 8px; }
+.onmap .layer-row { width: 100%; text-align: left; border: 1px solid var(--line); background: rgba(255, 255, 255, .025); color: var(--ink); font: inherit; }
+.onmap .layer-row:hover { border-color: color-mix(in srgb, var(--c) 60%, transparent); background: color-mix(in srgb, var(--c) 8%, transparent); }
+.onmap-go { color: var(--ink-3); font-size: 18px; padding-right: 4px; }
 .layer-row.reset { border: 1px dashed var(--line-strong); }
 .layer-row.reset .nm { color: var(--ink-2); }
 .layer-row.reset:hover { border-color: var(--ink-3); }
