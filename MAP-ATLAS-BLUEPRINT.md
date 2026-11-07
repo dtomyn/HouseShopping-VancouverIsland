@@ -516,6 +516,15 @@ Give each step its own colour (tour cyan `#4cc9f0`, map `#8fdcff`, layer = the l
 
 **Supplemental films** for big features (`video/storyboard_<film>.py`, `--film <film>`): same voice and style, line ids prefixed (e.g. `tw-`) so cached narration never clashes, 5–8 steps on just that feature and where it appears elsewhere (reports, finders).
 
+**A film per layer, and an overview** (`video/storyboard_layers.py`, `--film layer-<id>`, `--film overview`, `--film all`):
+
+- **Layer film** (about a minute): title with a one-line hook → open the Layer menu and click the layer's name → three headline numbers count up while the narration says them → one or two **wow scenes**, the thing only this layer can show (a century played in seconds with a slow orbit; a tilt that reveals depth; an event marker clicked; chips that reshape the map) → zoom on the side panel → end card pointing to the overview.
+- **Overview**: title → how the menu and timeline work → a few seconds per layer (its own moment, with a chip naming its film) → places and the finders → end card: "every layer has its own film".
+- **Nothing hard-coded about the layer list.** A facts script (`video/layer_facts.js`) runs in the app before filming: it computes the narration's numbers and draws every layer's panel off-screen to read its name, headline, first sentence, four headline numbers and timeline events. The overview and `--film all` are built from that list, and a layer with no hand-written spec gets a generic film and overview moment from it. So a layer added later appears in the overview and gets a film with no film code; write a spec to give it a real hook and wow scene.
+- Narration numbers come from the data or the panel's own headline numbers, so the voice never disagrees with the screen. Counters only take whole numbers; say decimals in the narration instead.
+- During fast playback (4+ years a second), hide the event cards and clear them afterwards, or they pile over the map; keep them for slow playback through a single event.
+- `video/films.json` maps film names to their published links; every description links to the overview and the overview lists every layer film.
+
 ### 8.6 Sound and voice
 
 - **Voice**: Kokoro (`kokoro-onnx`) running locally, voice `af_heart`, speed 0.98. `spoken()` rewrites symbols for speech ("3D" → "three-D", "→" → "to"); a `SOUNDS` dict fixes mispronunciations at the phoneme level. Each line is cached by text hash in `video/out/vo/` and regenerated only when its text changes. A real recording at `video/out/vo/recorded/<line-id>.wav` replaces it and the picture retimes to fit.

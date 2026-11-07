@@ -18,6 +18,9 @@ Setup (once):
 
   .venv/Scripts/python.exe video/render.py --film trails    the supplemental Trails & waterfalls film (video/storyboard_trails.py);
                                                             every option above works with it, and its files are named island-atlas-trails-*.
+  .venv/Scripts/python.exe video/render.py --film overview      every layer in a few minutes, each pointing to its own film
+  .venv/Scripts/python.exe video/render.py --film layer-fires   one layer's film (any layer id); see video/storyboard_layers.py
+  .venv/Scripts/python.exe video/render.py --film all           the overview and a film for every layer the app has right now
 
 Options: --url puts an address on the end card and in youtube.txt. --no-build skips `npm run build`.
 Narration is made once per line with Kokoro and cached in video/out/vo; a line is remade only when its text changes.
@@ -77,6 +80,10 @@ def build():
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    # MapLibre 6 starts its worker from an .mjs module, which browsers only run when it's served as JavaScript;
+    # Python's guess for .mjs on Windows is text/plain.
+    extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, ".mjs": "text/javascript", ".js": "text/javascript"}
+
     def translate_path(self, path):
         clean = path.split("?", 1)[0].split("#", 1)[0]
         if clean.startswith("/stage/"):
@@ -595,6 +602,9 @@ def write_storyboard(film, found):
 def run(playwright, port, args, mode, scale, fps):
     browser, page, errors = open_stage(playwright, port, scale)
     found = facts(page)
+    # a film built from the app's own layer list (the overview, the per-layer films) makes its scenes now
+    if getattr(storyboard, "prepare", None):
+        storyboard.prepare(found)
     lines = script_lines(found)
     lengths = make_voice(lines)
     page.evaluate("u => Stage.url(u)", (args.url or "island-atlas").replace("https://", ""))
@@ -654,27 +664,72 @@ def main():
     parser.add_argument("--stills", help="comma-separated seconds to save as JPEGs")
     parser.add_argument("--no-build", action="store_true", help="use the existing dist/")
     parser.add_argument("--video-only", action="store_true", help="skip the storyboard pass (when storyboard.html is already up to date)")
-    parser.add_argument("--film", choices=sorted(FILMS), default="main", help="which storyboard to film (default: the main how-to)")
+    parser.add_argument("--film", default="main",
+                        help=f"which film: main (the how-to), {', '.join(sorted(FILMS))}, overview, layer-<layer id>, or all (the overview and every layer film)")
     args = parser.parse_args()
-    global storyboard, NAME, PREFIX
-    if args.film != "main":
-        storyboard = importlib.import_module(FILMS[args.film])
-        NAME = storyboard.NAME
-        PREFIX = f"{NAME}-"
     OUT.mkdir(parents=True, exist_ok=True)
     if not args.no_build:
         build()
     server = serve()
     port = server.server_address[1]
     with sync_playwright() as playwright:
-        if args.stills:
-            run(playwright, port, args, "stills", 1.0, args.fps)
-            return
-        if args.storyboard or not (args.preview or args.only or args.video_only):
-            run(playwright, port, args, "board", SCALE_BOARD, args.fps)
-        if args.storyboard:
-            return
-        run(playwright, port, args, "video", SCALE_PREVIEW if args.preview else SCALE_MASTER, 24 if args.preview else args.fps)
+        films = [args.film]
+        if args.film == "all":
+            # the app's layers right now, so a layer added later gets its film without editing this list
+            films = ["overview"] + [f"layer-{i}" for i in app_layer_ids(playwright, port)]
+            print("films:", ", ".join(films), flush=True)
+        failed = []
+        for name in films:
+            try:
+                film_one(playwright, port, args, name)
+            except (Exception, SystemExit) as error:
+                if len(films) == 1:
+                    raise
+                # with several films, one that breaks doesn't stop the rest
+                failed.append(name)
+                print(f"FILM {name} FAILED: {error}", flush=True)
+        if failed:
+            raise SystemExit(f"these films failed: {', '.join(failed)}")
+
+
+def film_one(playwright, port, args, name):
+    pick_film(name)
+    print(f"=== film {name} ({NAME})", flush=True)
+    if args.stills:
+        run(playwright, port, args, "stills", 1.0, args.fps)
+        return
+    if args.storyboard or not (args.preview or args.only or args.video_only):
+        run(playwright, port, args, "board", SCALE_BOARD, args.fps)
+    if args.storyboard:
+        return
+    run(playwright, port, args, "video", SCALE_PREVIEW if args.preview else SCALE_MASTER, 24 if args.preview else args.fps)
+
+
+def pick_film(name):
+    """Points the module-level storyboard, NAME and PREFIX at a film."""
+    global storyboard, NAME, PREFIX
+    if name == "main":
+        storyboard, NAME, PREFIX = importlib.import_module("storyboard"), "island-atlas-explainer", ""
+        return
+    if name in FILMS:
+        storyboard = importlib.import_module(FILMS[name])
+    elif name == "overview" or name.startswith("layer-"):
+        layer = name[6:] if name.startswith("layer-") else None
+        # a layer with its own hand-made film module keeps it (Trails & waterfalls)
+        storyboard = importlib.import_module(FILMS[layer]) if layer in FILMS else importlib.import_module("storyboard_layers").film(name)
+    else:
+        raise SystemExit(f"unknown film '{name}': use main, {', '.join(sorted(FILMS))}, overview, layer-<layer id> or all")
+    NAME = storyboard.NAME
+    PREFIX = f"{NAME}-"
+
+
+def app_layer_ids(playwright, port):
+    """The data layers the app has (everything but the plain base map), in menu order."""
+    browser, page, _ = open_stage(playwright, port, SCALE_PREVIEW)
+    app = next(f for f in page.frames if f.parent_frame)
+    ids = app.evaluate("() => atlas.layers.filter((l) => l.id !== 'island' && l.available).map((l) => l.id)")
+    browser.close()
+    return ids
 
 
 if __name__ == "__main__":
