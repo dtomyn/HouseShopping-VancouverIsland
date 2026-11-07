@@ -181,7 +181,8 @@ export function trailsLayer(data: Data): AtlasLayer {
             getWidth: 1,
             widthUnits: 'pixels',
             widthMinPixels: 0.8,
-            pickable: focused,
+            // clickable whenever it's on the map, as an overlay too: the hikers moving along a path invite a click
+            pickable: true,
             parameters: ADDITIVE,
           } as any),
           new TripsLayer<FlowPath>({
@@ -962,7 +963,8 @@ function startFlight(data: Data, r: TrailRoute) {
 
   const dot = document.createElement('div');
   dot.className = 'tr-hiker';
-  const marker = new maplibregl.Marker({ element: dot }).setLngLat(r.line[0]).addTo(m);
+  // the hiker stays bright even when a ridge is between it and the camera
+  const marker = new maplibregl.Marker({ element: dot, opacityWhenCovered: 1 }).setLngLat(r.line[0]).addTo(m);
 
   const hud = document.createElement('div');
   hud.className = 'tr-hud glass';
@@ -1054,7 +1056,9 @@ function fallMarker(f: Waterfall, card = true) {
   const el = document.createElement('div');
   el.className = 'tr-fallpin';
   el.innerHTML = `<i></i><i></i><i></i>${card ? `<div class="tr-fallpin-card"><b>${esc(fallName(f))}</b>${f.h ? `<span>${Math.round(f.h)} m drop · ${fmt.int(f.elev)} m up</span>` : `<span>${fmt.int(f.elev)} m above sea level</span>`}</div>` : ''}`;
-  return new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([f.lon, f.lat]).addTo(host!.map);
+  // falls sit in gullies and under cliffs, so the terrain often hides the marker's point; MapLibre would
+  // fade it to 20% then, but the waterfall being orbited or toured should always read clearly
+  return new maplibregl.Marker({ element: el, anchor: 'bottom', opacityWhenCovered: 1 }).setLngLat([f.lon, f.lat]).addTo(host!.map);
 }
 
 function startOrbit(i: number) {

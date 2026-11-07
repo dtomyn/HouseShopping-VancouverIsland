@@ -364,6 +364,8 @@ function openTrailView(v: TrailView) {
   state.selected = null;
   state.mode = 'layer';
   setTrailView(v);
+  // clicked on trails shown as an overlay: keep the layer being looked at on the map too (its switch turns on)
+  if (state.focused !== 'trails' && state.focused !== 'island' && state.pinned.has('trails')) state.pinned.add(state.focused);
   if (state.focused === 'trails') showLayerPanel(); else focus('trails');
   flyTrailView(v);
 }
