@@ -115,6 +115,58 @@ export function fallHero(o: { W: number; H: number; p: Pt; still: boolean }) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// elevations along a line, read from the same Terrarium tiles the 3D terrain uses
+
+const DEM = (z: number, x: number, y: number) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+const demCache = new Map<string, Promise<Uint8ClampedArray | null>>();
+function demTile(z: number, x: number, y: number) {
+  const key = `${z}/${x}/${y}`;
+  let p = demCache.get(key);
+  if (!p) {
+    p = fetch(DEM(z, x, y))
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((b) => (b ? createImageBitmap(b) : null))
+      .then((bm) => {
+        if (!bm) return null;
+        const c = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(TILE, TILE) : Object.assign(document.createElement('canvas'), { width: TILE, height: TILE });
+        const ctx = (c.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D | null)!;
+        ctx.drawImage(bm, 0, 0);
+        return ctx.getImageData(0, 0, TILE, TILE).data;
+      })
+      .catch(() => null);
+    demCache.set(key, p);
+  }
+  return p;
+}
+
+/** Ground elevation in metres at `n` evenly spaced points along a line (null if the tiles can't be read). */
+export async function elevationsAlong(line: Pt[], n: number, z = 13): Promise<number[] | null> {
+  const kx = Math.cos((49.5 * Math.PI) / 180) * 111.32, ky = 110.54;
+  const cum = [0];
+  for (let i = 1; i < line.length; i++) cum.push(cum[i - 1] + Math.hypot((line[i][0] - line[i - 1][0]) * kx, (line[i][1] - line[i - 1][1]) * ky));
+  const total = cum[cum.length - 1] || 1;
+  const pts: Pt[] = [];
+  for (let k = 0, j = 1; k < n; k++) {
+    const d = (k / (n - 1)) * total;
+    while (j < cum.length - 1 && cum[j] < d) j++;
+    const f = (d - cum[j - 1]) / (cum[j] - cum[j - 1] || 1);
+    pts.push([line[j - 1][0] + (line[j][0] - line[j - 1][0]) * f, line[j - 1][1] + (line[j][1] - line[j - 1][1]) * f]);
+  }
+  const out: number[] = [];
+  for (const [lon, lat] of pts) {
+    const X = wx(lon, z), Y = wy(lat, z);
+    const tx = Math.floor(X / TILE), ty = Math.floor(Y / TILE);
+    const px = Math.min(TILE - 1, Math.floor(X - tx * TILE)), py = Math.min(TILE - 1, Math.floor(Y - ty * TILE));
+    const t = await demTile(z, tx, ty);
+    if (!t) return null;
+    const o = (py * TILE + px) * 4;
+    out.push(Math.max(0, t[o] * 256 + t[o + 1] + t[o + 2] / 256 - 32768));
+  }
+  // a light smoothing pass: single tile pixels are noisy over short distances
+  return out.map((v, i) => (i && i < out.length - 1 ? (out[i - 1] + 2 * v + out[i + 1]) / 4 : v));
+}
+
+// ---------------------------------------------------------------------------------------------
 // the route's character
 
 const MIX = [

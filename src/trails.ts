@@ -10,7 +10,7 @@ import type { Layer, PickingInfo } from '@deck.gl/core';
 import { Data, TrailNet, TrailRoute, Trails, Waterfall, fmt, km, loadTrailNet } from './data';
 import type { AtlasLayer, PanelHandle } from './layers';
 import { esc, safeUrl } from './html';
-import { daylightCard, effortTiles, fallHero, flowCalendar, gradeMix, heightCompare, routeHero } from './trailcards';
+import { daylightCard, effortTiles, elevationsAlong, fallHero, flowCalendar, gradeMix, heightCompare, routeHero } from './trailcards';
 
 type RGBA = [number, number, number, number];
 const rgb = (c: string, a = 255): RGBA => { const o = d3.rgb(c); return [o.r, o.g, o.b, a]; };
@@ -181,7 +181,8 @@ export function trailsLayer(data: Data): AtlasLayer {
             getWidth: 1,
             widthUnits: 'pixels',
             widthMinPixels: 0.8,
-            pickable: focused,
+            // clickable whenever it's on the map, as an overlay too: the hikers moving along a path invite a click
+            pickable: true,
             parameters: ADDITIVE,
           } as any),
           new TripsLayer<FlowPath>({
@@ -568,7 +569,7 @@ function renderOverview(el: HTMLElement, data: Data) {
   el.querySelectorAll<HTMLElement>('[data-sort]').forEach((b) => b.addEventListener('click', () => { sortBy = b.dataset.sort as typeof sortBy; renderOverview(el, data); }));
   el.querySelector('[data-act="more"]')?.addEventListener('click', () => { showAll = !showAll; renderOverview(el, data); });
   el.querySelector('[data-act="tour"]')?.addEventListener('click', () => startTour(data));
-  el.querySelector('[data-act="fly-longest"]')?.addEventListener('click', () => { view = { kind: 'route', i: routes.indexOf(longest) }; renderPanel(el, data); startFlight(data, routes.indexOf(longest)); });
+  el.querySelector('[data-act="fly-longest"]')?.addEventListener('click', () => { view = { kind: 'route', i: routes.indexOf(longest) }; renderPanel(el, data); startFlight(data, longest); });
   const ul = el.querySelector('.tr-routes')!;
   ul.addEventListener('click', (e) => { const li = (e.target as HTMLElement).closest<HTMLElement>('[data-route]'); if (li) go({ kind: 'route', i: +li.dataset.route! }, data); });
   ul.addEventListener('mouseover', (e) => { const li = (e.target as HTMLElement).closest<HTMLElement>('[data-route]'); hoverRoute = li ? +li.dataset.route! : null; });
@@ -611,7 +612,7 @@ function renderRoute(el: HTMLElement, data: Data, i: number) {
     </div>
     <h3>Elevation profile</h3>
     <div class="tr-prof"></div>
-    <button class="tr-fly"><span>▶</span> Fly this trail in 3D</button>
+    <div class="tr-acts"><button class="tr-fly"><span>▶</span> Fly this trail in 3D</button>${satBtn()}</div>
     <h3>The terrain underfoot</h3>
     ${gradeMix(r.prof, g.total)}
     <h3>What it takes</h3>
@@ -632,7 +633,8 @@ function renderRoute(el: HTMLElement, data: Data, i: number) {
     </div>
     <p class="note">${near ? `Trailhead is ${near.d.toFixed(0)} km from ${esc(near.m.name)}. ` : ''}${r.op ? `Managed by ${esc(r.op)}. ` : ''}Elevations from ~50 m terrain tiles along the mapped line${r.parts.length > 1 ? ' (gaps between mapped pieces are bridged in a straight line)' : ''}. Hover the profile to find a spot on the map.</p>`;
   el.querySelector('.tr-back')!.addEventListener('click', () => go({ kind: 'overview' }, data, false));
-  el.querySelector('.tr-fly')!.addEventListener('click', () => startFlight(data, i));
+  el.querySelector('.tr-fly')!.addEventListener('click', () => startFlight(data, r));
+  wireSat(el);
   el.querySelectorAll<HTMLElement>('[data-fall]').forEach((b) => b.addEventListener('click', () => go({ kind: 'fall', i: +b.dataset.fall! }, data)));
   el.querySelectorAll<HTMLElement>('[data-route]').forEach((b) => b.addEventListener('click', () => go({ kind: 'route', i: +b.dataset.route! }, data)));
   el.querySelectorAll<HTMLElement>('[data-town]').forEach((b) => b.addEventListener('click', () => host?.openTown(b.dataset.town!)));
@@ -670,7 +672,7 @@ function renderFall(el: HTMLElement, data: Data, i: number) {
       <div class="metric"><div class="mk"><span class="dot" style="background:#e9eef7"></span>Elevation</div><div class="mv">${fmt.int(f.elev)} m</div><div class="ms">above sea level</div></div>
       <div class="metric" style="grid-column:1/-1"><div class="mk"><span class="dot" style="background:${TRAIL_COLOR}"></span>Getting there</div><div class="mv" style="font-size:15px">${access}</div><div class="ms">${f.routes.length ? `on or near ${f.routes.length} named route${f.routes.length > 1 ? 's' : ''}` : 'not on a named route'}</div></div>
     </div>
-    <button class="tr-fly"><span>⟳</span> Orbit it in 3D</button>
+    <div class="tr-acts"><button class="tr-fly"><span>⟳</span> Orbit it in 3D</button>${satBtn()}</div>
     <h3>When it runs hardest</h3>
     ${flowCalendar(f.elev)}
     ${f.routes.length ? `<h3>Routes that pass it</h3><ol class="tr-routes">${f.routes.map((ri) => { const r = T!.routes[ri]; return `<li data-route="${ri}" style="--c:${LEVEL[r.level].c}"><span class="tr-lv"></span><span class="tr-nm"><b>${esc(r.name)}</b><small>${r.km} km · ↑${fmt.int(r.up)} m · ${hrsText(r.hrs)}</small></span>${miniProfile(r)}</li>`; }).join('')}</ol>` : ''}
@@ -688,9 +690,58 @@ function renderFall(el: HTMLElement, data: Data, i: number) {
     <p class="note">Waterfall locations and names from OpenStreetMap${f.img || f.h ? '; photo and height from the linked Wikidata item where OpenStreetMap had none' : ''}. Many falls are on steep, slippery ground: stay behind barriers and off wet rock.</p>`;
   el.querySelector('.tr-back')!.addEventListener('click', () => go({ kind: 'overview' }, data, false));
   el.querySelector('.tr-fly')!.addEventListener('click', () => startOrbit(i));
+  wireSat(el);
   el.querySelectorAll<HTMLElement>('[data-route]').forEach((b) => b.addEventListener('click', () => go({ kind: 'route', i: +b.dataset.route! }, data)));
   el.querySelectorAll<HTMLElement>('[data-fall]').forEach((b) => b.addEventListener('click', () => go({ kind: 'fall', i: +b.dataset.fall! }, data)));
   el.querySelectorAll<HTMLElement>('[data-town]').forEach((b) => b.addEventListener('click', () => host?.openTown(b.dataset.town!)));
+}
+
+/** The pieces of a footpath strung into one line, end to nearest end (pieces more than 300 m from the line are left out). */
+function chainWays(ways: NetPath[]): [number, number][] {
+  const rest = ways.map((w) => w.path.slice()).sort((a, b) => b.length - a.length);
+  let line = rest.shift()!;
+  const d = (a: [number, number], b: [number, number]) => Math.hypot((a[0] - b[0]) * kx, (a[1] - b[1]) * ky);
+  while (rest.length) {
+    let best = -1, bd = 0.3, mode = 0;
+    const s = line[0], e = line[line.length - 1];
+    rest.forEach((p, k) => {
+      const cands: [number, number][] = [[d(e, p[0]), 0], [d(e, p[p.length - 1]), 1], [d(s, p[p.length - 1]), 2], [d(s, p[0]), 3]];
+      for (const [dd, m] of cands) if (dd < bd) { bd = dd; best = k; mode = m; }
+    });
+    if (best < 0) break;
+    const p = rest.splice(best, 1)[0];
+    line = mode === 0 ? line.concat(p) : mode === 1 ? line.concat(p.reverse()) : mode === 2 ? p.concat(line) : p.reverse().concat(line);
+  }
+  return line;
+}
+
+/** A footpath dressed as a route (so it can have a profile and be flown), from the terrain tiles' elevations. */
+function makePathRoute(name: string, ways: NetPath[], line: [number, number][], prof: number[] | null, sac: number): TrailRoute {
+  let lineKm = 0;
+  for (let i = 1; i < line.length; i++) lineKm += Math.hypot((line[i][0] - line[i - 1][0]) * kx, (line[i][1] - line[i - 1][1]) * ky);
+  const p = prof ?? new Array(40).fill(0);
+  let up = 0, down = 0;
+  for (let i = 1; i < p.length; i++) { const dz = p[i] - p[i - 1]; if (dz > 0) up += dz; else down -= dz; }
+  const hrs = lineKm / 4.5 + up / 600;
+  const level = (sac >= 3 || hrs > 5 ? 3 : sac >= 2 || hrs > 2 || up > 300 ? 2 : 1) as 1 | 2 | 3;
+  const pts = line.filter((_, k) => k % 2 === 0);
+  const falls = T!.falls.flatMap((f, k) => (pts.some((q) => km(q[0], q[1], f.lon, f.lat) < 0.6) ? [k] : []));
+  const ends = Math.hypot((line[0][0] - line[line.length - 1][0]) * kx, (line[0][1] - line[line.length - 1][1]) * ky);
+  return { id: -1, name, km: Math.round(lineKm * 10) / 10, up: Math.round(up), down: Math.round(down), hi: Math.round(Math.max(...p)), lo: Math.round(Math.min(...p)), hrs, level, loop: ends < 0.15 && lineKm > 0.5, net: null, op: null, web: null, wiki: null, desc: null, ref: null, parts: ways.map((w) => w.path), line, lineKm, prof: p.map(Math.round), falls };
+}
+const pathRoutes = new Map<string, Promise<TrailRoute>>();
+function pathRoute(v: Extract<View, { kind: 'path' }>, ways: NetPath[], name: string, sac: number) {
+  const key = `${v.name}:${v.way}`;
+  let p = pathRoutes.get(key);
+  if (!p) {
+    const line = chainWays(ways);
+    let len = 0;
+    for (let i = 1; i < line.length; i++) len += Math.hypot((line[i][0] - line[i - 1][0]) * kx, (line[i][1] - line[i - 1][1]) * ky);
+    // about one sample every 25 m, between 24 and 160 of them
+    p = elevationsAlong(line, Math.max(24, Math.min(160, Math.round(len / 0.025)))).then((prof) => makePathRoute(name, ways, line, prof, sac));
+    pathRoutes.set(key, p);
+  }
+  return p;
 }
 
 function renderPath(el: HTMLElement, data: Data, v: Extract<View, { kind: 'path' }>) {
@@ -710,6 +761,7 @@ function renderPath(el: HTMLElement, data: Data, v: Extract<View, { kind: 'path'
   const c = sac >= 2 ? '#fcd34d' : TRAIL_COLOR;
   const W = el.clientWidth || 380;
   const hero = routeHero({ W, H: 200, parts: ways.map((w) => w.path), line: longest.path, falls: nearFalls.map((o) => [o.f.lon, o.f.lat] as [number, number]), summit: null, color: c, loop: false, still: calm(), secs: 6, path: true });
+  const pr = pathRoute(v, ways, name ?? 'Unnamed footpath', sac);
   el.innerHTML = `
     ${backBar()}
     <div class="tr-sathero">${hero}<div class="tr-sathero-tag" style="--c:${c}"><span class="tr-lv"></span>${sac ? SAC_NAME[sac] : 'footpath'}</div></div>
@@ -718,11 +770,15 @@ function renderPath(el: HTMLElement, data: Data, v: Extract<View, { kind: 'path'
     <p class="lede">${name ? `One of the island’s ${fmt.int(T!.netPaths)} mapped paths, not part of a named long-distance route.` : 'A path with no name on the map: often a connector, a desire line or a local shortcut.'} Highlighted on the map${ways.length > 1 ? `, all ${ways.length} mapped pieces nearby` : ''}.</p>
     <div class="metric-grid">
       <div class="metric"><div class="mk"><span class="dot" style="background:${c}"></span>Mapped length</div><div class="mv">${len < 1 ? `${Math.round(len * 1000)} m` : `${len.toFixed(1)} km`}</div><div class="ms">${ways.length > 1 ? `in ${ways.length} pieces` : 'one piece'}</div></div>
-      <div class="metric"><div class="mk"><span class="dot" style="background:${c}"></span>Walking it end to end</div><div class="mv">${hrsText(hrs)}</div><div class="ms">on the flat, at 4.5 km/h</div></div>
+      <div class="metric"><div class="mk"><span class="dot" style="background:${c}"></span>Walking it end to end</div><div class="mv tp-time">${hrsText(hrs)}</div><div class="ms tp-time-s">measuring the hills…</div></div>
+      <div class="metric"><div class="mk"><span class="dot" style="background:#fcd34d"></span>Climbing</div><div class="mv tp-up"><span class="tp-wait"></span></div><div class="ms tp-up-s">end to end</div></div>
+      <div class="metric"><div class="mk"><span class="dot" style="background:#e9eef7"></span>Highest point</div><div class="mv tp-hi"><span class="tp-wait"></span></div><div class="ms tp-hi-s">above sea level</div></div>
       <div class="metric"><div class="mk"><span class="dot" style="background:#fcd34d"></span>Terrain</div><div class="mv" style="font-size:15px">${sac ? SAC_NAME[sac][0].toUpperCase() + SAC_NAME[sac].slice(1) : 'Everyday footpath'}</div><div class="ms">${sac >= 2 ? 'sure feet and proper boots' : 'from the mapped trail grade'}</div></div>
       <div class="metric"><div class="mk"><span class="dot" style="background:${FALL_COLOR}"></span>Waterfalls</div><div class="mv">${nearFalls.length}</div><div class="ms">within 1.5 km of the path</div></div>
     </div>
-    ${hrs >= 0.25 ? `<h3>Daylight today</h3>${daylightCard(hrs, false, ay, ax)}` : ''}
+    <div class="tr-acts"><button class="tr-fly" disabled><span>▶</span> Fly this path in 3D</button>${satBtn()}</div>
+    <div class="tp-elev"><h3>Elevation profile</h3><div class="tr-prof tp-loading">Reading the terrain along the path…</div></div>
+    <div class="tp-day">${hrs >= 0.25 ? `<h3>Daylight today</h3>${daylightCard(hrs, false, ay, ax)}` : ''}</div>
     ${nearFalls.length ? `<h3>Waterfalls off this path</h3><div class="tr-falls">${nearFalls.slice(0, 8).map(({ f, k, d }) => `<button class="tr-fall" data-fall="${k}"><span class="tr-drop"></span>${esc(fallName(f))} <small>${d < 0.06 ? 'on the path' : `${Math.round(d * 1000)} m off`}${f.h ? ` · ${Math.round(f.h)} m` : ''}</small></button>`).join('')}</div>` : ''}
     ${routesNear.length ? `<h3>Named hikes close by</h3><ol class="tr-routes">${routesNear.map(({ r, k, d }) => `<li data-route="${k}" style="--c:${LEVEL[r.level].c}"><span class="tr-lv"></span><span class="tr-nm"><b>${esc(r.name)}</b><small>${r.km} km · ↑${fmt.int(r.up)} m · ${d < 0.3 ? 'right here' : `${d.toFixed(1)} km away`}</small></span>${miniProfile(r)}</li>`).join('')}</ol>` : ''}
     <h3>Closest towns</h3>
@@ -731,8 +787,30 @@ function renderPath(el: HTMLElement, data: Data, v: Extract<View, { kind: 'path'
       <a class="ld-btn" target="_blank" rel="noopener" href="https://www.openstreetmap.org/#map=16/${ay.toFixed(5)}/${ax.toFixed(5)}">OpenStreetMap ↗</a>
       <a class="ld-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${ay.toFixed(5)},${ax.toFixed(5)}">Directions ↗</a>
     </div>
-    <p class="note">Footpaths from OpenStreetMap, joined by name within about 6 km of where you clicked. There’s no elevation along footpaths, so the time is a flat-ground estimate. Paths can be private, seasonal or overgrown.</p>`;
+    <p class="note">Footpaths from OpenStreetMap, joined by name within about 6 km of where you clicked. Elevations are read from ~12 m terrain tiles along the path, so short steep steps are smoothed out; time by Naismith’s rule. Paths can be private, seasonal or overgrown.</p>`;
   el.querySelector('.tr-back')!.addEventListener('click', () => go({ kind: 'overview' }, data, false));
+  wireSat(el);
+  const fly = el.querySelector<HTMLButtonElement>('.tr-fly')!;
+  const same = () => view.kind === 'path' && view.way === v.way && view.name === v.name && el.contains(fly);
+  pr.then((r) => {
+    if (!same()) return;
+    fly.disabled = false;
+    fly.addEventListener('click', () => startFlight(data, r));
+    const set = (s: string, html: string) => { const n = el.querySelector(s); if (n) n.innerHTML = html; };
+    const g = geoOf(r, falls);
+    const flat = r.hi === 0 && r.lo === 0;
+    if (flat) {
+      set('.tp-up', '—'); set('.tp-hi', '—'); set('.tp-time-s', 'on the flat, at 4.5 km/h');
+      set('.tp-elev', '<p class="note">The terrain tiles couldn’t be read, so there’s no profile; the 3D flight still works.</p>');
+      return;
+    }
+    set('.tp-time', hrsText(r.hrs)); set('.tp-time-s', `${r.loop ? 'loop' : 'one way'}, by Naismith’s rule`);
+    set('.tp-up', `↑ ${fmt.int(r.up)} m`); set('.tp-up-s', `↓ ${fmt.int(r.down)} m down`);
+    set('.tp-hi', `${fmt.int(r.hi)} m`); set('.tp-hi-s', `lowest ${fmt.int(r.lo)} m above sea level`);
+    set('.tp-elev', `<h3>Elevation profile</h3><div class="tr-prof"></div><h3>The terrain underfoot</h3>${gradeMix(r.prof, g.total)}<h3>What it takes</h3>${effortTiles(r.km, r.up)}`);
+    if (r.hrs >= 0.25) set('.tp-day', `<h3>Daylight today</h3>${daylightCard(r.hrs, r.loop, r.line[0][1], r.line[0][0])}`);
+    requestAnimationFrame(() => { const pe = el.querySelector<HTMLElement>('.tp-elev .tr-prof'); if (pe && same()) panelChart = profileChart(pe, r, g, falls, { height: 150 }); });
+  });
   el.querySelectorAll<HTMLElement>('[data-route]').forEach((b) => b.addEventListener('click', () => go({ kind: 'route', i: +b.dataset.route! }, data)));
   el.querySelectorAll<HTMLElement>('[data-fall]').forEach((b) => b.addEventListener('click', () => go({ kind: 'fall', i: +b.dataset.fall! }, data)));
   el.querySelectorAll<HTMLElement>('[data-town]').forEach((b) => b.addEventListener('click', () => host?.openTown(b.dataset.town!)));
@@ -805,27 +883,50 @@ function terrainOn(exaggeration = 1.4) {
   if (!m.getSource('dem-terrain'))
     m.addSource('dem-terrain', { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], tileSize: 256, encoding: 'terrarium', maxzoom: 13 } as any);
   m.setTerrain({ source: 'dem-terrain', exaggeration });
-  // satellite imagery draped over the relief, a touch darker so the glowing route reads on top
+  imageryOn();
+}
+let imageryTimer = 0;
+/** Satellite imagery under the island's own layers (a touch darker so glowing lines read on top). */
+function imageryOn() {
+  const m = host!.map;
   clearTimeout(imageryTimer);
   if (!m.getSource('tr-imagery')) {
     m.addSource('tr-imagery', { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, maxzoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' });
-    const before = m.getStyle().layers.find((l) => l.type === 'symbol')?.id;
+    // below the coastline and the deck.gl layers, so footpaths and routes stay visible on top
+    const before = m.getLayer('coast-glow') ? 'coast-glow' : m.getStyle().layers.find((l) => l.type === 'symbol')?.id;
     m.addLayer({ id: 'tr-imagery', type: 'raster', source: 'tr-imagery', paint: { 'raster-opacity': 0, 'raster-opacity-transition': { duration: 1200 }, 'raster-brightness-max': 0.82, 'raster-saturation': 0.1, 'raster-contrast': 0.08 } as any }, before);
   }
   requestAnimationFrame(() => { if (m.getLayer('tr-imagery')) m.setPaintProperty('tr-imagery', 'raster-opacity', 1); });
 }
-let imageryTimer = 0;
-function terrainOff() {
+function imageryOff() {
   const m = host!.map;
-  try { m.setTerrain(null as any); } catch { /* already off */ }
   if (m.getLayer('tr-imagery')) m.setPaintProperty('tr-imagery', 'raster-opacity', 0);
   // drop the imagery once faded so it stops loading tiles and its credit leaves the map
+  clearTimeout(imageryTimer);
   imageryTimer = window.setTimeout(() => {
-    if (trailsCinema()) return;
+    if (trailsCinema() || satMap) return;
     if (m.getLayer('tr-imagery')) m.removeLayer('tr-imagery');
     if (m.getSource('tr-imagery')) m.removeSource('tr-imagery');
   }, 1400);
 }
+function terrainOff() {
+  const m = host!.map;
+  try { m.setTerrain(null as any); } catch { /* already off */ }
+  if (!satMap) imageryOff();
+}
+
+/** The "Satellite" switch on the hike, waterfall and footpath cards: imagery on the main map until switched off or the trails layer is left. */
+let satMap = false;
+export function setTrailSatellite(on: boolean) {
+  if (!host || on === satMap) return;
+  satMap = on;
+  if (on) imageryOn(); else if (!trailsCinema()) imageryOff();
+  document.querySelectorAll('.tr-sat').forEach((b) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
+}
+/** Leaving the trails layer: stop any flight or tour and take the satellite imagery away. */
+export function leaveTrails() { stopAll(); setTrailSatellite(false); }
+const satBtn = () => `<button class="tr-sat${satMap ? ' on' : ''}" aria-pressed="${satMap}" title="Show satellite imagery on the map"><span>🛰</span> Satellite</button>`;
+const wireSat = (el: HTMLElement) => el.querySelector('.tr-sat')?.addEventListener('click', () => setTrailSatellite(!satMap));
 
 let flight: { stop: () => void } | null = null;
 let orbit: { stop: () => void } | null = null;
@@ -843,11 +944,11 @@ function escKeys(handler: (e: KeyboardEvent) => void) {
   return () => window.removeEventListener('keydown', fn, true);
 }
 
-function startFlight(data: Data, i: number) {
+function startFlight(data: Data, r: TrailRoute) {
   if (!host) return;
   stopAll();
   const m = host.map;
-  const r = T!.routes[i], g = geoOf(r, T!.falls);
+  const g = geoOf(r, T!.falls);
   terrainOn(1.5);
   setCinema(true);
 
@@ -862,7 +963,8 @@ function startFlight(data: Data, i: number) {
 
   const dot = document.createElement('div');
   dot.className = 'tr-hiker';
-  const marker = new maplibregl.Marker({ element: dot }).setLngLat(r.line[0]).addTo(m);
+  // the hiker stays bright even when a ridge is between it and the camera
+  const marker = new maplibregl.Marker({ element: dot, opacityWhenCovered: 1 }).setLngLat(r.line[0]).addTo(m);
 
   const hud = document.createElement('div');
   hud.className = 'tr-hud glass';
@@ -954,7 +1056,9 @@ function fallMarker(f: Waterfall, card = true) {
   const el = document.createElement('div');
   el.className = 'tr-fallpin';
   el.innerHTML = `<i></i><i></i><i></i>${card ? `<div class="tr-fallpin-card"><b>${esc(fallName(f))}</b>${f.h ? `<span>${Math.round(f.h)} m drop · ${fmt.int(f.elev)} m up</span>` : `<span>${fmt.int(f.elev)} m above sea level</span>`}</div>` : ''}`;
-  return new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([f.lon, f.lat]).addTo(host!.map);
+  // falls sit in gullies and under cliffs, so the terrain often hides the marker's point; MapLibre would
+  // fade it to 20% then, but the waterfall being orbited or toured should always read clearly
+  return new maplibregl.Marker({ element: el, anchor: 'bottom', opacityWhenCovered: 1 }).setLngLat([f.lon, f.lat]).addTo(host!.map);
 }
 
 function startOrbit(i: number) {
