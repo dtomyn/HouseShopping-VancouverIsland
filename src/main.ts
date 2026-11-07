@@ -13,7 +13,7 @@ import { loadWeights, renderFinder, renderTownReport } from './panels';
 import { openSources, sourcesOpen } from './sources';
 import { Ranked } from './metrics';
 import { closeLand, landClick, landHover, landKey, landLayers, openLand, setLandTrails } from './land';
-import { bindTrails, setTrailView, stopAll as stopTrails, trailsCinema } from './trails';
+import { bindTrails, flyTrailView, goTrailView, setTrailView, stopAll as stopTrails, trailsCinema, type TrailView } from './trails';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
@@ -139,6 +139,7 @@ function initMap() {
     bindTrails({
       map,
       openTown,
+      openTrailView,
       setCinema: (on) => { if (on) { setPlaying(false); setMenu(false); $('tooltip').hidden = true; } },
     });
 
@@ -349,16 +350,22 @@ function openFinder() {
 
 /** Opens a trail route or waterfall from elsewhere (the Town Report). */
 function openOutdoors(kind: 'route' | 'fall', i: number) {
+  openTrailView({ kind, i });
+}
+
+/** Opens a hike, waterfall or footpath card in the trails panel from anywhere: a map click, the Town Report. */
+function openTrailView(v: TrailView) {
   if (!byId.trails?.available) return;
+  if ($('panel').classList.contains('collapsed')) setPanelOpen(true);
+  // the trails panel is already up: swap it in place (it flies the camera itself)
+  if (state.mode === 'layer' && state.focused === 'trails') { goTrailView(v); return; }
   if (state.mode === 'land') closeLandFinder();
   if (state.mode === 'finder') closeFinder();
   state.selected = null;
   state.mode = 'layer';
-  setTrailView({ kind, i });
+  setTrailView(v);
   if (state.focused === 'trails') showLayerPanel(); else focus('trails');
-  const t = data.trails!;
-  if (kind === 'fall') { const f = t.falls[i]; map.flyTo({ center: [f.lon, f.lat], zoom: 12.2, pitch: 60, duration: 1800, essential: true }); }
-  else { const pts = t.routes[i].parts.flat(); const b = pts.reduce((a, p) => [Math.min(a[0], p[0]), Math.min(a[1], p[1]), Math.max(a[2], p[0]), Math.max(a[3], p[1])], [180, 90, -180, -90]); map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 90, bottom: 150, left: 60, right: 440 }, pitch: 50, duration: 1800, maxZoom: 13.5 }); }
+  flyTrailView(v);
 }
 
 function openLandFinder() {

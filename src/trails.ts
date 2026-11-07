@@ -10,6 +10,7 @@ import type { Layer, PickingInfo } from '@deck.gl/core';
 import { Data, TrailNet, TrailRoute, Trails, Waterfall, fmt, km, loadTrailNet } from './data';
 import type { AtlasLayer, PanelHandle } from './layers';
 import { esc, safeUrl } from './html';
+import { daylightCard, effortTiles, fallHero, flowCalendar, gradeMix, heightCompare, routeHero } from './trailcards';
 
 type RGBA = [number, number, number, number];
 const rgb = (c: string, a = 255): RGBA => { const o = d3.rgb(c); return [o.r, o.g, o.b, a]; };
@@ -109,7 +110,9 @@ function decodeNet(j: TrailNet) {
 // ---------------------------------------------------------------------------------------------
 // module state
 
-type View = { kind: 'overview' } | { kind: 'route'; i: number } | { kind: 'fall'; i: number };
+/** `path`: a footpath from the network, by its name index (-1 unnamed), the way clicked and where. */
+type View = { kind: 'overview' } | { kind: 'route'; i: number } | { kind: 'fall'; i: number } | { kind: 'path'; name: number; way: number; at: [number, number] };
+export type TrailView = Exclude<View, { kind: 'overview' }>;
 let T: Trails | null = null;
 let view: View = { kind: 'overview' };
 let levels = new Set<number>([1, 2, 3]);
@@ -119,7 +122,8 @@ let hoverRoute: number | null = null;
 let hoverD: number | null = null; // km along the open route under the profile cursor
 let panelEl: HTMLElement | null = null;
 let panelChart: { setPlayhead: (d: number | null) => void } | null = null;
-let host: { map: maplibregl.Map; openTown: (key: string) => void; setCinema: (on: boolean) => void } | null = null;
+let host: { map: maplibregl.Map; openTown: (key: string) => void; setCinema: (on: boolean) => void; openTrailView: (v: TrailView) => void } | null = null;
+let lastData: Data | null = null;
 
 /** Set once the map exists. */
 export function bindTrails(h: typeof host) { host = h; }
@@ -127,12 +131,15 @@ export function bindTrails(h: typeof host) { host = h; }
 export const trailsCinema = () => !!flight || !!tour || !!orbit;
 /** Open a route or a waterfall in the trails panel (the caller focuses the layer). */
 export function setTrailView(v: View) { view = v; }
+/** Swap the open trails panel to a route or waterfall and fly there (the trails panel is showing). */
+export function goTrailView(v: View) { if (lastData) go(v, lastData); }
 
 // ---------------------------------------------------------------------------------------------
 // the layer
 
 export function trailsLayer(data: Data): AtlasLayer {
   T = data.trails;
+  lastData = data;
   const routes = T?.routes ?? [];
   const falls = T?.falls ?? [];
   const named = falls.filter((f) => f.name);
@@ -192,6 +199,15 @@ export function trailsLayer(data: Data): AtlasLayer {
             opacity: dim ? 0.35 : 0.8,
             parameters: ADDITIVE,
           } as any),
+        );
+      }
+
+      // the open footpath, lit up
+      if (view.kind === 'path' && net) {
+        const ways = pathWays(view);
+        out.push(
+          new PathLayer<NetPath>({ id: 'trails-path-glow', data: ways, getPath: (p) => p.path, getColor: [255, 255, 255, 80], getWidth: 14, widthUnits: 'pixels', capRounded: true, jointRounded: true, parameters: ADDITIVE } as any),
+          new PathLayer<NetPath>({ id: 'trails-path-sel', data: ways, getPath: (p) => p.path, getColor: [255, 255, 255, 255], getWidth: 3.2, widthUnits: 'pixels', capRounded: true, jointRounded: true, parameters: NO_DEPTH } as any),
         );
       }
 
@@ -399,7 +415,7 @@ export function trailsLayer(data: Data): AtlasLayer {
       }
       if (id === 'trails-net-base' && net) {
         const p = o as NetPath;
-        return `<b>${p.name >= 0 ? esc(net.names[p.name]) : 'Footpath'}</b>${p.sac ? `<br><span class="tk">${SAC_NAME[p.sac]}</span>` : ''}`;
+        return `<b>${p.name >= 0 ? esc(net.names[p.name]) : 'Footpath'}</b>${p.sac ? `<br><span class="tk">${SAC_NAME[p.sac]}</span>` : ''}<br><span class="tk">Click for details</span>`;
       }
       return null;
     },
@@ -408,8 +424,19 @@ export function trailsLayer(data: Data): AtlasLayer {
     const id = info.layer?.id ?? '';
     const o: any = info.object;
     if (!o) return false;
-    if (id === 'trails-routes') { go({ kind: 'route', i: o.i }, data); return true; }
-    if (id === 'trails-falls-dots') { go({ kind: 'fall', i: falls.indexOf(o) }, data); return true; }
+    // through the app, so the trails panel opens even when trails are only switched on as an overlay
+    // (or a town report or the Town Finder has the panel)
+    const open = (v: TrailView) => { if (host) host.openTrailView(v); else go(v, data); };
+    if (id === 'trails-routes') { open({ kind: 'route', i: o.i }); return true; }
+    if (id === 'trails-falls-dots') { open({ kind: 'fall', i: falls.indexOf(o) }); return true; }
+    if (id === 'trails-net-base' && net) {
+      // a footpath that is part of a named route opens the route; any other gets its own card
+      const p = o as NetPath;
+      const nm = p.name >= 0 ? net.names[p.name].toLowerCase() : null;
+      const ri = nm ? routes.findIndex((r) => r.name.toLowerCase() === nm) : -1;
+      open(ri >= 0 ? { kind: 'route', i: ri } : { kind: 'path', name: p.name, way: net.paths.indexOf(p), at: (info.coordinate as [number, number]) ?? p.path[0] });
+      return true;
+    }
     return false;
   };
   return l;
@@ -418,19 +445,39 @@ export function trailsLayer(data: Data): AtlasLayer {
 // ---------------------------------------------------------------------------------------------
 // panels
 
+/** Move the camera to a route, waterfall or footpath, leaving room for the panel. */
+export function flyTrailView(v: View) {
+  if (!host || !T) return;
+  const m = host.map;
+  const padding = { top: 90, bottom: 150, left: 60, right: document.body.classList.contains('no-panel') ? 60 : 440 };
+  if (v.kind === 'route') {
+    m.fitBounds(boundsOf(T.routes[v.i].parts.flat()), { padding, pitch: 50, bearing: m.getBearing(), duration: 1800, maxZoom: 13.5, essential: true });
+  } else if (v.kind === 'fall') {
+    const f = T.falls[v.i];
+    m.flyTo({ center: [f.lon, f.lat], zoom: Math.max(m.getZoom(), 12.2), pitch: 60, duration: 1800, essential: true });
+  } else if (v.kind === 'path') {
+    m.fitBounds(boundsOf(pathWays(v).flatMap((p) => p.path)), { padding, pitch: 50, bearing: m.getBearing(), duration: 1800, maxZoom: 15, essential: true });
+  }
+}
+
+/** The ways that make up a clicked footpath: every way with its name near the click, or just the one clicked. */
+const pathCache = new Map<string, NetPath[]>();
+function pathWays(v: Extract<View, { kind: 'path' }>): NetPath[] {
+  if (!net) return [];
+  const key = `${v.name}:${v.way}`;
+  let out = pathCache.get(key);
+  if (out) return out;
+  const near = (p: NetPath) => p.path.some((q, k) => k % 3 === 0 && km(q[0], q[1], v.at[0], v.at[1]) < 6);
+  out = v.name >= 0 ? net.paths.filter((p) => p.name === v.name && near(p)) : [];
+  if (!out.length && net.paths[v.way]) out = [net.paths[v.way]];
+  pathCache.set(key, out);
+  return out;
+}
+
 function go(v: View, data: Data, fly = true) {
   view = v;
   hoverD = null;
-  if (fly && host) {
-    const m = host.map;
-    if (v.kind === 'route') {
-      const r = T!.routes[v.i];
-      m.fitBounds(boundsOf(r.parts.flat()), { padding: { top: 90, bottom: 150, left: 60, right: document.body.classList.contains('no-panel') ? 60 : 440 }, pitch: 50, bearing: m.getBearing(), duration: 1800, maxZoom: 13.5, essential: true });
-    } else if (v.kind === 'fall') {
-      const f = T!.falls[v.i];
-      m.flyTo({ center: [f.lon, f.lat], zoom: Math.max(m.getZoom(), 12.2), pitch: 60, duration: 1800, essential: true });
-    }
-  }
+  if (fly) flyTrailView(v);
   if (!panelEl) return;
   const p = panelEl;
   p.classList.add('swap');
@@ -445,6 +492,7 @@ function renderPanel(el: HTMLElement, data: Data) {
   }
   if (view.kind === 'route') return renderRoute(el, data, view.i);
   if (view.kind === 'fall') return renderFall(el, data, view.i);
+  if (view.kind === 'path') return renderPath(el, data, view);
   renderOverview(el, data);
 }
 
@@ -536,12 +584,23 @@ function backBar(label = 'All trails & waterfalls') {
 function renderRoute(el: HTMLElement, data: Data, i: number) {
   const r = T!.routes[i], falls = T!.falls, g = geoOf(r, falls);
   const lv = LEVEL[r.level];
-  const near = data.munis.map((m) => ({ m, d: km(m.lon, m.lat, r.line[0][0], r.line[0][1]) })).sort((a, b) => a.d - b.d)[0];
+  const [hx, hy] = r.line[0];
+  const towns = data.munis.map((m) => ({ m, d: km(m.lon, m.lat, hx, hy) })).sort((a, b) => a.d - b.d);
+  const near = towns[0];
   const osm = `https://www.openstreetmap.org/relation/${Number(r.id)}`;
   const web = safeUrl(r.web), wiki = r.wiki ? wikiUrl(r.wiki) : null;
+  const top = r.prof.indexOf(r.hi);
+  const summit = top > 0 && top < r.prof.length - 1 ? { p: along(r, g, (top / (r.prof.length - 1)) * g.total), m: r.hi } : null;
+  const W = el.clientWidth || 380;
+  const hero = routeHero({ W, H: 214, parts: r.parts, line: r.line, falls: r.falls.map((fi) => [falls[fi].lon, falls[fi].lat] as [number, number]), summit, color: lv.c, loop: r.loop, still: calm(), secs: Math.min(14, 5 + g.total / 6) });
+  const alongFalls = [...g.fallsAt].sort((a, b) => a.d - b.d);
+  const fallPics = alongFalls.filter(({ i: fi }) => falls[fi].img);
+  const nearby = T!.routes.map((x, k) => ({ x, k, d: km(x.line[0][0], x.line[0][1], hx, hy) })).filter((o) => o.k !== i && o.d < 30).sort((a, b) => a.d - b.d).slice(0, 4);
+  const netName = r.net ? ({ iwn: 'international', nwn: 'national', rwn: 'regional', lwn: 'local' } as Record<string, string>)[r.net] ?? esc(r.net) : null;
   el.innerHTML = `
     ${backBar()}
-    <div class="kicker" style="--c:${lv.c}">${lv.name} · ${r.loop ? 'loop' : 'one way'}${r.net ? ` · ${({ iwn: 'international', nwn: 'national', rwn: 'regional', lwn: 'local' } as Record<string, string>)[r.net] ?? esc(r.net)} route` : ''}</div>
+    <div class="tr-sathero">${hero}<div class="tr-sathero-tag" style="--c:${lv.c}"><span class="tr-lv"></span>${lv.name}${r.falls.length ? ` · 💧 ${r.falls.length}` : ''}</div></div>
+    <div class="kicker" style="--c:${lv.c}">${lv.name} · ${r.loop ? 'loop' : 'one way'}${netName ? ` · ${netName} route` : ''}${near ? ` · ${near.d < 2 ? `in ${esc(near.m.name)}` : `${near.d.toFixed(0)} km from ${esc(near.m.name)}`}` : ''}</div>
     <h2>${esc(r.name)}</h2>
     ${r.desc ? `<p class="lede">${esc(r.desc)}</p>` : ''}
     <div class="metric-grid">
@@ -553,7 +612,18 @@ function renderRoute(el: HTMLElement, data: Data, i: number) {
     <h3>Elevation profile</h3>
     <div class="tr-prof"></div>
     <button class="tr-fly"><span>▶</span> Fly this trail in 3D</button>
-    ${r.falls.length ? `<h3>Waterfalls along the way</h3><div class="tr-falls">${g.fallsAt.sort((a, b) => a.d - b.d).map(({ i: fi, d }) => `<button class="tr-fall" data-fall="${fi}"><span class="tr-drop"></span>${esc(fallName(falls[fi]))} <small>km ${d.toFixed(1)}${falls[fi].h ? ` · ${Math.round(falls[fi].h!)} m` : ''}</small></button>`).join('')}</div>` : ''}
+    <h3>The terrain underfoot</h3>
+    ${gradeMix(r.prof, g.total)}
+    <h3>What it takes</h3>
+    ${effortTiles(r.km, r.up)}
+    <h3>Daylight today</h3>
+    ${daylightCard(r.hrs, r.loop, hy, hx)}
+    ${r.falls.length ? `<h3>Waterfalls along the way</h3>
+      ${fallPics.length ? `<div class="tr-gallery">${fallPics.slice(0, 4).map(({ i: fi, d }) => `<button class="tr-ph" data-fall="${fi}"><img loading="lazy" alt="" src="${photo(falls[fi].img!, 360)}"><span><b>${esc(fallName(falls[fi]))}</b><small>km ${d.toFixed(1)}${falls[fi].h ? ` · ${Math.round(falls[fi].h!)} m drop` : ''}</small></span></button>`).join('')}</div>` : ''}
+      <div class="tr-falls"${fallPics.length ? ' style="margin-top:6px"' : ''}>${alongFalls.filter(({ i: fi }) => !fallPics.slice(0, 4).some((p) => p.i === fi)).map(({ i: fi, d }) => `<button class="tr-fall" data-fall="${fi}"><span class="tr-drop"></span>${esc(fallName(falls[fi]))} <small>km ${d.toFixed(1)}${falls[fi].h ? ` · ${Math.round(falls[fi].h!)} m` : ''}</small></button>`).join('')}</div>` : ''}
+    ${nearby.length ? `<h3>More hikes nearby</h3><ol class="tr-routes">${nearby.map(({ x, k, d }) => `<li data-route="${k}" style="--c:${LEVEL[x.level].c}"><span class="tr-lv"></span><span class="tr-nm"><b>${esc(x.name)}</b><small>${x.km} km · ↑${fmt.int(x.up)} m · ${d < 1 ? 'same trailhead' : `starts ${d.toFixed(0)} km away`}</small></span>${miniProfile(x)}</li>`).join('')}</ol>` : ''}
+    <h3>Closest towns</h3>
+    <div class="tr-falls">${towns.slice(0, 3).map(({ m, d }) => `<button class="tr-fall tr-town" data-town="${esc(m.key)}"><span class="tr-pin"></span>${esc(m.name)} <small>${d < 1 ? 'at the trailhead' : `${d.toFixed(0)} km`} · town report ›</small></button>`).join('')}</div>
     <div class="ld-actions">
       ${web ? `<a class="ld-btn" target="_blank" rel="noopener noreferrer" href="${esc(web)}">Website ↗</a>` : ''}
       ${wiki ? `<a class="ld-btn" target="_blank" rel="noopener" href="${esc(wiki)}">Wikipedia ↗</a>` : ''}
@@ -564,27 +634,53 @@ function renderRoute(el: HTMLElement, data: Data, i: number) {
   el.querySelector('.tr-back')!.addEventListener('click', () => go({ kind: 'overview' }, data, false));
   el.querySelector('.tr-fly')!.addEventListener('click', () => startFlight(data, i));
   el.querySelectorAll<HTMLElement>('[data-fall]').forEach((b) => b.addEventListener('click', () => go({ kind: 'fall', i: +b.dataset.fall! }, data)));
+  el.querySelectorAll<HTMLElement>('[data-route]').forEach((b) => b.addEventListener('click', () => go({ kind: 'route', i: +b.dataset.route! }, data)));
+  el.querySelectorAll<HTMLElement>('[data-town]').forEach((b) => b.addEventListener('click', () => host?.openTown(b.dataset.town!)));
   requestAnimationFrame(() => { panelChart = profileChart(el.querySelector<HTMLElement>('.tr-prof')!, r, g, falls, { height: 150, onHover: (d) => { hoverD = d; } }); });
 }
 
 function renderFall(el: HTMLElement, data: Data, i: number) {
-  const f = T!.falls[i];
-  const near = data.munis.map((m) => ({ m, d: km(m.lon, m.lat, f.lon, f.lat) })).sort((a, b) => a.d - b.d)[0];
+  const f = T!.falls[i], falls = T!.falls;
+  const towns = data.munis.map((m) => ({ m, d: km(m.lon, m.lat, f.lon, f.lat) })).sort((a, b) => a.d - b.d);
+  const near = towns[0];
   const wiki = f.wiki ? wikiUrl(f.wiki) : null, page = fallPage(f);
   const access = f.path == null || f.path > 2000 ? 'No mapped path within 2 km: off-trail or by water' : f.path < 60 ? 'Right on a mapped trail' : `${fmt.int(f.path)} m from the nearest mapped path`;
+  const measured = falls.filter((x) => x.h).sort((a, b) => b.h! - a.h!);
+  const tallest = measured[0];
+  const hRank = f.h ? measured.findIndex((x) => x === f || (x.name === f.name && x.h === f.h)) + 1 : 0;
+  const higher = falls.filter((x) => x.elev < f.elev).length / Math.max(1, falls.length - 1);
+  const badges = [
+    hRank ? `<span class="tr-badge gold">#${hRank} tallest of ${measured.length} measured</span>` : '',
+    `<span class="tr-badge">Higher up than ${Math.round(higher * 100)}% of the island’s falls</span>`,
+    f.path != null && f.path < 60 ? '<span class="tr-badge green">On a trail</span>' : f.path != null && f.path < 2000 ? `<span class="tr-badge green">${fmt.int(f.path)} m off a path</span>` : '<span class="tr-badge warn">Off-trail</span>',
+    f.img ? '<span class="tr-badge">📷 Photographed</span>' : '',
+  ].join('');
+  const neighbours = falls.map((x, k) => ({ x, k, d: km(x.lon, x.lat, f.lon, f.lat) })).filter((o) => o.k !== i && o.d > 0.05 && (o.x.name || o.x.img)).sort((a, b) => a.d - b.d).slice(0, 6);
+  const nPics = neighbours.filter((o) => o.x.img).slice(0, 2);
+  const W = el.clientWidth || 380;
   el.innerHTML = `
     ${backBar()}
-    ${f.img ? `<a class="tr-hero" href="${commonsPage(f.img)}" target="_blank" rel="noopener"><img alt="${esc(fallName(f))}" src="${photo(f.img, 760)}"><span>Photo: Wikimedia Commons ↗</span></a>` : `<div class="tr-hero none"><div class="tr-hero-fx"></div></div>`}
+    ${f.img ? `<a class="tr-hero" href="${commonsPage(f.img)}" target="_blank" rel="noopener"><img alt="${esc(fallName(f))}" src="${photo(f.img, 760)}"><span>Photo: Wikimedia Commons ↗</span></a>` : `<div class="tr-sathero">${fallHero({ W, H: 190, p: [f.lon, f.lat], still: calm() })}<div class="tr-sathero-tag" style="--c:${FALL_COLOR}"><span class="tr-drop"></span>No photo yet · satellite view</div></div>`}
     <div class="kicker" style="--c:${FALL_COLOR}">Waterfall${near ? ` · ${near.d.toFixed(0)} km from ${esc(near.m.name)}` : ''}</div>
     <h2>${esc(fallName(f))}</h2>
+    <div class="tr-badges">${badges}</div>
+    ${f.h ? `<h3>How tall is ${Math.round(f.h)} m?</h3>${heightCompare(f.h, fallName(f), tallest && tallest !== f ? { name: fallName(tallest), h: tallest.h! } : null, W - 36)}` : ''}
     <div class="metric-grid">
       <div class="metric"><div class="mk"><span class="dot" style="background:${FALL_COLOR}"></span>Drop</div><div class="mv">${f.h ? `${Math.round(f.h)} m` : '—'}</div><div class="ms">${f.h ? `about ${Math.round(f.h * 3.28)} ft` : 'height not recorded'}</div></div>
       <div class="metric"><div class="mk"><span class="dot" style="background:#e9eef7"></span>Elevation</div><div class="mv">${fmt.int(f.elev)} m</div><div class="ms">above sea level</div></div>
       <div class="metric" style="grid-column:1/-1"><div class="mk"><span class="dot" style="background:${TRAIL_COLOR}"></span>Getting there</div><div class="mv" style="font-size:15px">${access}</div><div class="ms">${f.routes.length ? `on or near ${f.routes.length} named route${f.routes.length > 1 ? 's' : ''}` : 'not on a named route'}</div></div>
     </div>
     <button class="tr-fly"><span>⟳</span> Orbit it in 3D</button>
+    <h3>When it runs hardest</h3>
+    ${flowCalendar(f.elev)}
     ${f.routes.length ? `<h3>Routes that pass it</h3><ol class="tr-routes">${f.routes.map((ri) => { const r = T!.routes[ri]; return `<li data-route="${ri}" style="--c:${LEVEL[r.level].c}"><span class="tr-lv"></span><span class="tr-nm"><b>${esc(r.name)}</b><small>${r.km} km · ↑${fmt.int(r.up)} m · ${hrsText(r.hrs)}</small></span>${miniProfile(r)}</li>`; }).join('')}</ol>` : ''}
+    ${neighbours.length ? `<h3>Waterfalls nearby</h3>
+      ${nPics.length ? `<div class="tr-gallery">${nPics.map(({ x, k, d }) => `<button class="tr-ph" data-fall="${k}"><img loading="lazy" alt="" src="${photo(x.img!, 360)}"><span><b>${esc(fallName(x))}</b><small>${d < 1 ? `${Math.round(d * 1000)} m` : `${d.toFixed(1)} km`} away</small></span></button>`).join('')}</div>` : ''}
+      <div class="tr-falls"${nPics.length ? ' style="margin-top:6px"' : ''}>${neighbours.filter((o) => !nPics.includes(o)).map(({ x, k, d }) => `<button class="tr-fall" data-fall="${k}"><span class="tr-drop"></span>${esc(fallName(x))} <small>${d < 1 ? `${Math.round(d * 1000)} m` : `${d.toFixed(1)} km`}${x.h ? ` · ${Math.round(x.h)} m` : ''}</small></button>`).join('')}</div>` : ''}
+    <h3>Closest towns</h3>
+    <div class="tr-falls">${towns.slice(0, 3).map(({ m, d }) => `<button class="tr-fall tr-town" data-town="${esc(m.key)}"><span class="tr-pin"></span>${esc(m.name)} <small>${d.toFixed(0)} km · town report ›</small></button>`).join('')}</div>
     <div class="ld-actions">
+      <a class="ld-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${f.lat.toFixed(5)},${f.lon.toFixed(5)}">Directions ↗</a>
       ${wiki ? `<a class="ld-btn" target="_blank" rel="noopener" href="${esc(wiki)}">Wikipedia ↗</a>` : ''}
       <a class="ld-btn" target="_blank" rel="noopener" href="${esc(page.url)}">${page.label} ↗</a>
       <a class="ld-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/@${f.lat},${f.lon},1200m/data=!3m1!1e3">Satellite ↗</a>
@@ -593,6 +689,53 @@ function renderFall(el: HTMLElement, data: Data, i: number) {
   el.querySelector('.tr-back')!.addEventListener('click', () => go({ kind: 'overview' }, data, false));
   el.querySelector('.tr-fly')!.addEventListener('click', () => startOrbit(i));
   el.querySelectorAll<HTMLElement>('[data-route]').forEach((b) => b.addEventListener('click', () => go({ kind: 'route', i: +b.dataset.route! }, data)));
+  el.querySelectorAll<HTMLElement>('[data-fall]').forEach((b) => b.addEventListener('click', () => go({ kind: 'fall', i: +b.dataset.fall! }, data)));
+  el.querySelectorAll<HTMLElement>('[data-town]').forEach((b) => b.addEventListener('click', () => host?.openTown(b.dataset.town!)));
+}
+
+function renderPath(el: HTMLElement, data: Data, v: Extract<View, { kind: 'path' }>) {
+  const ways = pathWays(v);
+  if (!net || !ways.length) { view = { kind: 'overview' }; return renderOverview(el, data); }
+  const falls = T!.falls;
+  const name = v.name >= 0 ? net.names[v.name] : null;
+  const len = ways.reduce((s, w) => s + w.path.reduce((a, q, k) => (k ? a + km(w.path[k - 1][0], w.path[k - 1][1], q[0], q[1]) : 0), 0), 0);
+  const sac = Math.max(...ways.map((w) => w.sac));
+  const longest = ways.reduce((a, w) => (w.path.length > a.path.length ? w : a), ways[0]);
+  const pts = ways.flatMap((w) => w.path.filter((_, k) => k % 2 === 0));
+  const nearFalls = falls.map((f, k) => ({ f, k, d: Math.min(...pts.map((q) => km(q[0], q[1], f.lon, f.lat))) })).filter((o) => o.d < 1.5).sort((a, b) => a.d - b.d);
+  const [ax, ay] = v.at;
+  const towns = data.munis.map((m) => ({ m, d: km(m.lon, m.lat, ax, ay) })).sort((a, b) => a.d - b.d);
+  const routesNear = T!.routes.map((r, k) => ({ r, k, d: Math.min(...r.line.filter((_, j) => j % 4 === 0).map((q) => km(q[0], q[1], ax, ay))) })).filter((o) => o.d < 8).sort((a, b) => a.d - b.d).slice(0, 4);
+  const hrs = len / 4.5;
+  const c = sac >= 2 ? '#fcd34d' : TRAIL_COLOR;
+  const W = el.clientWidth || 380;
+  const hero = routeHero({ W, H: 200, parts: ways.map((w) => w.path), line: longest.path, falls: nearFalls.map((o) => [o.f.lon, o.f.lat] as [number, number]), summit: null, color: c, loop: false, still: calm(), secs: 6, path: true });
+  el.innerHTML = `
+    ${backBar()}
+    <div class="tr-sathero">${hero}<div class="tr-sathero-tag" style="--c:${c}"><span class="tr-lv"></span>${sac ? SAC_NAME[sac] : 'footpath'}</div></div>
+    <div class="kicker" style="--c:${c}">Footpath${towns[0] ? ` · ${towns[0].d < 2 ? `in ${esc(towns[0].m.name)}` : `${towns[0].d.toFixed(0)} km from ${esc(towns[0].m.name)}`}` : ''}</div>
+    <h2>${name ? esc(name) : 'Unnamed footpath'}</h2>
+    <p class="lede">${name ? `One of the island’s ${fmt.int(T!.netPaths)} mapped paths, not part of a named long-distance route.` : 'A path with no name on the map: often a connector, a desire line or a local shortcut.'} Highlighted on the map${ways.length > 1 ? `, all ${ways.length} mapped pieces nearby` : ''}.</p>
+    <div class="metric-grid">
+      <div class="metric"><div class="mk"><span class="dot" style="background:${c}"></span>Mapped length</div><div class="mv">${len < 1 ? `${Math.round(len * 1000)} m` : `${len.toFixed(1)} km`}</div><div class="ms">${ways.length > 1 ? `in ${ways.length} pieces` : 'one piece'}</div></div>
+      <div class="metric"><div class="mk"><span class="dot" style="background:${c}"></span>Walking it end to end</div><div class="mv">${hrsText(hrs)}</div><div class="ms">on the flat, at 4.5 km/h</div></div>
+      <div class="metric"><div class="mk"><span class="dot" style="background:#fcd34d"></span>Terrain</div><div class="mv" style="font-size:15px">${sac ? SAC_NAME[sac][0].toUpperCase() + SAC_NAME[sac].slice(1) : 'Everyday footpath'}</div><div class="ms">${sac >= 2 ? 'sure feet and proper boots' : 'from the mapped trail grade'}</div></div>
+      <div class="metric"><div class="mk"><span class="dot" style="background:${FALL_COLOR}"></span>Waterfalls</div><div class="mv">${nearFalls.length}</div><div class="ms">within 1.5 km of the path</div></div>
+    </div>
+    ${hrs >= 0.25 ? `<h3>Daylight today</h3>${daylightCard(hrs, false, ay, ax)}` : ''}
+    ${nearFalls.length ? `<h3>Waterfalls off this path</h3><div class="tr-falls">${nearFalls.slice(0, 8).map(({ f, k, d }) => `<button class="tr-fall" data-fall="${k}"><span class="tr-drop"></span>${esc(fallName(f))} <small>${d < 0.06 ? 'on the path' : `${Math.round(d * 1000)} m off`}${f.h ? ` · ${Math.round(f.h)} m` : ''}</small></button>`).join('')}</div>` : ''}
+    ${routesNear.length ? `<h3>Named hikes close by</h3><ol class="tr-routes">${routesNear.map(({ r, k, d }) => `<li data-route="${k}" style="--c:${LEVEL[r.level].c}"><span class="tr-lv"></span><span class="tr-nm"><b>${esc(r.name)}</b><small>${r.km} km · ↑${fmt.int(r.up)} m · ${d < 0.3 ? 'right here' : `${d.toFixed(1)} km away`}</small></span>${miniProfile(r)}</li>`).join('')}</ol>` : ''}
+    <h3>Closest towns</h3>
+    <div class="tr-falls">${towns.slice(0, 3).map(({ m, d }) => `<button class="tr-fall tr-town" data-town="${esc(m.key)}"><span class="tr-pin"></span>${esc(m.name)} <small>${d.toFixed(0)} km · town report ›</small></button>`).join('')}</div>
+    <div class="ld-actions">
+      <a class="ld-btn" target="_blank" rel="noopener" href="https://www.openstreetmap.org/#map=16/${ay.toFixed(5)}/${ax.toFixed(5)}">OpenStreetMap ↗</a>
+      <a class="ld-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${ay.toFixed(5)},${ax.toFixed(5)}">Directions ↗</a>
+    </div>
+    <p class="note">Footpaths from OpenStreetMap, joined by name within about 6 km of where you clicked. There’s no elevation along footpaths, so the time is a flat-ground estimate. Paths can be private, seasonal or overgrown.</p>`;
+  el.querySelector('.tr-back')!.addEventListener('click', () => go({ kind: 'overview' }, data, false));
+  el.querySelectorAll<HTMLElement>('[data-route]').forEach((b) => b.addEventListener('click', () => go({ kind: 'route', i: +b.dataset.route! }, data)));
+  el.querySelectorAll<HTMLElement>('[data-fall]').forEach((b) => b.addEventListener('click', () => go({ kind: 'fall', i: +b.dataset.fall! }, data)));
+  el.querySelectorAll<HTMLElement>('[data-town]').forEach((b) => b.addEventListener('click', () => host?.openTown(b.dataset.town!)));
 }
 
 // ---------------------------------------------------------------------------------------------
