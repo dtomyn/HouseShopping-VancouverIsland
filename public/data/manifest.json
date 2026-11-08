@@ -62,5 +62,9 @@
   "ferries": {
     "ok": true,
     "updated": "2026-11-06T16:05:44.762Z"
+  },
+  "wells": {
+    "ok": true,
+    "updated": "2026-11-08T15:49:55.013Z"
   }
 }

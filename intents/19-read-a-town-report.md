@@ -19,7 +19,9 @@ or a "closest towns" link in any details panel.
     (sailings a day, last boat home, crossing time);
   - the nearest river and how often it reached 1.5× its normal peak;
   - "By the 2050s" climate projections with model ranges;
-  - trails and waterfalls nearby, each opening on the map.
+  - trails and waterfalls nearby, each opening on the map;
+  - wells nearby: median depth and yield and the share of low-yield wells, within 5 km (or the whole island for the
+    small islands), with a chart of those wells as drill holes ([29](29-know-the-well-water-under-a-place.md)).
 - Charts of population (dashed = projection), median sale value and the crime index against BC.
 - Opened from the Town Finder, it shows the town's rank and score.
 - Close (×) returns to where it was opened from: the layer, the Town Finder, or the event that linked to it.

@@ -22,6 +22,8 @@ Rich descriptions (`describe`):
 | River gauge | Normal annual peak (m³/s), record and its year, years at 1.5× normal, area drained, and a chart of every year's peak against normal. |
 | Weather station | 1961–1990 normal, last-decade average, warmest year, years of record, and a chart of every year against normal. |
 | Air monitor | Smokiest season, full years of data, worst daily average, and a chart of smoky fire-season days per year. |
+| Water well | Depth, yield when drilled, water level, aquifer; how it compares with the wells within 2 km; the wells within 1 km as drill holes; a link to its GWELLS record ([29](29-know-the-well-water-under-a-place.md)). Moves the timeline to its drilling date. |
+| Aquifer | Productivity, vulnerability, demand, quality concerns, material, and a link to its GWELLS page. |
 
 **Fallback** for every other feature (hospitals, normals stations, spots on the hazard and future-climate surfaces,
 and any layer added later): the tooltip's bold line becomes the title, each `label value` pair becomes a headline

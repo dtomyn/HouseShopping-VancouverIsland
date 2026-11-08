@@ -6,13 +6,19 @@ import * as d3 from 'd3';
 import type * as maplibregl from 'maplibre-gl';
 import { ArcLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import type { Layer, PickingInfo } from '@deck.gl/core';
-import { Trails, fmt } from './data';
+import { Trails, Wells, fmt } from './data';
 import { trailMetresNear } from './trails';
 import { esc } from './html';
+import { gpmText, lpm, wellStrip, wellsNear, yieldColor } from './wells';
 
 let trails: Trails | null = null;
 /** Trail density and waterfalls for the Outdoors filters (from the atlas's trails.json). */
 export function setLandTrails(t: Trails | null) { trails = t; }
+let wells: Wells | null = null;
+/** The well registry, for the parcel report's chart of nearby wells (from the atlas's wells.json). */
+export function setLandWells(w: Wells | null) { wells = w; }
+type LandWells = { km: number; lowGpm: number; count: number; pid: string[]; n: number[]; depth: (number | null)[]; gpm: (number | null)[]; low: (number | null)[]; aq: number[]; own: number[] };
+let landWells: LandWells | null = null;
 
 type Cat = 'care' | 'er' | 'grocery' | 'gas';
 type Poi = [string, number, number];
@@ -81,6 +87,25 @@ async function load(): Promise<Land> {
     }
   }
   num.trail3 = trail3; num.fallKm = fallKm; num.fallI = fallI;
+  // well prospects (scripts/wells.mjs writes them to their own file, lined up with land.json by PID)
+  const wl: Record<string, Float32Array> = Object.fromEntries(['wN', 'wDepth', 'wGpm', 'wLow', 'wAq', 'wOwn'].map((k) => [k, new Float32Array(n).fill(NaN)]));
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}data/land-wells.json`);
+    const lw = res.ok ? ((await res.json()) as LandWells) : null;
+    if (lw) {
+      // same order as land.json, or (if land.json was rebuilt since) matched up by PID
+      const same = lw.count === n && lw.pid.every((p, i) => p === json.cols.pid[i]);
+      const at = same ? null : new Map(lw.pid.filter(Boolean).map((p, j) => [p, j]));
+      for (let i = 0; i < n; i++) {
+        const j = same ? i : json.cols.pid[i] ? at!.get(json.cols.pid[i]) : undefined;
+        if (j == null) continue;
+        const v = (a: (number | null)[]) => (a[j] == null ? NaN : (a[j] as number));
+        wl.wN[i] = lw.n[j]; wl.wDepth[i] = v(lw.depth); wl.wGpm[i] = v(lw.gpm); wl.wLow[i] = v(lw.low); wl.wAq[i] = lw.aq[j]; wl.wOwn[i] = lw.own[j];
+      }
+      landWells = lw;
+    }
+  } catch { /* no well prospects: the Water supply filters stay at Any */ }
+  Object.assign(num, wl);
   return { n, json, pid: json.cols.pid, num, polys, bounds };
 }
 
@@ -95,9 +120,10 @@ type F = {
   threat: number; unrated: boolean; flood: boolean; high: number; pga: number; fires: number;
   slope: number; alr: 'any' | 'avoid' | 'only'; islands: 'any' | 'main' | 'islands';
   trail: number; fall: number;
+  wGpm: number; wDepth: number; wLow: number; aquifer: 'any' | 'over';
   budget: number;
 };
-const ANY_MIN = 120, ANY_FIRES = 200, ANY_SLOPE = 45, ANY_PGA = 100, ANY_FALL = 40;
+const ANY_MIN = 120, ANY_FIRES = 200, ANY_SLOPE = 45, ANY_PGA = 100, ANY_FALL = 40, ANY_WDEPTH = 250, ANY_WLOW = 100;
 const BRIEF: F = {
   acres: 10, water: 'front', kinds: [true, true, true], front: 30, near: 500,
   care: 45, careKind: 'any', grocery: 45, gas: 45,
@@ -105,6 +131,7 @@ const BRIEF: F = {
   threat: 2, unrated: true, flood: true, high: 10, pga: ANY_PGA, fires: ANY_FIRES,
   slope: ANY_SLOPE, alr: 'any', islands: 'any',
   trail: 0, fall: ANY_FALL,
+  wGpm: 0, wDepth: ANY_WDEPTH, wLow: ANY_WLOW, aquifer: 'any',
   budget: 2_000_000,
 };
 const LOOSE: F = { ...BRIEF, acres: 5, water: 'any', care: ANY_MIN, grocery: ANY_MIN, gas: ANY_MIN, road: 0, air: 0, ind: 0, threat: 4, flood: false, high: 0 };
@@ -132,7 +159,7 @@ const saveShort = () => { try { localStorage.setItem(SHORT, JSON.stringify(short
 const keyOf = (i: number) => L!.pid[i] || `${L!.num.lon[i].toFixed(5)},${L!.num.lat[i].toFixed(5)}`;
 
 /** One bit per filter; the funnel groups them into stages. */
-const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17 } as const;
+const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17, wGpm: 18, wDepth: 19, wLow: 20, aquifer: 21 } as const;
 type Bit = keyof typeof BIT;
 const STAGES: { id: string; label: string; icon: string; bits: Bit[]; c: string }[] = [
   { id: 'size', label: 'Size', icon: '◇', bits: ['acres'], c: '#a3e635' },
@@ -140,6 +167,7 @@ const STAGES: { id: string; label: string; icon: string; bits: Bit[]; c: string 
   { id: 'reach', label: 'Reach', icon: '✚', bits: ['care', 'grocery', 'gas'], c: '#818cf8' },
   { id: 'quiet', label: 'Quiet', icon: '☾', bits: ['road', 'air', 'ind'], c: '#c084fc' },
   { id: 'safe', label: 'Safe', icon: '⛨', bits: ['threat', 'flood', 'high', 'pga', 'fires'], c: '#fb923c' },
+  { id: 'wells', label: 'Wells', icon: '⇣', bits: ['wGpm', 'wDepth', 'wLow', 'aquifer'], c: '#19d3c5' },
   { id: 'outdoors', label: 'Trails', icon: '⛰', bits: ['trail', 'fall'], c: '#34d399' },
   { id: 'rules', label: 'Place', icon: '⌂', bits: ['slope', 'alr', 'islands'], c: '#f472b6' },
 ];
@@ -174,6 +202,10 @@ function maskOf(i: number): number {
   if ((f.islands === 'main' && n.island[i] !== 0) || (f.islands === 'islands' && n.island[i] === 0)) m |= 1 << BIT.islands;
   if (f.trail > 0 && !(n.trail3[i] >= f.trail)) m |= 1 << BIT.trail;
   if (fails(n.fallKm[i], f.fall, ANY_FALL)) m |= 1 << BIT.fall;
+  if (f.wGpm > 0 && !(n.wGpm[i] >= f.wGpm)) m |= 1 << BIT.wGpm;
+  if (fails(n.wDepth[i], f.wDepth, ANY_WDEPTH)) m |= 1 << BIT.wDepth;
+  if (fails(n.wLow[i], f.wLow, ANY_WLOW)) m |= 1 << BIT.wLow;
+  if (f.aquifer === 'over' && !(n.wAq[i] >= 0)) m |= 1 << BIT.aquifer;
   return m;
 }
 
@@ -393,6 +425,7 @@ const fmtDist = (m: number) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).
 const BIT_NAME: Record<Bit, string> = {
   acres: 'size', water: 'water', care: 'health care', grocery: 'groceries', gas: 'gas', road: 'busy road', air: 'airport', ind: 'industry',
   threat: 'wildfire threat', flood: 'floodplain', high: 'high ground', pga: 'shaking', fires: 'fire history', slope: 'slope', alr: 'farmland reserve', islands: 'island', trail: 'trails nearby', fall: 'waterfall distance',
+  wGpm: 'well yield', wDepth: 'well depth', wLow: 'low-yield wells', aquifer: 'aquifer',
 };
 const failedNames = (i: number) => (Object.keys(BIT) as Bit[]).filter((b) => masks[i] & (1 << BIT[b])).map((b) => BIT_NAME[b]);
 
@@ -445,6 +478,14 @@ const SECTIONS: Section[] = [
       { kind: 'custom', bit: 'flood', label: 'Floodplain', hint: 'Designated floodplain maps (BC, mostly 1980s–90s; not every river is mapped)', render: renderFlood },
       { kind: 'range', bit: 'high', key: 'high', label: 'High ground', hint: 'Highest point on the parcel above sea level: room to build above storm surge, tsunami run-up and sea-level rise', min: 0, max: 60, step: 1, dir: 'min', value: (i) => L!.num.elevHi[i], show: (v) => (v <= 0 ? 'Any' : `≥ ${v} m`) },
       { kind: 'range', bit: 'pga', key: 'pga', label: 'Earthquake shaking', hint: 'NRCan 2020 hazard: peak shaking with a 2% chance in 50 years, % of gravity', min: 30, max: ANY_PGA, step: 1, dir: 'max', any: ANY_PGA, value: (i) => L!.num.pga[i], show: (v) => (v >= ANY_PGA ? 'Any' : `≤ ${v}% g`) },
+    ],
+  },
+  {
+    id: 'wells', title: 'Water supply', icon: '⇣', c: '#19d3c5', rows: [
+      { kind: 'range', bit: 'wGpm', key: 'wGpm', label: 'Well yield nearby', hint: 'Median yield, when drilled, of registered wells within 1 km of the parcel (GWELLS); parcels with no tested well nearby drop out', min: 0, max: 20, step: 0.5, dir: 'min', value: (i) => L!.num.wGpm[i], show: (v) => (v <= 0 ? 'Any' : `≥ ${v} gpm`) },
+      { kind: 'range', bit: 'wDepth', key: 'wDepth', label: 'Well depth nearby', hint: 'Median depth of registered wells within 1 km: deeper wells cost more to drill and pump', min: 10, max: ANY_WDEPTH, step: 5, dir: 'max', any: ANY_WDEPTH, value: (i) => L!.num.wDepth[i], show: (v) => (v >= ANY_WDEPTH ? 'Any' : `≤ ${v} m`) },
+      { kind: 'range', bit: 'wLow', key: 'wLow', label: 'Few low-yield wells', hint: 'Share of tested wells within 1 km that gave under 2 US gallons a minute when drilled', min: 0, max: ANY_WLOW, step: 5, dir: 'max', any: ANY_WLOW, value: (i) => L!.num.wLow[i], show: (v) => (v >= ANY_WLOW ? 'Any' : `≤ ${v}% low`) },
+      { kind: 'chips', bit: 'aquifer', key: 'aquifer', label: 'Mapped aquifer', hint: 'The parcel centre lies over an aquifer mapped by the province', options: [['any', 'Either'], ['over', 'Over a mapped aquifer']] },
     ],
   },
   {
@@ -844,6 +885,7 @@ function renderDetail(i: number) {
       ${m('Trails to walk', '#34d399', `${n.trail3[i].toFixed(n.trail3[i] < 10 ? 1 : 0)} km`, 'of mapped footpath within 3 km', f.trail <= 0 || n.trail3[i] >= f.trail)}
       ${(() => { const fl = Number.isNaN(n.fallI[i]) ? null : trails!.falls[n.fallI[i]]; return m('Nearest waterfall', '#8be3ff', Number.isNaN(n.fallKm[i]) ? '—' : `${n.fallKm[i].toFixed(1)} km`, fl ? `${esc(fl.name ?? 'unnamed')}${fl.h ? `, ${Math.round(fl.h)} m drop` : ''}` : '', f.fall >= ANY_FALL || n.fallKm[i] <= f.fall); })()}
     </div>` : ''}
+    ${wellsDetail(i, m)}
     <h3>Quiet</h3>
     <div class="metric-grid">
       ${m('Busy road', '#c084fc', `${n.roadKm[i].toFixed(1)} km`, 'from the quietest spot on the land', n.roadKm[i] >= f.road)}
@@ -868,6 +910,27 @@ function renderDetail(i: number) {
   });
   p.querySelector<HTMLTextAreaElement>('.ld-notes textarea')?.addEventListener('input', (e) => { shortlist[k].note = (e.target as HTMLTextAreaElement).value; saveShort(); });
   drawRadar(p.querySelector<HTMLElement>('.ld-radar')!, pr, RAMP(s));
+  const ws = p.querySelector<HTMLElement>('.ld-wells');
+  if (ws && wells) wellStrip(ws, wells, wellsNear(wells, n.lon[i], n.lat[i], landWells?.km ?? 1), { height: 120 });
+}
+
+/** The parcel report's water supply: well prospects within 1 km, the aquifer under it, and the nearby wells drawn as drill holes. */
+function wellsDetail(i: number, m: (label: string, dot: string, v: string, sub: string, good?: boolean | null) => string) {
+  const n = L!.num;
+  if (!landWells || Number.isNaN(n.wN[i])) return '';
+  const r = landWells.km, low = landWells.lowGpm;
+  const aq = n.wAq[i] >= 0 ? wells?.aquifers[n.wAq[i]] : null;
+  const own = n.wOwn[i];
+  const gpm = Number.isNaN(n.wGpm[i]) ? null : n.wGpm[i];
+  return `<h3>Water supply</h3>
+    <div class="metric-grid">
+      ${m('Well yield', yieldColor(gpm), gpm == null ? '—' : gpmText(gpm), gpm == null ? `no tested well within ${r} km` : `median of wells within ${r} km · ${Math.round(lpm(gpm))} L/min`, f.wGpm <= 0 ? null : gpm != null && gpm >= f.wGpm)}
+      ${m('Well depth', '#19d3c5', Number.isNaN(n.wDepth[i]) ? '—' : `${n.wDepth[i]} m`, n.wN[i] ? `median of ${n.wN[i]} wells within ${r} km` : `no registered well within ${r} km`, f.wDepth >= ANY_WDEPTH ? null : n.wDepth[i] <= f.wDepth)}
+      ${m('Low-yield wells', '#ffb347', Number.isNaN(n.wLow[i]) ? '—' : `${n.wLow[i]}%`, `of tested wells nearby gave under ${low} gpm when drilled`, f.wLow >= ANY_WLOW ? null : n.wLow[i] <= f.wLow)}
+      ${m('Aquifer', '#4c8dff', aq ? `#${aq.id}` : n.wAq[i] >= 0 ? 'Mapped' : 'None mapped', aq ? `${esc(aq.material ?? '')}${aq.prod ? ` · ${esc(aq.prod.toLowerCase())} productivity` : ''}${aq.vuln ? ` · ${esc(aq.vuln.toLowerCase())} vulnerability` : ''}` : 'no provincially mapped aquifer under the centre', f.aquifer === 'over' ? n.wAq[i] >= 0 : null)}
+    </div>
+    ${own ? `<div class="callout" style="--c:#19d3c5">The registry lists <b>${own} well${own > 1 ? 's' : ''}</b> under this parcel's PID. Ask the seller for the well record and a recent flow test.</div>` : ''}
+    ${wells && n.wN[i] ? `<div class="ld-wells"></div><p class="note">Each line is a registered well within ${r} km, drawn to its depth and coloured by its yield when drilled; the blue tick is where the water stood. Yields nearby are a guide, not a promise for a new well here.</p>` : ''}`;
 }
 
 function drawRadar(el: HTMLElement, pr: ReturnType<typeof parts>, color: string) {

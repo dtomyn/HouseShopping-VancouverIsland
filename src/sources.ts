@@ -212,6 +212,20 @@ const SOURCES: Source[] = [
     rings: (d) => d.hospitals ? { [NOW]: { v: 1, label: `${d.hospitals.facilities.length} hospitals and ERs as listed today` } } : {},
   },
   {
+    id: 'wells', key: 'wells', name: 'Wells & aquifers', color: '#19d3c5', group: 'Land & water',
+    owner: 'BC Ministry of Water, Land and Resource Stewardship', title: 'GWELLS groundwater wells and the BC aquifer classification', url: 'https://catalogue.data.gov.bc.ca/dataset/groundwater-wells',
+    endpoint: 'WFS openmaps.gov.bc.ca · GW_WATER_WELLS_WRBC_SVW, GW_AQUIFERS_CLASSIFICATION_SVW', licence: OGL_BC,
+    gives: 'Every registered water well with its depth, yield and water level when drilled, and the mapped aquifers with their productivity and vulnerability.',
+    read: (d) => d.wells && { n: d.wells.rows.length + d.wells.aquifers.length, what: `${fmt.int(d.wells.rows.length)} water wells (${fmt.int(d.wells.rows.filter((r) => r[4] != null).length)} with a yield) and ${d.wells.aquifers.length} mapped aquifers` },
+    rings: (d) => {
+      if (!d.wells) return {};
+      const n: Record<number, number> = {};
+      for (const r of d.wells.rows) if (r[2] != null) n[Math.floor(r[2])] = (n[Math.floor(r[2])] ?? 0) + 1;
+      const f = norm(n, (v, m) => Math.sqrt((v ?? 0) / m));
+      return Object.fromEntries(Object.keys(n).map(Number).map((y) => [y, { v: f(y), label: `${fmt.int(n[y])} wells drilled` }]));
+    },
+  },
+  {
     id: 'trails', key: 'trails', name: 'Trails & waterfalls', color: '#34d399', group: 'Outdoors',
     owner: 'OpenStreetMap contributors · Wikidata', title: 'OpenStreetMap footpaths, hiking routes and waterfalls', url: 'https://www.openstreetmap.org/copyright',
     endpoint: 'overpass-api.de · route=hiking|foot, highway=path|footway|bridleway, waterway=waterfall; wikidata.org wbgetentities (P18 photo, P2048 height)', licence: 'ODbL; Wikidata CC0; photos under their Commons licences',
@@ -238,6 +252,7 @@ const DERIVED = [
   ['Ferry waits', 'add half the gap between weekday sailings to the drive when an island has no ER.'],
   ['Borrowed stations', 'a town without its own sunshine or climate station uses the nearest one within 60 km, and its report names it.'],
   ['Future values', 'come from the model grid cell nearest each town, within 15 km.'],
+  ['Well prospects', 'for a town are medians of the wells within 5 km (or on the whole island); for a parcel, of the wells within 1 km. A yield under 2 US gallons a minute counts as low.'],
   ['Trail climbing and times', 'are worked out here: elevations sampled from terrain tiles along each route, and walking time by Naismith’s rule (4.5 km/h plus an hour per 600 m up).'],
   ['Town Finder scores', 'are this atlas’s own blend of the numbers above, weighted by you.'],
 ];
@@ -300,7 +315,7 @@ export function openSources(data: Data, opts: { onShow: (layerId: string) => voi
       </div>
     </div>
     <div class="src-list">
-      ${['Hazards', 'Climate', 'People & money', 'Outdoors'].map((g) => `<h3>${g}</h3>${SOURCES.map((s, i) => s.group !== g ? '' : `
+      ${['Hazards', 'Climate', 'People & money', 'Land & water', 'Outdoors'].map((g) => `<h3>${g}</h3>${SOURCES.map((s, i) => s.group !== g ? '' : `
         <article class="src-card${live[i] ? '' : ' off'}" data-i="${i}" tabindex="0" style="--c:${s.color}">
           <header><span class="src-dot"></span><b>${s.name}</b>${status(s.key)}</header>
           <div class="src-owner">${esc(s.owner)}</div>

@@ -106,6 +106,25 @@ export type Trails = {
 /** The whole footpath network (trails-net.json, loaded on demand): each way is [name index or -1, sac 0–3, x0, y0, dx, dy, …] in 1/q degrees from west/south. */
 export type TrailNet = { west: number; south: number; q: number; names: string[]; ways: number[][] };
 
+/**
+ * GWELLS water wells (wells.json): [lon, lat, t (fractional year, null if undated), depth m, yield US gpm,
+ * static water level m below ground, aquifer index (-1 none), well tag number, flags (bit 0 artesian;
+ * flags >> 1 = 1 + index into `islands` for a small-island well, 0 on Vancouver Island)], sorted by t.
+ */
+export type WellRow = [number, number, number | null, number | null, number | null, number | null, number, number, number];
+export type Aquifer = {
+  id: number; name: string | null; loc: string | null; material: string | null; subtype: string | null;
+  prod: string | null; vuln: string | null; demand: string | null; quality: string | null; year: number | null;
+  polys: [number, number][][][];
+};
+/** Well figures for a town or area: quartiles [p25, median, p75] of depth (m) and yield (US gpm), the share of low-yield wells (< lowGpm). */
+export type WellStats = { n: number; nDepth: number; nYield: number; depth: [number, number, number] | null; gpm: [number, number, number] | null; low: number | null; area?: string };
+export type Wells = {
+  source: string; lowGpm: number; townKm: number; islands: string[];
+  rows: WellRow[]; aquifers: Aquifer[]; towns: Record<string, WellStats>;
+  summary: { vancouverIsland: WellStats; smallIslands: WellStats };
+};
+
 export type CrimeSeries = { csi?: Record<string, number>; vcsi?: Record<string, number>; nvcsi?: Record<string, number> };
 
 export type Data = {
@@ -125,6 +144,7 @@ export type Data = {
   future: Future | null;
   trails: Trails | null;
   ferries: Ferries | null;
+  wells: Wells | null;
   manifest: Record<string, { ok: boolean; updated?: string; lastError?: string }>;
 };
 
@@ -141,7 +161,7 @@ async function load<T>(name: string): Promise<T | null> {
 }
 
 export async function loadAll(): Promise<Data> {
-  const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, manifest] = await Promise.all([
+  const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, wells, manifest] = await Promise.all([
     load<GeoJSON.Feature>('island'),
     load<Muni[]>('municipalities'),
     load<any>('fires'),
@@ -158,6 +178,7 @@ export async function loadAll(): Promise<Data> {
     load<Future>('future'),
     load<Trails>('trails'),
     load<Ferries>('ferries'),
+    load<Wells>('wells'),
     load<any>('manifest'),
   ]);
 
@@ -176,7 +197,7 @@ export async function loadAll(): Promise<Data> {
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, manifest: manifest ?? {} };
 }
 
 let netPromise: Promise<TrailNet | null> | null = null;

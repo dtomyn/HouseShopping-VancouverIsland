@@ -4,6 +4,7 @@ import { Data, fmt, trailingMedianPrice } from './data';
 import { lineChart } from './charts';
 import { esc } from './html';
 import { CRITERIA, TownMetrics, erFerryWait, rankTowns, townMetrics } from './metrics';
+import { drawTownWells, wellsTownRow } from './wells';
 
 const STORE_KEY = 'island-atlas:weights';
 
@@ -56,6 +57,7 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
     ${feelsRow(t, data, metric, na)}
     ${futureRow(t, data, metric)}
     ${outdoorsRow(t, data, metric)}
+    ${wellsTownRow(data, key, metric)}
     ${t.climate?.trend != null ? `<div class="callout" style="--c:#f25f5c">Nearest long-term station (${t.climate.name}) has warmed <b>${fmt.signed(t.climate.trend, 2)} °C per decade</b> since 1950.</div>` : ''}
     ${t.river ? `<div class="callout" style="--c:#4cc9f0"><b>${t.river.name}</b> (${t.river.dist.toFixed(0)} km away) reached 1.5× its normal peak in ${Math.round(t.river.floodShare * 100)}% of years; its record was ${t.river.record.ratio.toFixed(1)}× in ${t.river.record.year}.</div>` : ''}
     ${census ? '' : '<h3>Population (dashed = projection)</h3><div id="tr-pop"></div>'}
@@ -66,6 +68,7 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
   el.querySelectorAll<HTMLElement>('[data-out]').forEach((b) => b.addEventListener('click', () => window.dispatchEvent(new CustomEvent('atlas:outdoors', { detail: { kind: b.dataset.out, i: +b.dataset.i! } }))));
 
   requestAnimationFrame(() => {
+    drawTownWells(el, data, m);
     const p = data.population?.munis[key];
     if (p && !census) {
       const fp = p.firstProjection ?? 9999;
