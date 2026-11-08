@@ -54,6 +54,7 @@ same shape:
 | 18 | Fly a trail and orbit a waterfall in 3D | [18-fly-trails-and-orbit-waterfalls.md](18-fly-trails-and-orbit-waterfalls.md) |
 | 33 | Get on the water: beaches, boat launches, marinas | [33-get-on-the-water.md](33-get-on-the-water.md) |
 | 34 | Find a campground | [34-find-a-campground.md](34-find-a-campground.md) |
+| 35 | See the snowpack | [35-see-the-snowpack.md](35-see-the-snowpack.md) |
 
 ### Water and land
 | # | Intent | File |

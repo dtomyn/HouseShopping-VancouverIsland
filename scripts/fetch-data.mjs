@@ -1230,6 +1230,13 @@ const SOURCES = {
     await buildCamping({ log, cached, writeOut, round, distKm, BBOX, WFS, getIsland, PLACES, ISLAND_COMMUNITIES });
   },
 
+  // Snowpack: BC River Forecast Centre snow courses and snow pillows on the islands, each station's 1 April snow water
+  // equivalent by year against its own normal (scripts/snow.mjs).
+  async snow() {
+    const { buildSnow } = await import('./snow.mjs');
+    await buildSnow({ log, cached, writeOut, round, WFS, BBOX, getIsland, onIsland });
+  },
+
   // A century of logging: every mapped cutblock with its harvest year, plus blocks approved or being logged now
   // (scripts/neighbours.mjs).
   async logging() {
@@ -1248,7 +1255,7 @@ const SOURCES = {
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'logging', 'neighbours', 'water', 'camping'];
+const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'logging', 'neighbours', 'water', 'camping', 'snow'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};

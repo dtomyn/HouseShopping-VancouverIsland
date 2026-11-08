@@ -30,6 +30,7 @@ The order puts quick wins that reuse existing code first, then the most decision
 | 12 | [Indigenous territories and place names](#8-indigenous-territories-and-original-place-names) | Important, but needs the most care with sources, permissions and wording | Medium |
 | 13 | ✅ [Internet and cell coverage](#13-internet-and-cell-coverage) | Rural buyers can't judge working from home without it | Medium |
 | 14 | ✅ [Water access and camping](#14-water-access-and-camping) | A coastal retirement is about getting on the water; two small point layers beside Trails | Small–medium |
+| 15 | ✅ [Snowpack](#15-snowpack) | Ski season, summer rivers and town water start in the mountains; a small timeline layer from open CSVs | Small |
 
 ### Static layers
 
@@ -121,6 +122,12 @@ Hospitals, seismic hazard and tsunami zones don't change over time. Before addin
 - **Water access:** OpenStreetMap beaches, slipways, marinas and features named “Beach Access” (ODbL), with Fisheries and Oceans Canada's small craft harbours (OGL – Canada). Lake and river beaches are told apart by distance from the coast. Distances are straight lines, own island only for the small islands.
 - **Camping:** Recreation Sites and Trails BC's site points (OGL – BC) and OpenStreetMap campgrounds, merged where they are the same site and sorted by the BC and national park boundaries the `neighbours` stage already downloads.
 - **Still open:** BC Parks doesn't publish its campgrounds (or their capacities, fees and reservations) as open data, so park campgrounds come from OpenStreetMap and only carry what volunteers tagged; municipal beach-access inventories (e.g. Saanich, Nanaimo, the CRD) are separate per-council datasets and only accesses named in OpenStreetMap appear; walking or driving times to the water instead of straight lines; no Town Finder criterion yet.
+
+### 15. Snowpack
+
+✅ **Built.** `snow` stage (`scripts/snow.mjs`) → `public/data/snow.json` (32 KB); time-based *Snowpack* layer in the *Outdoors* group (`src/snow.ts`). The BC River Forecast Centre's manual snow course archive and current season, the automated stations' daily snow water equivalent and hourly snow depth archives, and both station-location layers (all OGL – BC). 22 courses and 5 pillows inside the island outline with 5+ years of 1 April data; each compared with its own normal (median 1 April water, 1991–2020 where it has 15 of those years); the island figure is the median of those shares. Events for the thinnest (2015, 2005, 1981) and deepest (1999, 1974) years.
+
+- **Still open:** coverage is thin (8 stations measured in 2026, 5 of them counted in the island figure; most courses retired) and the early island figure rests on a few stations; no Town Report row, since no town's water or home can honestly be tied to one station; the CRD's Sooke watershed pillows other than Survey Mountain, and BC Wildfire's low weather stations, have no snow water in the archive; mid-winter (1 February, 1 March) and 15 May surveys are in the data but not shown; the River Forecast Centre's published basin indices and normals are not used (the atlas computes its own from the station records).
 
 ## Explaining the island's history
 

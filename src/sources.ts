@@ -285,6 +285,19 @@ const SOURCES: Source[] = [
     rings: (d) => d.camping ? { [NOW]: { v: 1, label: `${fmt.int(d.camping.rows.length)} campgrounds and recreation sites today` } } : {},
   },
   {
+    id: 'snow', key: 'snow', name: 'Snowpack', color: '#bfe3ff', group: 'Outdoors',
+    owner: 'BC River Forecast Centre (BC Ministry of Water, Land and Resource Stewardship)', title: 'Manual snow survey data and automated snow weather station data, with station locations', url: 'https://catalogue.data.gov.bc.ca/dataset/archive-manual-snow-survey-data',
+    endpoint: 'env.gov.bc.ca/wsd/data_searches/snow/asws/data · allmss_archive.csv, allmss_current.csv, SW_DailyArchive.csv, SD_Archive.csv; WFS openmaps.gov.bc.ca · SSL_SNOW_MSS_LOCS_SP, SSL_SNOW_ASWS_STNS_SP', licence: OGL_BC,
+    gives: 'Each island snow course’s and snow pillow’s 1 April snow water equivalent and depth by year, against the station’s own normal.',
+    read: (d) => {
+      const S = d.snow;
+      if (!S) return null;
+      const n = sum(S.stations.map((s) => Object.keys(s.swe).length));
+      return { n, what: `1 April readings from ${S.stations.filter((s) => s.kind === 'course').length} snow courses and ${S.stations.filter((s) => s.kind === 'pillow').length} snow pillows` };
+    },
+    rings: (d) => Object.fromEntries(Object.entries(d.snow?.island ?? {}).map(([y, [r, n]]) => [y, { v: Math.max(0.08, Math.min(1, r / 1.8)), label: `1 April snowpack ${Math.round(r * 100)}% of normal (median of ${n} stations)` }])),
+  },
+  {
     id: 'logging', key: 'logging', name: 'Logging', color: '#e9b872', group: 'Outdoors',
     owner: 'BC Ministry of Forests', title: 'Harvested Areas of BC (Consolidated Cutblocks) and Forest Tenure Cutblock Polygons', url: 'https://catalogue.data.gov.bc.ca/dataset/harvested-areas-of-bc-consolidated-cutblocks-',
     endpoint: 'WFS openmaps.gov.bc.ca · VEG_CONSOLIDATED_CUT_BLOCKS_SP, FTEN_CUT_BLOCK_POLY_SVW', licence: OGL_BC,

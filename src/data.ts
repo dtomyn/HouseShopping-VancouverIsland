@@ -202,6 +202,21 @@ type Points<T> = { source: string; asOf: string; islands: string[]; kinds: { id:
 export type Water = Points<WaterTown> & { townKm: number };
 export type Camping = Points<CampTown> & { townKm: number };
 
+/**
+ * Snow surveys (snow.json, scripts/snow.mjs): BC River Forecast Centre snow courses (measured by hand around 1 April)
+ * and snow pillows (read automatically on 1 April). `swe` is 1 April snow water equivalent in mm by year, `depth` the
+ * snow depth in cm; `date` only lists years when the reading wasn't taken on 1 April ('MM-DD'), `flag` the survey
+ * code when there was one ('problem', 'early/late', 'trace'…). `normal` is the station's own median 1 April SWE over
+ * `normalPeriod` (null with under 10 years of record).
+ */
+export type SnowStation = {
+  id: string; kind: 'course' | 'pillow'; name: string; elev: number; lon: number; lat: number; active: boolean; operator: string | null;
+  from: number; to: number; n: number; normal: number | null; normalPeriod: string | null;
+  swe: Record<string, number>; depth: Record<string, number>; date?: Record<string, string>; flag?: Record<string, string>;
+};
+/** `island`: year -> [median of the stations' 1 April SWE ÷ their own normal, stations counted] */
+export type Snow = { source: string; asOf: string; normalYears: [number, number]; minNormalMm: number; stations: SnowStation[]; island: Record<string, [number, number]> };
+
 export type Data = {
   island: GeoJSON.Feature | null;
   munis: Muni[];
@@ -226,6 +241,7 @@ export type Data = {
   neighbours: Neighbours | null;
   water: Water | null;
   camping: Camping | null;
+  snow: Snow | null;
   manifest: Record<string, { ok: boolean; updated?: string; lastError?: string }>;
 };
 
@@ -243,7 +259,7 @@ async function load<T>(name: string): Promise<T | null> {
 
 export async function loadAll(): Promise<Data> {
   const internet = load<Internet>('internet');
-  const water = load<Water>('water'), camping = load<Camping>('camping');
+  const water = load<Water>('water'), camping = load<Camping>('camping'), snow = load<Snow>('snow');
   const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, wells, logging, neighbours, manifest, tsunami] = await Promise.all([
     load<GeoJSON.Feature>('island'),
     load<Muni[]>('municipalities'),
@@ -283,7 +299,7 @@ export async function loadAll(): Promise<Data> {
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, water: (await water)?.rows?.length ? await water : null, camping: (await camping)?.rows?.length ? await camping : null, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, water: (await water)?.rows?.length ? await water : null, camping: (await camping)?.rows?.length ? await camping : null, snow: (await snow)?.stations?.length ? await snow : null, manifest: manifest ?? {} };
 }
 
 let netPromise: Promise<TrailNet | null> | null = null;

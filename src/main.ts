@@ -30,7 +30,7 @@ const LAYER_GROUPS: { name: string; ids: string[] }[] = [
   { name: 'Base map', ids: ['island'] },
   { name: 'History on the timeline', ids: ['fires', 'logging', 'quakes', 'rivers', 'climate', 'smoke', 'wells'] },
   { name: 'Towns & living', ids: ['population', 'housing', 'crime', 'hospitals', 'internet'] },
-  { name: 'Outdoors', ids: ['trails', 'water', 'camping'] },
+  { name: 'Outdoors', ids: ['trails', 'water', 'camping', 'snow'] },
   { name: 'Hazard & climate outlook', ids: ['seismic', 'tsunami', 'normals', 'future'] },
 ];
 
