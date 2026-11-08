@@ -83,6 +83,14 @@ const SOURCES: Source[] = [
     },
   },
   {
+    id: 'tsunami', key: 'tsunami', name: 'Tsunami zones', color: '#38e1ff', group: 'Hazards',
+    owner: 'Emergency Management and Climate Readiness BC', title: 'Tsunami Notification Zones for BC', url: 'https://catalogue.data.gov.bc.ca/dataset/tsunami-notification-zones-for-bc',
+    endpoint: 'WFS openmaps.gov.bc.ca · ADM_TSUNAMI_NOTIFY_ZONES_SP', licence: OGL_BC,
+    gives: 'The zones a BC tsunami alert names, assigned to every town and parcel by its nearest coast.',
+    read: (d) => d.tsunami && { n: d.tsunami.zones.length + Object.keys(d.tsunami.towns).length, what: `${d.tsunami.zones.length} notification zones around the island, ${Object.keys(d.tsunami.towns).length} towns placed in them` },
+    rings: (d): Record<number, Ring> => (d.tsunami ? { 2021: { v: 0.55, label: 'Victoria’s hazard zone modelled (2021)' }, [NOW]: { v: 0.9, label: 'Notification zones as published today' } } : {}),
+  },
+  {
     id: 'rivers', key: 'rivers', name: 'River floods', color: '#4cc9f0', group: 'Hazards',
     owner: 'Environment and Climate Change Canada', title: 'HYDAT national water data archive: annual peak flows', url: 'https://api.weather.gc.ca/collections/hydrometric-annual-peaks',
     endpoint: 'api.weather.gc.ca/collections/hydrometric-annual-peaks', licence: OGL_CA,
@@ -267,8 +275,9 @@ const BARK: BarkSource[] = [
   { name: 'Ferries', key: 'ferries', owner: 'BC Ferries (feed by Trillium Solutions) · Western Pacific Marine', title: 'BC Ferries GTFS timetable feed; Lasqueti’s timetable typed by hand', url: 'https://www.transit.land/feeds/f-c0-bcferries~bc~ca', licence: 'Public GTFS feed (no licence stated)', gives: 'Weekday sailings, the last boat home and crossing times, counted from a typical weekday in the feed; Lasqueti’s passenger ferry has no feed, so it is typed into scripts/municipalities.mjs.', read: (d) => `${d.munis.filter((m) => m.ferry).length} ferry links${d.ferries ? `, feed valid to ${d.ferries.source.end.slice(0, 4)}-${d.ferries.source.end.slice(4, 6)}-${d.ferries.source.end.slice(6)}` : ''}` },
   { name: 'Census 2021', key: 'population', owner: 'Statistics Canada', title: '2021 Census of Population, dissemination areas', url: 'https://www12.statcan.gc.ca/census-recensement/2021/dp-pd/prof/index.cfm', licence: 'Statistics Canada Open Licence', gives: 'Population, 65+ share and average home value for the unincorporated islands.', read: (d) => `${d.munis.filter((m) => m.island).length} island communities` },
   { name: 'Roads', key: 'hospitals', owner: 'OpenStreetMap contributors · OSRM', title: 'OSRM demo router on OpenStreetMap roads', url: 'https://www.openstreetmap.org/copyright', licence: 'ODbL', gives: 'The road routes and free-flow drive times to the nearest ER.' },
+  { name: 'Tsunami maps', key: 'tsunami', owner: 'Strathcona Regional District · City of Victoria', title: 'West Coast Tsunami Inundation Models; Tsunami Hazard Zone (2021 model)', url: 'https://storymaps.arcgis.com/stories/ee3f568154ed46d8b3ee3b6be04f9c8a', licence: 'OGL – Canada · City of Victoria Open Data Licence', gives: 'Published hazard areas: Cascadia and Alaska scenarios from Nootka Sound to Quatsino Sound, and the City of Victoria’s 2021 hazard zone.', read: (d) => `${d.tsunami?.areas.reduce((a, x) => a + x.polygons, 0) ?? 0} mapped polygons` },
   { name: 'Basemap', owner: 'CARTO · OpenStreetMap contributors', title: 'Dark Matter vector basemap', url: 'https://carto.com/attributions', licence: 'ODbL / CARTO terms', gives: 'The dark map, place names and roads under every layer.' },
-  { name: 'Terrain', owner: 'Mapzen · AWS Open Data', title: 'Terrain Tiles (terrarium)', url: 'https://registry.opendata.aws/terrain-tiles/', licence: 'Open, with attribution', gives: 'The shaded relief of the island’s mountains, the 3D terrain for trail flights and waterfall orbits, and trail elevations.' },
+  { name: 'Terrain', owner: 'Mapzen · AWS Open Data', title: 'Terrain Tiles (terrarium)', url: 'https://registry.opendata.aws/terrain-tiles/', licence: 'Open, with attribution', gives: 'The shaded relief of the island’s mountains, the 3D terrain for trail flights and waterfall orbits, trail elevations, and the low coastal ground on the tsunami layer.' },
 ];
 
 const DERIVED = [
@@ -280,6 +289,7 @@ const DERIVED = [
   ['Future values', 'come from the model grid cell nearest each town, within 15 km.'],
   ['Well prospects', 'for a town are medians of the wells within 5 km (or on the whole island); for a parcel, of the wells within 1 km. A yield under 2 US gallons a minute counts as low.'],
   ['Trail climbing and times', 'are worked out here: elevations sampled from terrain tiles along each route, and walking time by Naismith’s rule (4.5 km/h plus an hour per 600 m up).'],
+  ['Low coastal ground', 'is a tsunami screening measure worked out here from ~100 m terrain: ground under 20 m within 1 km of the sea. Published hazard maps take its place where they exist.'],
   ['Town Finder scores', 'are this atlas’s own blend of the numbers above, weighted by you.'],
 ];
 

@@ -39,6 +39,7 @@ Optional extras, all covered below:
   | 🔥 Wildfires | Every mapped fire perimeter + every recorded ignition, flaring then cooling to burn scars | 1919 → today |
   | ◉ Earthquakes | M2.5+ quakes drawn at their real depth (×3), with surface shockwaves; tilt the map to look underground | 1900 → today |
   | ∿ Shaking hazard | NRCan 2020 building-code hazard model as a colour surface: peak shaking with a 2% chance in 50 years, % of gravity, contoured every 10%; town values while it's the picked layer | 2020 model (static) |
+  | ≋ Tsunami zones | BC's tsunami notification zones as tinted bands over the sea; openly published hazard maps (Strathcona RD's Cascadia scenario from Nootka to Quatsino Sound, the City of Victoria's 2021 zone); low coastal ground everywhere else (under 20 m, within 1 km of the sea) as glowing water that fills as a wave sweeps in from the open Pacific; towns labelled with zone and low-ground share. No invented arrival times: only Ocean Networks Canada's ~20 minutes to the outer north-west coast is quoted | today (static) |
   | ≋ River floods | Annual peak flow at 64 river gauges vs. each river's normal peak | 1958 → today |
   | ☁ Wildfire smoke | Air monitors as columns: fire-season (May–Oct) days with 24-hour PM2.5 over BC's 25 µg/m³ objective; a brown haze over the map in the smokiest years | 1998 → 2025 |
   | 🌡 Climate | Homogenized temperature anomalies at 20 long-record stations + warming stripes | 1902 → 2020 |
@@ -53,7 +54,7 @@ Optional extras, all covered below:
   | ⛰ Trails & waterfalls | Every mapped footpath as a glowing web with hikers moving along it; named hiking routes coloured by effort; waterfalls as beams of falling water, as tall as their drop where it's known. Click a route or any footpath for its elevation profile and a **3D flight** along it over satellite imagery on real terrain; click a waterfall to **orbit it in 3D**; **Waterfall tour** flies to each photographed fall in turn; a **Satellite** switch lays imagery over the map | mapped today (static) |
 
 - **The Layer menu**: the atlas starts on just the island. Each layer's switch puts it on the map or takes it off. Clicking a layer's name makes it the *picked* layer, whose story fills the side panel and whose years drive the timeline; the other layers stay on. Switching off the picked layer takes its timeline away too, and *Clear the map* at the top turns everything off. The `+N` on the Layer button counts the other layers on the map.
-- **Static layers** (Shaking hazard, Climate normals, Future climate, Hospital access, Trails & waterfalls) don't change over time. While one is the picked layer the timeline dims, and any time-based layers that are on keep playing underneath.
+- **Static layers** (Shaking hazard, Tsunami zones, Climate normals, Future climate, Hospital access, Trails & waterfalls) don't change over time. While one is the picked layer the timeline dims, and any time-based layers that are on keep playing underneath.
 - **The timeline** has play/pause, speeds, a sparkline of the picked layer, and markers for key moments: big fires, the 1946 Vancouver Island earthquake, the 1964 Port Alberni tsunami, the 2021 heat dome and more. As playback passes one, a line with **Details** appears above the timeline.
 - **Click anything for details.** A timeline marker, an event's **Details**, a layer's **Key moments**, or anything you can point at on the map opens a panel on the right. Map features include an earthquake, a fire, a river gauge, a weather or air-quality station, a hospital, a well or aquifer, a footpath, or a spot on the hazard and future-climate maps. Each panel has:
   - its own numbers and, for gauges and stations, a chart of its record;
@@ -64,26 +65,26 @@ Optional extras, all covered below:
   Towns open their report.
 - **Town Report**: click any town for a report card. It covers:
   - prices, population, the 65+ share and crime;
-  - nearby wildfire and quake history, the official earthquake shaking hazard, and smoke days;
+  - nearby wildfire and quake history, the official earthquake shaking hazard, the tsunami notification zone and low coastal ground nearby, and smoke days;
   - local climate and warming trend, and the nearest river's flood record;
   - the drive to the nearest 24/7 emergency room;
   - projected hot days, temperature, frost and summer rain for the 2050s, with model ranges;
   - the trails and waterfalls nearby, each opening on the map;
   - the wells nearby (within 5 km, or the whole island for the small islands): median depth and yield, the share of low-yield wells, and every well drawn as a drill hole, shallowest to deepest.
   - measured home internet speed within 5 km (and in 2019), the share of homes nearby offered 50/10 Mbps, and mobile service.
-- **Town Finder**: weight what matters to you and every municipality is ranked and raised as 3D columns on the map. The criteria are affordability, low crime, low wildfire exposure, lower shaking hazard, low quake activity, mild & warm, sunnier, little snow & frost, close to a hospital, not ferry-dependent, clean air, mild future summers, trails & waterfalls nearby, fast internet, retiree community, and services & amenities. Presets set them all at once, and your weights are remembered in your browser.
+- **Town Finder**: weight what matters to you and every municipality is ranked and raised as 3D columns on the map. The criteria are affordability, low crime, low wildfire exposure, lower shaking hazard, low tsunami exposure, low quake activity, mild & warm, sunnier, little snow & frost, close to a hospital, not ferry-dependent, clean air, mild future summers, trails & waterfalls nearby, fast internet, retiree community, and services & amenities. Presets set them all at once, and your weights are remembered in your browser.
 - **Gulf and Discovery islands**: Salt Spring, Galiano, Thetis, Gabriola, Lasqueti, Denman and Quadra are included alongside the island's municipalities (list in `scripts/municipalities.mjs`). Every map layer is clipped to them too. They are unincorporated, so a few figures come from other sources and are labelled in their reports:
   - population and 65+ share from the 2021 Census (dissemination areas on each island)
   - crime from the island's rural RCMP detachment (Salt Spring, Gabriola, Quadra; Galiano shares the Outer Gulf Islands detachment)
   - sale prices are estimates: each island's 2021 Census average home value, scaled to match transfer-tax medians and moved since with its rural area's sales
   - ER access through the ferry route when there is no ER on the island; the Town Finder adds half the gap between sailings for the wait
   - ferry links (weekday sailings, last boat home, crossing time, car ferry or not) feed the *Not ferry-dependent* criterion. BC Ferries links are counted from the operator's GTFS timetable feed on a typical weekday in the next two weeks, so `npm run data ferries` picks up each new season; Lasqueti's passenger ferry has no feed and is typed into `scripts/municipalities.mjs`
-- **Land Finder** (button top right, or `#land` in the URL): every private parcel of 5+ acres on Vancouver Island and the shortlisted islands (about 29,000, from ParcelMap BC), filtered live. Every criterion is a slider or switch, starting from our brief: 10+ acres, waterfront, within 45 minutes' drive of health care, groceries and gas, quiet, and safe:
+- **Land Finder** (button top right, or `#land` in the URL): every private parcel of 5+ acres on Vancouver Island and the shortlisted islands (about 29,000, from ParcelMap BC), filtered live. Every criterion is a slider or switch, starting from our brief: 10+ acres, waterfront, within 45 minutes' drive of health care, groceries and gas, quiet, and safe, with at least an acre outside the tsunami hazard:
   - **The land**: size, slope, Agricultural Land Reserve share, Vancouver Island or the small islands
   - **Waterfront**: ocean, lake or river frontage (boundary within 35 m of the Freshwater Atlas shoreline) and how much, or distance to water
   - **Within reach**: drive minutes to the nearest clinic or hospital (or 24/7 ER), grocery store and gas station (OSRM on OpenStreetMap roads); the share of homes offered 50/10 Mbps internet and whether mobile service is reported, for the parcel's ~25 km² broadband hexagon (both off by default)
   - **Quiet**: distance from the quietest spot on the land to a busy road, from airports and float bases, and from industry and quarries
-  - **Safety**: BC Wildfire Service strategic threat rating on or within 500 m of the parcel, fire starts nearby since 1990, mapped floodplains, highest ground above sea level, earthquake shaking hazard
+  - **Safety**: BC Wildfire Service strategic threat rating on or within 500 m of the parcel, fire starts nearby since 1990, mapped floodplains, tsunami hazard (a published hazard map where one covers the parcel, else its low coastal ground: room to build outside it, fully outside, or any), highest ground above sea level, earthquake shaking hazard
   - **Water supply**: median yield and depth of the registered wells within 1 km, the share of them that gave under 2 US gallons a minute, and whether the parcel sits over a mapped aquifer (all off by default; the per-parcel figures are in `public/data/land-wells.json`)
   - **Trails & waterfalls**: km of mapped footpath within 3 km, and distance to the nearest waterfall (both off by default)
   - **Budget**: BC publishes no per-parcel prices, so the budget checks the asking prices you add to shortlisted parcels; each parcel links to listings near it
@@ -119,7 +120,7 @@ npm run data trails       # trails, routes and waterfalls (about 7 minutes from 
 npm run data ferries      # ferry links from BC Ferries' timetable feed (re-run when the season changes)
 ```
 
-The stages are `island`, `ferries`, `fires`, `quakes`, `rivers`, `climate`, `normals`, `population`, `housing`, `crime`, `hospitals`, `seismic`, `smoke`, `future`, `trails`, `internet`, `land` and `wells` (which reads `land.json` and writes the parcels' well figures to their own `land-wells.json`). `scripts/fetch-data.mjs` downloads from the sources below, clips everything to the island, and writes compact JSON to `public/data/`.
+The stages are `island`, `ferries`, `fires`, `quakes`, `rivers`, `climate`, `normals`, `population`, `housing`, `crime`, `hospitals`, `seismic`, `smoke`, `future`, `trails`, `internet`, `land`, `wells` and `tsunami` (which reads `land.json` and writes the parcels' well figures to their own `land-wells.json`). `scripts/fetch-data.mjs` downloads from the sources below, clips everything to the island, and writes compact JSON to `public/data/`.
 
 - **Caching:** raw downloads are cached in `.cache/`, so re-runs are quick. Delete it to fetch everything fresh.
 - **When a source is down:** that layer keeps its existing data, and **Data & sources** in the app shows its status.
@@ -184,6 +185,7 @@ Rendering takes about 15–25 seconds of real time per second of film, so a one-
 | Wildfires | BC Wildfire Service — historical & current fire perimeters and incident points (BC Data Catalogue WFS) | OGL – British Columbia |
 | Earthquakes | USGS ComCat FDSN event service | Public domain |
 | Shaking hazard | Natural Resources Canada 2020 National Seismic Hazard Model (NBC 2020; PGA, site class C, 2% and 10% in 50 years), sampled on a ~7 km grid via the Earthquakes Canada hazard web service (`earthquakescanada.nrcan.gc.ca/api/canshm/graphql`) | OGL – Canada |
+| Tsunami zones | EMCR, *Tsunami Notification Zones for BC* (BC Data Catalogue WFS); Strathcona Regional District, *West Coast Tsunami Inundation Models* (Cascadia and Alaska scenarios, ArcGIS REST); City of Victoria, *Tsunami Hazard Zone* and *Safe Zone* (2021 model, ArcGIS REST); low coastal ground from Mapzen / AWS terrain tiles (z10). The Capital Region's regional service is not used: its terms forbid redistribution | OGL – British Columbia; OGL – Canada; City of Victoria Open Data Licence |
 | River floods | ECCC HYDAT annual peaks via `api.weather.gc.ca` | OGL – Canada |
 | Wildfire smoke | BC Ministry of Environment, *Air Quality and Climate Monitoring: Verified Hourly Data* — yearly PM2.5 CSVs on `ftp.env.gov.bc.ca/pub/outgoing/AIR/AnnualSummary` (streamed through `curl`, island rows only; ~100 MB per year on first run) | OGL – British Columbia |
 | Climate | ECCC Adjusted & Homogenized Canadian Climate Data (AHCCD) via `api.weather.gc.ca` | OGL – Canada |
@@ -207,7 +209,7 @@ Basemap © OpenStreetMap contributors © CARTO. Terrain tiles: Mapzen / AWS Open
 
 ## Roadmap
 
-Built so far from the original plan: climate normals, hospital access, wildfire smoke, future climate and earthquake shaking hazard; since then, internet and cell coverage. Still open: a century of logging, a guided story mode, sea level, tsunami zones and a Cascadia scenario, ongoing costs (property tax and rent), and Indigenous territories and place names. The details and a suggested build order are in [ROADMAP.md](ROADMAP.md). [MAP-ATLAS-BLUEPRINT.md](MAP-ATLAS-BLUEPRINT.md) describes how to build a new atlas in the same style for another region.
+Built so far from the original plan: climate normals, hospital access, wildfire smoke, future climate, earthquake shaking hazard, and tsunami zones (the Cascadia scenario without invented arrival times); since then, internet and cell coverage. Still open: a century of logging, a guided story mode, sea level, ongoing costs (property tax and rent), and Indigenous territories and place names. The details and a suggested build order are in [ROADMAP.md](ROADMAP.md). [MAP-ATLAS-BLUEPRINT.md](MAP-ATLAS-BLUEPRINT.md) describes how to build a new atlas in the same style for another region.
 
 ## Caveats
 
@@ -215,6 +217,7 @@ This is an exploration tool, not professional advice:
 - Property-transfer medians include all property types, so they run below single-family listing prices.
 - River-gauge ratios describe high water, not flooded area.
 - Hazard counts describe history, not risk forecasts.
+- Low coastal ground (the tsunami layer) is a screening measure from ~100 m terrain, not an official hazard map; published maps exist only for Victoria and the north-west coast.
 - Trails can be closed, overgrown, on private land or seasonal.
 - Well yields are the driller's short test when each well was finished, not a long-term supply, and nearby wells are a guide, not a promise for a new well. Older wells are under-counted, and the registry's 0 yields are treated as not recorded.
 - Internet availability is what providers report for a ~25 km² hexagon, not a specific address; measured speeds depend on the plans people bought and their Wi-Fi. Ask the provider about the address before buying.

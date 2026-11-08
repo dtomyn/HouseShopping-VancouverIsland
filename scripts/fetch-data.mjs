@@ -1207,12 +1207,20 @@ const SOURCES = {
     const { buildWells } = await import('./wells.mjs');
     await buildWells({ log, writeOut, round, distKm, wfsAll, getIsland, onIsland, OUT, PLACES, ISLAND_COMMUNITIES });
   },
+
+  // Tsunami: BC notification zones, openly published inundation/hazard maps, low coastal ground from
+  // terrain, and per-parcel measures for Land Finder (scripts/tsunami.mjs). Reads land.json, so it
+  // runs after land and writes its parcel values to its own land-tsunami.json.
+  async tsunami() {
+    const { buildTsunami } = await import('./tsunami.mjs');
+    await buildTsunami({ log, cached, writeOut, round, pool, BBOX, getIsland, PLACES, OUT });
+  },
 };
 
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells'];
+const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};

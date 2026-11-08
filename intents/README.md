@@ -40,6 +40,7 @@ same shape:
 | # | Intent | File |
 |---|--------|------|
 | 13 | Know how hard the ground could shake | [13-know-how-hard-the-ground-could-shake.md](13-know-how-hard-the-ground-could-shake.md) |
+| 30 | Know where a tsunami could reach | [30-know-where-a-tsunami-could-reach.md](30-know-where-a-tsunami-could-reach.md) |
 | 14 | Compare what each place's climate feels like | [14-compare-day-to-day-climates.md](14-compare-day-to-day-climates.md) |
 | 15 | See the climate the next 25 years could bring | [15-see-the-climate-ahead.md](15-see-the-climate-ahead.md) |
 | 16 | Know how far emergency care is | [16-know-how-far-emergency-care-is.md](16-know-how-far-emergency-care-is.md) |
@@ -77,7 +78,7 @@ same shape:
 New drafts go in `proposed/` with the same shape, using **Behaviour (proposed)**, **Open questions** and
 **Touches** (files expected to change) in place of the as-implemented sections. Move a file up into this folder
 and rewrite it as-implemented once it ships. The open ideas are in [../ROADMAP.md](../ROADMAP.md) (logging history,
-story mode, sea level, tsunami zones, ongoing costs, Indigenous territories); none has a proposed intent yet.
+story mode, sea level, ongoing costs, Indigenous territories); none has a proposed intent yet.
 
 Out of scope: the `video/` explainer films are a separate tooling project that films the app; they are not an
 end-user intent of the application. [../MAP-ATLAS-BLUEPRINT.md](../MAP-ATLAS-BLUEPRINT.md) covers building a new

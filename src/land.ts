@@ -117,8 +117,41 @@ async function load(): Promise<Land> {
     if (p) { net50[i] = p.band; cell[i] = p.mobile ? 1 : 0; if (p.fixed != null) netMbps[i] = p.fixed; }
   }
   num.net50 = net50; num.cell = cell; num.netMbps = netMbps;
+  await loadTsunami(json, num);
   return { n, json, pid: json.cols.pid, num, polys, bounds };
 }
+
+/**
+ * Per-parcel tsunami measures live in their own file (the `tsunami` stage), aligned with land.json's parcel
+ * order and checked against a hash of its PIDs; if it's missing or stale the values stay NaN, so the
+ * filter lets every parcel through. tsuLo: % of the parcel on low coastal ground; tsuHaz: % inside a
+ * published hazard map (NaN where none covers it); tsuZone: notification zone index (A–E) of the nearest coast.
+ */
+let tsunamiOk = false;
+let tsunamiScreen = 20;
+async function loadTsunami(json: LandJson, num: Record<string, Float32Array>) {
+  const n = json.count;
+  for (const k of ['tsuLo', 'tsuHaz', 'tsuZone']) num[k] = new Float32Array(n).fill(NaN);
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}data/land-tsunami.json`);
+    if (!res.ok) return;
+    const t = (await res.json()) as { count: number; check: string; screenM: number; zone: number[]; lo: number[]; haz: (number | null)[] };
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-1', new TextEncoder().encode(json.cols.pid.join('|'))))).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 12);
+    if (t.count !== n || t.check !== hash) { console.warn('land-tsunami.json is out of step with land.json: run `npm run data tsunami`'); return; }
+    for (let i = 0; i < n; i++) {
+      num.tsuLo[i] = t.lo[i];
+      num.tsuHaz[i] = t.haz[i] ?? NaN;
+      num.tsuZone[i] = t.zone[i] >= 0 ? t.zone[i] : NaN;
+    }
+    tsunamiOk = true;
+    tsunamiScreen = t.screenM;
+  } catch { /* optional data */ }
+}
+/** Share of a parcel in tsunami hazard: the published map where one covers it, else low coastal ground. */
+const tsuShare = (i: number) => { const n = L!.num; return Number.isNaN(n.tsuHaz[i]) ? n.tsuLo[i] : n.tsuHaz[i]; };
+/** Acres of the parcel outside it. */
+const tsuDry = (i: number) => L!.num.acres[i] * (1 - tsuShare(i) / 100);
+const TSU_ROOM_ACRES = 1;
 
 // ---------------------------------------------------------------------------------------------
 // filters
@@ -128,7 +161,7 @@ type F = {
   acres: number; water: WaterMode; kinds: [boolean, boolean, boolean]; front: number; near: number;
   care: number; careKind: 'any' | 'er'; grocery: number; gas: number;
   road: number; air: number; ind: number;
-  threat: number; unrated: boolean; flood: boolean; high: number; pga: number; fires: number;
+  threat: number; unrated: boolean; flood: boolean; high: number; pga: number; fires: number; tsunami: 'any' | 'room' | 'clear';
   slope: number; alr: 'any' | 'avoid' | 'only'; islands: 'any' | 'main' | 'islands';
   trail: number; fall: number;
   wGpm: number; wDepth: number; wLow: number; aquifer: 'any' | 'over';
@@ -140,14 +173,14 @@ const BRIEF: F = {
   acres: 10, water: 'front', kinds: [true, true, true], front: 30, near: 500,
   care: 45, careKind: 'any', grocery: 45, gas: 45,
   road: 0.3, air: 3, ind: 1,
-  threat: 2, unrated: true, flood: true, high: 10, pga: ANY_PGA, fires: ANY_FIRES,
+  threat: 2, unrated: true, flood: true, high: 10, pga: ANY_PGA, fires: ANY_FIRES, tsunami: 'room',
   slope: ANY_SLOPE, alr: 'any', islands: 'any',
   trail: 0, fall: ANY_FALL,
   wGpm: 0, wDepth: ANY_WDEPTH, wLow: ANY_WLOW, aquifer: 'any',
   net: 'any', cell: 'any',
   budget: 2_000_000,
 };
-const LOOSE: F = { ...BRIEF, acres: 5, water: 'any', care: ANY_MIN, grocery: ANY_MIN, gas: ANY_MIN, road: 0, air: 0, ind: 0, threat: 4, flood: false, high: 0 };
+const LOOSE: F = { ...BRIEF, acres: 5, water: 'any', care: ANY_MIN, grocery: ANY_MIN, gas: ANY_MIN, road: 0, air: 0, ind: 0, threat: 4, flood: false, high: 0, tsunami: 'any' };
 const STORE = 'island-atlas:land-filters';
 const SHORT = 'island-atlas:shortlist';
 
@@ -172,14 +205,14 @@ const saveShort = () => { try { localStorage.setItem(SHORT, JSON.stringify(short
 const keyOf = (i: number) => L!.pid[i] || `${L!.num.lon[i].toFixed(5)},${L!.num.lat[i].toFixed(5)}`;
 
 /** One bit per filter; the funnel groups them into stages. */
-const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17, wGpm: 18, wDepth: 19, wLow: 20, aquifer: 21, net: 22, cell: 23 } as const;
+const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17, wGpm: 18, wDepth: 19, wLow: 20, aquifer: 21, net: 22, cell: 23, tsunami: 24 } as const;
 type Bit = keyof typeof BIT;
 const STAGES: { id: string; label: string; icon: string; bits: Bit[]; c: string }[] = [
   { id: 'size', label: 'Size', icon: '◇', bits: ['acres'], c: '#a3e635' },
   { id: 'water', label: 'Water', icon: '≋', bits: ['water'], c: '#38bdf8' },
   { id: 'reach', label: 'Reach', icon: '✚', bits: ['care', 'grocery', 'gas', 'net', 'cell'], c: '#818cf8' },
   { id: 'quiet', label: 'Quiet', icon: '☾', bits: ['road', 'air', 'ind'], c: '#c084fc' },
-  { id: 'safe', label: 'Safe', icon: '⛨', bits: ['threat', 'flood', 'high', 'pga', 'fires'], c: '#fb923c' },
+  { id: 'safe', label: 'Safe', icon: '⛨', bits: ['threat', 'flood', 'tsunami', 'high', 'pga', 'fires'], c: '#fb923c' },
   { id: 'wells', label: 'Wells', icon: '⇣', bits: ['wGpm', 'wDepth', 'wLow', 'aquifer'], c: '#19d3c5' },
   { id: 'outdoors', label: 'Trails', icon: '⛰', bits: ['trail', 'fall'], c: '#34d399' },
   { id: 'rules', label: 'Place', icon: '⌂', bits: ['slope', 'alr', 'islands'], c: '#f472b6' },
@@ -210,6 +243,8 @@ function maskOf(i: number): number {
   if (Number.isNaN(t) ? !f.unrated : t > f.threat) m |= 1 << BIT.threat;
   if (f.flood && n.flood[i] > 0) m |= 1 << BIT.flood;
   if (f.high > 0 && !(n.elevHi[i] >= f.high)) m |= 1 << BIT.high;
+  // missing values (data not built) pass, never penalized
+  if (f.tsunami !== 'any' && !Number.isNaN(tsuShare(i)) && (f.tsunami === 'clear' ? tsuShare(i) > 0 : tsuDry(i) < TSU_ROOM_ACRES)) m |= 1 << BIT.tsunami;
   if (fails(n.pga[i], f.pga, ANY_PGA)) m |= 1 << BIT.pga;
   if (fails(n.fires5[i], f.fires, ANY_FIRES)) m |= 1 << BIT.fires;
   if (fails(n.slope[i], f.slope, ANY_SLOPE)) m |= 1 << BIT.slope;
@@ -441,7 +476,7 @@ const waterText = (i: number) => {
 const fmtDist = (m: number) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`);
 const BIT_NAME: Record<Bit, string> = {
   acres: 'size', water: 'water', care: 'health care', grocery: 'groceries', gas: 'gas', road: 'busy road', air: 'airport', ind: 'industry',
-  threat: 'wildfire threat', flood: 'floodplain', high: 'high ground', pga: 'shaking', fires: 'fire history', slope: 'slope', alr: 'farmland reserve', islands: 'island', trail: 'trails nearby', fall: 'waterfall distance',
+  threat: 'wildfire threat', flood: 'floodplain', high: 'high ground', pga: 'shaking', fires: 'fire history', slope: 'slope', alr: 'farmland reserve', islands: 'island', trail: 'trails nearby', fall: 'waterfall distance', tsunami: 'tsunami hazard',
   wGpm: 'well yield', wDepth: 'well depth', wLow: 'low-yield wells', aquifer: 'aquifer', net: '50/10 internet', cell: 'mobile service',
 };
 const failedNames = (i: number) => (Object.keys(BIT) as Bit[]).filter((b) => masks[i] & (1 << BIT[b])).map((b) => BIT_NAME[b]);
@@ -495,6 +530,7 @@ const SECTIONS: Section[] = [
       { kind: 'custom', bit: 'threat', label: 'Wildfire threat', hint: 'BC Wildfire Service Provincial Strategic Threat Analysis: the worst rating on the parcel or in the forest within 500 m of it', render: renderThreat },
       { kind: 'range', bit: 'fires', key: 'fires', label: 'Fire history nearby', hint: 'Wildfire starts within 5 km since 1990', min: 0, max: ANY_FIRES, step: 1, dir: 'max', any: ANY_FIRES, value: (i) => L!.num.fires5[i], show: (v) => (v >= ANY_FIRES ? 'Any' : `≤ ${v} starts`) },
       { kind: 'custom', bit: 'flood', label: 'Floodplain', hint: 'Designated floodplain maps (BC, mostly 1980s–90s; not every river is mapped)', render: renderFlood },
+      { kind: 'custom', bit: 'tsunami', label: 'Tsunami', render: renderTsunami },
       { kind: 'range', bit: 'high', key: 'high', label: 'High ground', hint: 'Highest point on the parcel above sea level: room to build above storm surge, tsunami run-up and sea-level rise', min: 0, max: 60, step: 1, dir: 'min', value: (i) => L!.num.elevHi[i], show: (v) => (v <= 0 ? 'Any' : `≥ ${v} m`) },
       { kind: 'range', bit: 'pga', key: 'pga', label: 'Earthquake shaking', hint: 'NRCan 2020 hazard: peak shaking with a 2% chance in 50 years, % of gravity', min: 30, max: ANY_PGA, step: 1, dir: 'max', any: ANY_PGA, value: (i) => L!.num.pga[i], show: (v) => (v >= ANY_PGA ? 'Any' : `≤ ${v}% g`) },
     ],
@@ -641,6 +677,17 @@ function renderThreat(el: HTMLElement) {
 function renderFlood(el: HTMLElement) {
   el.innerHTML = `<label class="lr-switch"><input type="checkbox" ${f.flood ? 'checked' : ''}><span class="sw"></span><span>Outside mapped floodplains</span></label>`;
   el.querySelector('input')!.addEventListener('change', (e) => { f.flood = (e.target as HTMLInputElement).checked; refreshAll(); });
+}
+
+function renderTsunami(el: HTMLElement) {
+  const opts: [F['tsunami'], string][] = [['room', 'Room to build outside'], ['clear', 'Fully outside'], ['any', 'Any']];
+  el.innerHTML = `
+    <div class="lr-lab"><span>Tsunami hazard</span></div>
+    <div class="chips">${opts.map(([v, t]) => `<button class="chip${f.tsunami === v ? ' on' : ''}" data-v="${v}">${t}</button>`).join('')}</div>
+    <div class="lr-hint">${tsunamiOk
+      ? `Where a published hazard map covers the parcel (Victoria; Nootka Sound to Quatsino Sound) its area counts; elsewhere, ground under ${tsunamiScreen} m within 1 km of the sea (a screening measure). <i>Room to build</i>: at least ${TSU_ROOM_ACRES} acre outside it.`
+      : 'Tsunami data not built for these parcels yet (<code>npm run data tsunami</code>): every parcel passes.'}</div>`;
+  el.querySelectorAll<HTMLButtonElement>('[data-v]').forEach((b) => b.addEventListener('click', () => { f.tsunami = b.dataset.v as F['tsunami']; renderTsunami(el); refreshAll(); }));
 }
 
 function renderBudget(el: HTMLElement) {
@@ -840,6 +887,15 @@ function select(i: number | null) {
   renderDetail(i);
 }
 
+function tsunamiTile(i: number, m: (label: string, dot: string, v: string, sub: string, good?: boolean | null) => string) {
+  const n = L!.num, share = tsuShare(i), mapped = !Number.isNaN(n.tsuHaz[i]);
+  const zone = Number.isNaN(n.tsuZone[i]) ? null : 'ABCDE'[n.tsuZone[i]];
+  const dry = tsuDry(i);
+  const what = mapped ? 'inside the published hazard map' : `on low coastal ground (under ${tsunamiScreen} m, near the sea)`;
+  const sub = share > 0 ? `${what}; ${dry >= 10 ? Math.round(dry) : dry.toFixed(1)} acres outside it` : mapped ? 'outside the published hazard map' : `no ground under ${tsunamiScreen} m near the sea`;
+  return m('Tsunami', '#38e1ff', `${Math.round(share)}%${zone ? ` · Zone ${zone}` : ''}`, sub, share === 0 ? true : dry >= TSU_ROOM_ACRES ? null : false);
+}
+
 function renderDetail(i: number) {
   const n = L!.num, J = L!.json;
   const p = ctx!.panel;
@@ -903,6 +959,7 @@ function renderDetail(i: number) {
       ${m('Fire history', '#f97316', `${n.fires5[i]} starts`, `within 5 km since 1990; ${fmt.ha(n.burn5[i])} burned within 5 km since 1950`)}
       ${m('Floodplain', '#38bdf8', n.flood[i] ? 'Mapped' : 'Not mapped', n.flood[i] ? 'part of the parcel is in a designated floodplain' : 'outside designated floodplain maps', !n.flood[i])}
       ${m('Earthquake shaking', '#e86cff', Number.isNaN(n.pga[i]) ? '—' : `${n.pga[i]}% g`, '2% chance in 50 years (NRCan 2020)')}
+      ${tsunamiOk ? tsunamiTile(i, m) : ''}
     </div>
     ${trails && !Number.isNaN(n.trail3[i]) ? `<h3>Trails &amp; waterfalls</h3>
     <div class="metric-grid">

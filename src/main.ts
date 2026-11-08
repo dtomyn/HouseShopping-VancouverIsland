@@ -24,14 +24,14 @@ const INTRO_FROM = { center: [-126.2, 50.4] as [number, number], zoom: 5.1, pitc
 const HOME = { center: [-125.25, 49.55] as [number, number], zoom: 7.15, pitch: 48, bearing: -18 };
 const MUNI_LAYERS = new Set(['population', 'housing', 'crime']);
 // static layers that draw town columns only while focused
-const MUNI_WHEN_FOCUSED = new Set(['hospitals', 'seismic', 'future']);
+const MUNI_WHEN_FOCUSED = new Set(['hospitals', 'seismic', 'tsunami', 'future']);
 // layer menu sections; any layer not listed lands in the last group
 const LAYER_GROUPS: { name: string; ids: string[] }[] = [
   { name: 'Base map', ids: ['island'] },
   { name: 'History on the timeline', ids: ['fires', 'quakes', 'rivers', 'climate', 'smoke', 'wells'] },
   { name: 'Towns & living', ids: ['population', 'housing', 'crime', 'hospitals', 'internet'] },
   { name: 'Outdoors', ids: ['trails'] },
-  { name: 'Hazard & climate outlook', ids: ['seismic', 'normals', 'future'] },
+  { name: 'Hazard & climate outlook', ids: ['seismic', 'tsunami', 'normals', 'future'] },
 ];
 
 type Mode = 'layer' | 'town' | 'finder' | 'land' | 'event';
@@ -443,7 +443,7 @@ function showLayerPanel() {
     panelHandle = l.panel(p, ctx());
     panelHandle.update(ctx());
     // the layer's key moments, above its source line: each opens in its own panel
-    const moments = events.filter((e) => e.layer === l.id || (e.layer === '*' && !l.static && e.t >= l.range[0] && e.t <= l.range[1]));
+    const moments = events.filter((e) => e.layer === l.id || (e.layer === '*' && ((!l.static && e.t >= l.range[0] && e.t <= l.range[1]) || e.layers?.includes(l.id))));
     if (l.id !== 'island' && moments.length) {
       const box = momentsList(moments, byId, openEvent);
       const src = p.querySelector(':scope > .source');

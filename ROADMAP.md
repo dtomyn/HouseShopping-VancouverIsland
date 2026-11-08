@@ -25,7 +25,7 @@ The order puts quick wins that reuse existing code first, then the most decision
 | 7 | ✅ [Wildfire smoke days](#4-wildfire-smoke-days) | Health-relevant; larger download to process | Medium |
 | 8 | ✅ [Future climate (2030s–2050s)](#2-future-climate-2030s2050s) | High value, but projection data and uncertainty need careful presentation | Medium–large |
 | 9 | ✅ [Earthquake shaking hazard](#5-earthquake-shaking-hazard) | Static layer that complements the quake history | Medium |
-| 10 | [Tsunami zones and a Cascadia scenario](#9-tsunami-zones-and-a-cascadia-scenario) | Builds on items 4 and 9; arrival times must come from published modelling | Medium–large |
+| 10 | ✅ [Tsunami zones and a Cascadia scenario](#9-tsunami-zones-and-a-cascadia-scenario) | Builds on items 4 and 9; arrival times must come from published modelling | Medium–large |
 | 11 | [Ongoing costs: property tax and rent](#11-ongoing-costs-property-tax-and-rent) | Useful, but rent data may need a manual export step | Medium |
 | 12 | [Indigenous territories and place names](#8-indigenous-territories-and-original-place-names) | Important, but needs the most care with sources, permissions and wording | Medium |
 | 13 | ✅ [Internet and cell coverage](#13-internet-and-cell-coverage) | Rural buyers can't judge working from home without it | Medium |
@@ -143,6 +143,13 @@ Hospitals, seismic hazard and tsunami zones don't change over time. Before addin
 - **Watch out for:** territories overlap and are not legal boundaries. Use each Nation's preferred names, avoid implying precision, and prefer sources the Nations themselves publish or endorse.
 
 ### 9. Tsunami zones and a Cascadia scenario
+
+✅ **Built.** `tsunami` stage (`scripts/tsunami.mjs`, runs after `land`) → `public/data/tsunami.json` (zones, studies, per-town exposure; small), `tsunami-map.json` (shapes and cells, loaded when the layer is first shown) and `land-tsunami.json` (per-parcel values in `land.json`'s order, checked by a hash of its PIDs, so `land.json` is untouched). Static "Tsunami zones" layer beside Shaking hazard; *Tsunami* in the Town Report; Town Finder *Low tsunami exposure* (weight 1); Land Finder *Tsunami hazard* under Safety (the brief asks for at least an acre outside it); the curated 1964 Port Alberni event now has its numbers, the inlet's funnelling, sources and a fly-up of Alberni Inlet. Sources: BC's tsunami notification zones (BC Data Catalogue WFS, OGL-BC), Strathcona Regional District's West Coast inundation models (Cascadia and Alaska scenarios, Nootka Sound to Quatsino Sound, OGL-Canada) and the City of Victoria's 2021 hazard zone (City open-data licence); everywhere else a screening measure from z10 Terrarium terrain: ground under 20 m within 1 km of the sea, reached along the sea from the open Pacific (that route also orders the wave sweep, which is labelled as order, not timing). **No per-town arrival times**: no openly published table could be checked, so the fallback applies; the only figures quoted are Ocean Networks Canada's (Kouhi et al. 2023) ~20 minutes to the outer north-west coast and ~3 hours to Boundary Bay for a magnitude 9 Cascadia quake.
+
+Still open:
+- The Capital Region's regional hazard-zone service (same 2021 study as Victoria's) forbids redistribution; ask the CRD for an open licence, or link only.
+- Port Alberni (ACRD), Tofino, Ucluelet, the Comox Valley, Nanaimo and Cowichan publish tsunami maps as PDFs only; add each as it appears as open data.
+- Per-town Cascadia arrival times, if a regional study publishes them openly (the ShakeOut BC FAQ table could not be retrieved to check).
 
 **What it teaches:** which coasts are exposed, and how little warning a Cascadia tsunami would give compared with a distant one like 1964.
 
