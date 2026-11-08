@@ -12,7 +12,30 @@ import { esc } from './html';
 
 /** `hovered` is the municipality key under the pointer (town pin or column), if any. */
 export type Ctx = { time: number; speed: number; data: Data; selected: string | null; hovered: string | null; focusedId: string; clock: number };
-export type AtlasEvent = { t: number; layer: string; title: string; body: string; lon?: number; lat?: number; zoom?: number };
+/**
+ * A moment on the timeline. Only `t`, `layer` ('*' for island-wide), `title` and `body` are required; everything else
+ * deepens the event's own view in the side panel (src/events.ts), so an event can be given more detail later without
+ * touching the panel. Text fields are plain text (escaped when shown); only `detail` can draw HTML or charts.
+ */
+export type AtlasEvent = {
+  t: number; layer: string; title: string; body: string;
+  /** where the map flies when the event opens */
+  lon?: number; lat?: number; zoom?: number;
+  /** when it ended, for events that ran a while (a fire season, a closure) */
+  end?: number;
+  /** headline numbers, shown as tiles */
+  stats?: { v: string; l: string }[];
+  /** further reading inside the panel: a heading and paragraphs */
+  sections?: { title: string; text: string }[];
+  /** a photo (http(s) only) with its credit */
+  image?: { src: string; credit: string; href?: string };
+  /** where to read more */
+  sources?: { label: string; url: string }[];
+  /** layers that tell this story; "Show it on the map" switches them on (defaults to the event's own layer) */
+  layers?: string[];
+  /** anything richer a layer wants to draw in the event's panel (a chart, a table), below the headline numbers */
+  detail?: (el: HTMLElement) => void;
+};
 export type PanelHandle = { update: (ctx: Ctx) => void };
 
 export interface AtlasLayer {
@@ -212,9 +235,15 @@ function firesLayer(data: Data): AtlasLayer {
     spark: () => d3.range(l.range[0], y1 + 1).map((x) => ({ x, y: haByYear[x] ?? 0 })),
     events() {
       const big = [...fireTotals.values()].filter((f) => f.total >= 5000).sort((a, b) => a.t - b.t);
+      const bySize = [...fireTotals.values()].sort((a, b) => b.total - a.total);
       return big.map((f) => {
         const { town, km: d } = nearestTown(data.munis, f.c[0], f.c[1]);
         return {
+          stats: [
+            { v: fmt.ha(f.total), l: 'burned' },
+            { v: CAUSE[f.cause].name, l: 'cause' },
+            { v: `#${bySize.indexOf(f) + 1}`, l: `largest of ${fmt.int(bySize.length)} mapped fires` },
+          ],
           t: f.t,
           layer: 'fires',
           title: `${fmt.ha(f.total)} wildfire ${d < 8 ? 'at' : 'near'} ${town.name}`,
@@ -361,6 +390,7 @@ function quakesLayer(data: Data): AtlasLayer {
       return rows
         .filter((q) => q[3] >= 6.3 && nearestTown(data.munis, q[0], q[1]).km < 160)
         .map((q) => ({
+          stats: [{ v: `M${q[3]}`, l: 'magnitude' }, { v: `${Math.round(q[2])} km`, l: 'deep' }, { v: `${Math.round(nearestTown(data.munis, q[0], q[1]).km)} km`, l: `from ${nearestTown(data.munis, q[0], q[1]).town.name}` }],
           t: q[4],
           layer: 'quakes',
           title: /1946/.test(q[5]) ? `M${q[3]} — the 1946 Vancouver Island earthquake` : `M${q[3]} earthquake`,
@@ -1028,7 +1058,7 @@ function riversLayer(data: Data): AtlasLayer {
     events() {
       const ev: AtlasEvent[] = ys
         .filter((y) => share[y].n >= 8 && share[y].high / share[y].n >= 0.4)
-        .map((y) => ({ t: y + 0.05, layer: 'rivers', title: `${y}: island-wide high water`, body: `${share[y].high} of ${share[y].n} gauged rivers peaked at 1.5× their normal annual high or more.` }));
+        .map((y) => ({ stats: [{ v: `${share[y].high} of ${share[y].n}`, l: 'gauges at 1.5× normal or more' }, { v: `${Math.round((share[y].high / share[y].n) * 100)}%`, l: 'of gauged rivers' }], t: y + 0.05, layer: 'rivers', title: `${y}: island-wide high water`, body: `${share[y].high} of ${share[y].n} gauged rivers peaked at 1.5× their normal annual high or more.` }));
       return ev;
     },
     panel(el) {
@@ -1145,7 +1175,7 @@ function climateLayer(data: Data): AtlasLayer {
       return layers;
     },
     spark: () => ys.map((x) => ({ x, y: anomalies[x], color: div(anomalies[x]) })),
-    events: () => [{ t: warmest + 0.5, layer: 'climate', title: `${warmest}: warmest year in the island record`, body: `Island-average temperature ran ${fmt.signed(anomalies[warmest])} °C above the 1961–1990 normal.` }],
+    events: () => [{ stats: [{ v: `${fmt.signed(anomalies[warmest])} °C`, l: 'above the 1961–1990 normal' }, { v: `${stations.length}`, l: 'stations averaged' }], t: warmest + 0.5, layer: 'climate', title: `${warmest}: warmest year in the island record`, body: `Island-average temperature ran ${fmt.signed(anomalies[warmest])} °C above the 1961–1990 normal.` }],
     panel(el) {
       el.innerHTML = `${kicker(l, 'Homogenized temperature record')}
         <h2>A warming island</h2>
@@ -1873,6 +1903,7 @@ function smokeLayer(data: Data): AtlasLayer {
       worst.map((y) => {
         const r = isl.get(y)!, top = topStation(y);
         return {
+          stats: [{ v: r[4].toFixed(1), l: `fire-season days over ${thr} µg/m³, average monitor` }, { v: `${r[2]}`, l: 'monitors with a full year' }, ...(top ? [{ v: `${top.v[3]}`, l: `days at ${top.s.name}` }] : [])],
           t: y + 0.62, layer: 'smoke', title: `${y}: a smoky year`,
           body: `Between May and October, island air monitors averaged ${r[4].toFixed(1)} days with PM2.5 over ${thr} µg/m³ (${r[2]} stations).${top ? ` Most at ${top.s.name}: ${top.v[3]} days; its worst day averaged ${Math.round(top.v[1] ?? 0)} µg/m³.` : ''}`,
           ...(top ? { lon: top.s.lon, lat: top.s.lat, zoom: 8 } : {}),
@@ -1942,10 +1973,40 @@ function smokeLayer(data: Data): AtlasLayer {
 
 /** Curated events that aren’t derivable from the datasets. */
 export const CURATED_EVENTS: AtlasEvent[] = [
-  { t: 1964.24, layer: '*', title: '1964 — Tsunami floods Port Alberni', body: 'Waves from the Great Alaska Earthquake funnelled up Alberni Inlet overnight on 27–28 March, damaging hundreds of homes in Port Alberni.', lon: -124.81, lat: 49.23, zoom: 9.5 },
-  { t: 2021.49, layer: '*', title: 'June 2021 — The heat dome', body: 'A record-shattering heat wave sets all-time temperature highs across BC in late June; the following weeks bring a severe wildfire season.', lon: -124.5, lat: 49.4, zoom: 7 },
-  { t: 2021.87, layer: '*', title: 'November 2021 — Atmospheric river', body: 'Torrential rain causes catastrophic flooding across southern BC; washouts close the Malahat Highway, cutting Victoria off by road from the rest of the island.', lon: -123.55, lat: 48.55, zoom: 9.5 },
-  { t: 2023.45, layer: '*', title: 'June 2023 — Cameron Bluffs wildfire', body: 'A wildfire above Cameron Lake closes Highway 4 — the only road to Port Alberni, Tofino and Ucluelet — for weeks.', lon: -124.6, lat: 49.29, zoom: 10 },
+  {
+    t: 1964.24, layer: '*', title: '1964 — Tsunami floods Port Alberni',
+    body: 'Waves from the Great Alaska Earthquake funnelled up Alberni Inlet overnight on 27–28 March, damaging hundreds of homes in Port Alberni.',
+    lon: -124.81, lat: 49.23, zoom: 9.5,
+    stats: [{ v: 'M9.2', l: 'the Great Alaska Earthquake' }, { v: '27–28 Mar', l: 'the waves arrived overnight' }],
+    sections: [{ title: 'Why it matters here', text: 'Alberni Inlet narrows as it runs inland, piling a tsunami higher by the time it reaches the head of the inlet. Port Alberni now has tsunami sirens and mapped inundation zones: check them before buying low-lying property.' }],
+    sources: [{ label: '1964 Alaska earthquake (Wikipedia)', url: 'https://en.wikipedia.org/wiki/1964_Alaska_earthquake' }],
+    layers: ['quakes'],
+  },
+  {
+    t: 2021.49, layer: '*', title: 'June 2021 — The heat dome',
+    body: 'A record-shattering heat wave sets all-time temperature highs across BC in late June; the following weeks bring a severe wildfire season.',
+    lon: -124.5, lat: 49.4, zoom: 7,
+    stats: [{ v: '49.6 °C', l: 'at Lytton, Canada’s highest ever (29 June)' }, { v: '619', l: 'heat-related deaths in BC' }],
+    sections: [{ title: 'What followed', text: 'The heat dried the forests out ahead of a severe fire season across the province, and smoke reached island towns that never burned. Switch on Wildfires and Wildfire smoke to see that summer.' }],
+    sources: [{ label: '2021 Western North America heat wave (Wikipedia)', url: 'https://en.wikipedia.org/wiki/2021_Western_North_America_heat_wave' }],
+    layers: ['fires', 'smoke'],
+  },
+  {
+    t: 2021.87, layer: '*', title: 'November 2021 — Atmospheric river',
+    body: 'Torrential rain causes catastrophic flooding across southern BC; washouts close the Malahat Highway, cutting Victoria off by road from the rest of the island.',
+    lon: -123.55, lat: 48.55, zoom: 9.5,
+    stats: [{ v: '15 Nov', l: 'the Malahat closed by washouts' }],
+    sections: [{ title: 'Why it matters here', text: 'The Malahat (Highway 1) is the only highway between Greater Victoria and the rest of the island. When it closes, the ways round are the Mill Bay–Brentwood Bay ferry or the long Pacific Marine Circle Route.' }],
+    sources: [{ label: 'November 2021 Pacific Northwest floods (Wikipedia)', url: 'https://en.wikipedia.org/wiki/November_2021_Pacific_Northwest_floods' }],
+    layers: ['rivers'],
+  },
+  {
+    t: 2023.45, layer: '*', title: 'June 2023 — Cameron Bluffs wildfire',
+    body: 'A wildfire above Cameron Lake closes Highway 4 — the only road to Port Alberni, Tofino and Ucluelet — for weeks.',
+    lon: -124.6, lat: 49.29, zoom: 10,
+    sections: [{ title: 'Why it matters here', text: 'Highway 4 is the only paved road to the island’s west coast. While it was closed, Port Alberni, Tofino and Ucluelet were reached by a long gravel detour, and deliveries, commutes and the summer tourist season all felt it.' }],
+    layers: ['fires', 'smoke'],
+  },
 ];
 
 // ---------------------------------------------------------------------------------------------

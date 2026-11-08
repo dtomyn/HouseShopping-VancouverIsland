@@ -9,6 +9,7 @@ import type { Layer, PickingInfo } from '@deck.gl/core';
 import * as d3 from 'd3';
 import { Data, MONTHS, clamp, loadAll } from './data';
 import { AtlasEvent, AtlasLayer, CURATED_EVENTS, Ctx, PanelHandle, buildLayers } from './layers';
+import { eventColor, eventDate, eventLayers, momentsList, renderEventPanel } from './events';
 import { loadWeights, renderFinder, renderTownReport } from './panels';
 import { openSources, sourcesOpen } from './sources';
 import { Ranked } from './metrics';
@@ -33,7 +34,7 @@ const LAYER_GROUPS: { name: string; ids: string[] }[] = [
   { name: 'Hazard & climate outlook', ids: ['seismic', 'normals', 'future'] },
 ];
 
-type Mode = 'layer' | 'town' | 'finder' | 'land';
+type Mode = 'layer' | 'town' | 'finder' | 'land' | 'event';
 
 const state = {
   time: 1919,
@@ -51,6 +52,8 @@ const state = {
   mode: 'layer' as Mode,
   ranked: null as Ranked[] | null,
   beacons: [] as { ev: AtlasEvent; born: number }[],
+  // the event open in the side panel (mode 'event')
+  event: null as AtlasEvent | null,
 };
 
 let data: Data;
@@ -318,6 +321,7 @@ function openTown(key: string) {
   state.selected = key;
   const m = data.munis.find((x) => x.key === key)!;
   const prevMode = state.mode === 'town' ? 'layer' : state.mode;
+  const fromEvent = state.mode === 'event' ? state.event : null;
   state.mode = 'town';
   let rank: { pos: number; of: number; score: number } | undefined;
   if (state.ranked) {
@@ -328,7 +332,7 @@ function openTown(key: string) {
     panelHandle = null;
     renderTownReport($('panel'), data, key, {
       rank,
-      onClose: () => { state.selected = null; prevMode === 'finder' ? openFinder() : showLayerPanel(); },
+      onClose: () => { state.selected = null; if (fromEvent) openEvent(fromEvent); else if (prevMode === 'finder') openFinder(); else showLayerPanel(); },
     });
   });
   map.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 9.2), pitch: 55, duration: 1600, essential: true });
@@ -423,6 +427,13 @@ function showLayerPanel() {
     if (l.id === 'island' && on.length) { panelHandle = null; renderOnMap(p, on); return; }
     panelHandle = l.panel(p, ctx());
     panelHandle.update(ctx());
+    // the layer's key moments, above its source line: each opens in its own panel
+    const moments = events.filter((e) => e.layer === l.id || (e.layer === '*' && !l.static && e.t >= l.range[0] && e.t <= l.range[1]));
+    if (l.id !== 'island' && moments.length) {
+      const box = momentsList(moments, byId, openEvent);
+      const src = p.querySelector(':scope > .source');
+      if (src) p.insertBefore(box, src); else p.appendChild(box);
+    }
   });
 }
 
@@ -512,7 +523,7 @@ function setPanelOpen(open: boolean) {
 }
 
 /** Make a layer the active one (switching it on if it was off); other layers on the map stay on. 'island': no active layer. */
-function focus(id: string) {
+function focus(id: string, keepPanel = false) {
   const l = byId[id];
   if (id !== 'trails') leaveTrails();
   const changed = state.focused !== id;
@@ -525,12 +536,12 @@ function focus(id: string) {
       const [a, b] = l.range;
       if (state.time < a || state.time > b) state.time = a;
     }
-    if (state.mode !== 'finder') { state.mode = 'layer'; state.selected = null; }
+    if (state.mode !== 'finder' && !keepPanel) { state.mode = 'layer'; state.selected = null; }
   }
   document.documentElement.style.setProperty('--accent', l.color);
   renderLayerMenu();
   setupTimeline();
-  if (state.mode !== 'finder') showLayerPanel();
+  if (state.mode !== 'finder' && !keepPanel) showLayerPanel();
 }
 
 /** A menu switch: put a layer on the map or take it off. */
@@ -635,13 +646,7 @@ function drawEvents() {
     d.style.left = `${((ev.t - a) / (b - a)) * 100}%`;
     d.style.background = ev.layer === '*' ? '#fff' : byId[ev.layer].color;
     d.title = ev.title;
-    d.addEventListener('click', () => {
-      setTime(ev.t - 0.02);
-      setPlaying(false);
-      toast(ev);
-      if (ev.lon != null) map.flyTo({ center: [ev.lon, ev.lat!], zoom: ev.zoom ?? 8.5, duration: 1500 });
-      setTimeout(() => setTime(ev.t + 0.01), 50);
-    });
+    d.addEventListener('click', () => openEvent(ev));
     el.appendChild(d);
   }
 }
@@ -680,26 +685,68 @@ function syncTimelineUI() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// historic event toasts
+// historic events: a one-line ticker on the timeline while it plays; the full story opens in the side panel
 
-function toast(ev: AtlasEvent) {
-  const stack = $('toast-stack');
-  const el = document.createElement('div');
-  el.className = 'toast';
-  el.style.setProperty('--c', ev.layer === '*' ? '#ffffff' : byId[ev.layer]?.color ?? '#fff');
-  const yr = Math.floor(ev.t);
-  const mo = MONTHS[Math.floor((ev.t % 1) * 12)];
+let tickerTimer = 0;
+/** Announces an event the timeline just crossed: a line above the timeline (with Details) and a shockwave on the map. */
+function ticker(ev: AtlasEvent) {
+  const el = $('event-ticker');
+  el.style.setProperty('--c', eventColor(ev, byId));
+  el.replaceChildren();
   // Event text is plain (some of it built from data, like quake places), so it goes in as text.
-  for (const [cls, text] of [['td', `${mo} ${yr}`], ['tt', ev.title], ['tb', ev.body]]) {
-    const d = document.createElement('div');
-    d.className = cls;
-    d.textContent = text;
-    el.appendChild(d);
-  }
-  stack.prepend(el);
-  while (stack.children.length > 3) stack.lastElementChild!.remove();
-  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 6500);
+  const date = Object.assign(document.createElement('span'), { className: 'et-date', textContent: eventDate(ev.t) });
+  const title = Object.assign(document.createElement('span'), { className: 'et-title', textContent: ev.title });
+  const more = Object.assign(document.createElement('button'), { className: 'et-more', textContent: 'Details ›' });
+  more.addEventListener('click', () => openEvent(ev));
+  el.append(date, title, more);
+  el.hidden = false;
+  el.classList.remove('in'); void el.offsetWidth; el.classList.add('in');
+  clearTimeout(tickerTimer);
+  tickerTimer = window.setTimeout(() => { el.hidden = true; }, 7000);
   if (ev.lon != null) state.beacons.push({ ev, born: performance.now() });
+}
+
+let eventReturn: { label: string; go: () => void } | null = null;
+/** Opens an event in the side panel: the timeline stops at its date, the map flies to it. */
+function openEvent(ev: AtlasEvent) {
+  if (state.mode === 'land') closeLandFinder();
+  // remember where we came from the first time, so Back skips over events visited on the way
+  if (state.mode !== 'event') {
+    const from = state.mode, key = state.selected;
+    eventReturn = from === 'town' && key ? { label: data.munis.find((m) => m.key === key)?.name ?? 'Town report', go: () => openTown(key) }
+      : from === 'finder' ? { label: 'Town Finder', go: () => openFinder() }
+      : { label: state.focused === 'island' ? 'Back to the map' : focusedLayer().name, go: () => showLayerPanel() };
+  }
+  setPlaying(false);
+  setTime(ev.t + 0.001);
+  $('event-ticker').hidden = true;
+  state.mode = 'event';
+  state.event = ev;
+  if (ev.lon != null) {
+    state.beacons.push({ ev, born: performance.now() });
+    map.flyTo({ center: [ev.lon, ev.lat!], zoom: ev.zoom ?? 8.5, pitch: Math.max(map.getPitch(), 40), duration: 1600, essential: true });
+  }
+  swapPanel(() => {
+    panelHandle = null;
+    const p = $('panel');
+    p.style.setProperty('--c', eventColor(ev, byId));
+    renderEventPanel(p, ev, {
+      data, byId, events, backLabel: eventReturn?.label ?? 'Back to the map',
+      onBack: () => { state.event = null; const r = eventReturn; eventReturn = null; (r?.go ?? showLayerPanel)(); },
+      onOpen: openEvent, onShow: showEvent, onTown: openTown,
+    });
+  });
+}
+
+/** "Show it on the map": the event's layers go on (the first becomes the active one if it isn't), at the event's date. */
+function showEvent(ev: AtlasEvent) {
+  const ids = eventLayers(ev, byId);
+  if (!ids.length) return;
+  for (const id of ids) state.visible.add(id);
+  if (!ids.includes(state.focused)) focus(ids[0], true);
+  else { renderLayerMenu(); setupTimeline(); }
+  setTime(ev.t + 0.001);
+  if (ev.lon != null) map.flyTo({ center: [ev.lon, ev.lat!], zoom: ev.zoom ?? 8.5, duration: 1200, essential: true });
 }
 
 function fireCrossedEvents(prev: number, now: number) {
@@ -707,7 +754,7 @@ function fireCrossedEvents(prev: number, now: number) {
   // island-wide events only pop up while some history layer is on the map
   const anyTime = layers.some((l) => !l.static && l.available && state.visible.has(l.id));
   for (const ev of events) {
-    if (ev.t > prev && ev.t <= now && (ev.layer === '*' ? anyTime : state.visible.has(ev.layer))) toast(ev);
+    if (ev.t > prev && ev.t <= now && (ev.layer === '*' ? anyTime : state.visible.has(ev.layer))) ticker(ev);
   }
 }
 
