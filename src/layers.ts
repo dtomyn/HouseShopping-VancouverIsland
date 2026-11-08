@@ -11,6 +11,7 @@ import { trailsLayer } from './trails';
 import { wellsLayer } from './wells';
 import { internetLayer } from './internet';
 import { tsunamiLayer } from './tsunami';
+import { floodLayer } from './flood';
 import { loggingLayer } from './logging';
 import { campingLayer, waterLayer } from './outdoors';
 import { snowLayer } from './snow';
@@ -1166,7 +1167,9 @@ function riversLayer(data: Data): AtlasLayer {
         <div class="ramp" style="background:${rampCSS((t) => ratioColor(0.4 + t * 2.1))}"></div>
         <div class="ramp-labels"><span>0.4×</span><span>1×</span><span>1.5×</span><span>2.5×+</span></div>
         <p class="note">Gauges measure river flow, not flooded area — a high ratio means high water, not necessarily property damage. For a specific property, check the regional district’s floodplain maps.</p>
+        ${data.flood ? `<button class="tr-fall" data-layer="flood" type="button" style="margin-top:4px">≈ Floodplains: where BC mapped these rivers to flood ›</button>` : ''}
         ${sourceLine(data.rivers?.source ?? '')}`);
+      el.querySelector<HTMLElement>('[data-layer="flood"]')?.addEventListener('click', () => window.dispatchEvent(new CustomEvent('atlas:layer', { detail: 'flood' })));
       return {
         update({ time }) {
           const y = Math.floor(time);
@@ -2187,5 +2190,5 @@ function islandLayer(data: Data): AtlasLayer {
 }
 
 export function buildLayers(data: Data): AtlasLayer[] {
-  return [islandLayer(data), firesLayer(data), quakesLayer(data), seismicLayer(data), tsunamiLayer(data), riversLayer(data), climateLayer(data), normalsLayer(data), futureLayer(data), populationLayer(data), housingLayer(data), crimeLayer(data), hospitalsLayer(data), smokeLayer(data), wellsLayer(data), internetLayer(data), trailsLayer(data), waterLayer(data), campingLayer(data), snowLayer(data), loggingLayer(data)];
+  return [islandLayer(data), firesLayer(data), quakesLayer(data), seismicLayer(data), tsunamiLayer(data), floodLayer(data), riversLayer(data), climateLayer(data), normalsLayer(data), futureLayer(data), populationLayer(data), housingLayer(data), crimeLayer(data), hospitalsLayer(data), smokeLayer(data), wellsLayer(data), internetLayer(data), trailsLayer(data), waterLayer(data), campingLayer(data), snowLayer(data), loggingLayer(data)];
 }

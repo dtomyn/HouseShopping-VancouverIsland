@@ -69,6 +69,18 @@ export type Tsunami = {
   areas: TsunamiArea[];
   towns: Record<string, TsunamiTown>;
 };
+/**
+ * Mapped floodplains (scripts/flood.mjs): BC's designated 200-year floodplain maps, 1978–1997. Studies are indexed by
+ * position. Towns: `pct`, the % of ground within `townRadiusM` of the centre inside a mapped floodplain; `studies` by
+ * share; `centre`, the study at the centre; `near`/`nearKm`, the nearest mapped floodplain within 30 km.
+ */
+export type FloodStudy = { name: string; projects: string[]; drawing: string | null; designated: number | null; published: number | null; sheets: number; report: string | null; ha: number; fanHa?: number; centre: [number, number] };
+export type FloodTown = { pct: number; km2: number; studies: number[]; centre?: number; near?: number; nearKm?: number };
+export type Flood = { source: string; townRadiusM: number; studies: FloodStudy[]; towns: Record<string, FloodTown> };
+/** The floodplain layer's shapes, loaded the first time it is shown: polygons with their study index, and study-limit lines. */
+export type FloodMap = { polys: { s: number; fan?: 1; poly: [number, number][][] }[]; limits: [number, number][][] };
+/** The year a floodplain study is dated by: its designation, else its report sheets' publication. */
+export const floodYear = (s: FloodStudy) => s.designated ?? s.published;
 /** The tsunami layer's shapes and cells, loaded the first time it is shown. Cells index a z`z` Web Mercator pixel grid from tile (x0, y0), delta-encoded. */
 export type TsunamiMap = {
   zones: { zone: string; label: string; color: string; polys: [number, number][][][] }[];
@@ -231,6 +243,7 @@ export type Data = {
   hospitals: { facilities: Facility[]; towns: Record<string, Trip[]>; source: string; routing: string; routingSource: string | null } | null;
   seismic: Seismic | null;
   tsunami: Tsunami | null;
+  flood: Flood | null;
   smoke: Smoke | null;
   future: Future | null;
   trails: Trails | null;
@@ -259,6 +272,7 @@ async function load<T>(name: string): Promise<T | null> {
 
 export async function loadAll(): Promise<Data> {
   const internet = load<Internet>('internet');
+  const flood = load<Flood>('flood');
   const water = load<Water>('water'), camping = load<Camping>('camping'), snow = load<Snow>('snow');
   const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, wells, logging, neighbours, manifest, tsunami] = await Promise.all([
     load<GeoJSON.Feature>('island'),
@@ -299,7 +313,7 @@ export async function loadAll(): Promise<Data> {
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, water: (await water)?.rows?.length ? await water : null, camping: (await camping)?.rows?.length ? await camping : null, snow: (await snow)?.stations?.length ? await snow : null, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, flood: (await flood)?.studies?.length ? await flood : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, water: (await water)?.rows?.length ? await water : null, camping: (await camping)?.rows?.length ? await camping : null, snow: (await snow)?.stations?.length ? await snow : null, manifest: manifest ?? {} };
 }
 
 let netPromise: Promise<TrailNet | null> | null = null;
@@ -308,6 +322,10 @@ export const loadTrailNet = () => (netPromise ??= load<TrailNet>('trails-net'));
 let blocksPromise: Promise<LoggingBlocks | null> | null = null;
 /** Every cutblock's shape is a few MB, so it loads the first time the logging layer is shown. */
 export const loadLoggingBlocks = () => (blocksPromise ??= load<LoggingBlocks>('logging-blocks'));
+
+let floodMapPromise: Promise<FloodMap | null> | null = null;
+/** The floodplain shapes and study limits (~230 KB), loaded the first time the layer is shown. */
+export const loadFloodMap = () => (floodMapPromise ??= load<FloodMap>('flood-map'));
 
 let tsunamiMapPromise: Promise<TsunamiMap | null> | null = null;
 /** The tsunami layer's shapes and low-ground cells (~1.5 MB), loaded the first time the layer is shown. */

@@ -91,6 +91,20 @@ const SOURCES: Source[] = [
     rings: (d): Record<number, Ring> => (d.tsunami ? { 2021: { v: 0.55, label: 'Victoria’s hazard zone modelled (2021)' }, [NOW]: { v: 0.9, label: 'Notification zones as published today' } } : {}),
   },
   {
+    id: 'flood', key: 'flood', name: 'Floodplains', color: '#5b8cff', group: 'Hazards',
+    owner: 'BC Ministry of Water, Land and Resource Stewardship', title: 'Mapped Floodplains in BC (Historical), with Study Area Limits and Mapsheets Index', url: 'https://catalogue.data.gov.bc.ca/dataset/mapped-floodplains-in-bc-historical',
+    endpoint: 'WFS openmaps.gov.bc.ca · CWB_FLOODPLAINS_BC_AREA_SVW, CWB_FLOODPLAINS_LIMIT_LINE_SP, FLDP_FLOODPLAIN_PROJ_REPORT_SP', licence: OGL_BC,
+    gives: 'The designated 200-year floodplains on the island’s mapped rivers, each with its study, year and report; the share of each town and parcel inside them.',
+    read: (d) => d.flood && { n: d.flood.studies.length, what: `${d.flood.studies.length} floodplain studies on the islands, ${Object.values(d.flood.towns).filter((t) => t.pct > 0).length} towns with mapped floodplain within 2 km` },
+    rings: (d): Record<number, Ring> => {
+      const out: Record<number, Ring> = {};
+      const by: Record<number, string[]> = {};
+      for (const s of d.flood?.studies ?? []) { const y = s.designated ?? s.published; if (y) (by[y] ??= []).push(s.name); }
+      for (const [y, names] of Object.entries(by)) out[+y] = { v: 0.4 + 0.1 * Math.min(names.length, 4), label: `Floodplain${names.length > 1 ? 's' : ''} mapped (${y}): ${names.join('; ')}` };
+      return out;
+    },
+  },
+  {
     id: 'rivers', key: 'rivers', name: 'River floods', color: '#4cc9f0', group: 'Hazards',
     owner: 'Environment and Climate Change Canada', title: 'HYDAT national water data archive: annual peak flows', url: 'https://api.weather.gc.ca/collections/hydrometric-annual-peaks',
     endpoint: 'api.weather.gc.ca/collections/hydrometric-annual-peaks', licence: OGL_CA,
@@ -338,6 +352,7 @@ const DERIVED = [
   ['Future values', 'come from the model grid cell nearest each town, within 15 km.'],
   ['Well prospects', 'for a town are medians of the wells within 5 km (or on the whole island); for a parcel, of the wells within 1 km. A yield under 2 US gallons a minute counts as low.'],
   ['Trail climbing and times', 'are worked out here: elevations sampled from terrain tiles along each route, and walking time by Naismith’s rule (4.5 km/h plus an hour per 600 m up).'],
+  ['Floodplain shares', 'are worked out here: ground within 2 km of a town centre (sea left out) sampled every 50 m, and each parcel sampled every 20 m or finer, against the designated floodplain shapes.'],
   ['Low coastal ground', 'is a tsunami screening measure worked out here from ~100 m terrain: ground under 20 m within 1 km of the sea. Published hazard maps take its place where they exist.'],
   ['Share of the islands logged', 'counts land logged at least once on a 100 m grid, so land logged twice counts once.'],
   ['Next door', 'is measured on a 50 m grid out to 1 km from each parcel; Crown land and parks narrower than 250 m (road allowances, trail corridors) don’t count.'],

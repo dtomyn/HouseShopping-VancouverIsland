@@ -15,8 +15,8 @@ Top-right **Town Finder** button.
 | A town in the ranking | Opens its report ([19](19-read-a-town-report.md)); closing returns to the ranking. |
 | × | Leaves the Town Finder. |
 
-Criteria: Affordability, Low crime, Low wildfire exposure, Lower shaking hazard, Low tsunami exposure, Low quake activity (off by
-default), Mild & warm, Sunnier, Little snow & frost, Close to a hospital, Not ferry-dependent, Clean air, Mild
+Criteria: Affordability, Low crime, Low wildfire exposure, Lower shaking hazard, Low tsunami exposure, Out of mapped floodplains (off by
+default), Low quake activity (off by default), Mild & warm, Sunnier, Little snow & frost, Close to a hospital, Not ferry-dependent, Clean air, Mild
 future summers, Trails & waterfalls nearby, Fast internet, Retiree community, Services & amenities.
 
 ## Behaviour (as implemented)

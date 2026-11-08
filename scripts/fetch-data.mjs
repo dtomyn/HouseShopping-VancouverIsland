@@ -1216,6 +1216,13 @@ const SOURCES = {
     await buildTsunami({ log, cached, writeOut, round, pool, BBOX, getIsland, PLACES, OUT });
   },
 
+  // Floodplains: BC's designated floodplain maps (1978–1997), their study limits and report sheets, per-town and per-parcel
+  // shares inside them (scripts/flood.mjs). Reads land.json, so it runs after land; parcel values go to land-flood.json.
+  async flood() {
+    const { buildFlood } = await import('./flood.mjs');
+    await buildFlood({ log, cached, writeOut, round, WFS, BBOX, getIsland, PLACES, OUT });
+  },
+
   // Water access: beaches, beach accesses, boat launches and marinas (OpenStreetMap) and DFO small craft harbours,
   // with each town's nearest (scripts/outdoors.mjs).
   async water() {
@@ -1255,7 +1262,7 @@ const SOURCES = {
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'logging', 'neighbours', 'water', 'camping', 'snow'];
+const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'flood', 'logging', 'neighbours', 'water', 'camping', 'snow'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};

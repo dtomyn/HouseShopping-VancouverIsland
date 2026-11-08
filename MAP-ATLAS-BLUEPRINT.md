@@ -384,6 +384,7 @@ Rules, all in two functions (`setLayerOn(id, on)` for the switch, `focus(id)` fo
 - **Everything on the map opens a panel on click, never just a hover bubble.** A town (its dot, or its column on any layer) opens its report; any other feature opens the event panel described above, as a record with no date when it's a place rather than a moment (`t` is optional). A layer gives its features rich panels with `describe(info) → AtlasEvent` (an earthquake's rank and depth, a gauge's or station's chart of its record via `detail`). A layer without `describe` still gets a panel built from its tooltip: the bold line becomes the title and each `<span class="tk">label</span> <span class="tv">value</span>` pair a headline tile, so keep tooltips in that shape. Tooltips end with "Click for details" unless they already say what a click does.
 - **Hover** anything for a tooltip; **click** a place dot → Place Report.
 - **A report can open a layer** ("See a century of logging on the map"): it dispatches `atlas:layer` with the layer id; main focuses it and, for a time layer, jumps to the end of its range (today), where the story the report summarised ends.
+- **A layer's panel list can open one of its features** (Floodplains' study list): it dispatches `atlas:event` with an `AtlasEvent` (the same one `describe` returns for a click on the map), and main opens it with `openEvent`, so the list and the map lead to the same details panel.
 
 ### 5.4 Place Report and Finder
 

@@ -8,6 +8,7 @@ import { CRITERIA, TownMetrics, erFerryWait, rankTowns, townMetrics } from './me
 import { drawTownWells, wellsTownRow } from './wells';
 import { internetMetric } from './internet';
 import { CASCADIA_OUTER_COAST_MIN } from './tsunami';
+import { floodTownRow } from './flood';
 import { campingTownRow, waterTownRow } from './outdoors';
 
 const STORE_KEY = 'island-atlas:weights';
@@ -54,6 +55,7 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
       ${metric('Felt-size quakes', '#f9d65c', fmt.int(t.quakes75km), 'M4+ within 75 km since 1970')}
       ${data.seismic ? metric('Shaking hazard', '#e86cff', t.shaking ? `${Math.round(t.shaking.pga2 * 100)}% of g` : na, t.shaking ? 'peak ground shaking with a 2% chance in 50 years (NRCan 2020)' : '') : ''}
       ${data.tsunami ? tsunamiMetric(t, data, metric, na) : ''}
+      ${floodTownRow(data, key, metric)}
       ${metric('Climate', '#f25f5c', t.climate ? `${t.climate.meanTemp.toFixed(1)} °C` : na, t.climate ? `${t.climate.precip ? `${Math.round(t.climate.precip)} mm/yr · ` : ''}${t.climate.name} (${Math.round(t.climate.dist)} km)` : '')}
       ${erMetric(t, data, metric, na)}
       ${smokeMetric(t, data, metric, na)}

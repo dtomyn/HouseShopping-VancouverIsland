@@ -132,6 +132,7 @@ async function load(): Promise<Land> {
   }
   num.net50 = net50; num.cell = cell; num.netMbps = netMbps;
   await loadTsunami(json, num);
+  await loadFlood(json, num);
   // next door: parks, Crown land and logging around each parcel (optional; NaN where missing)
   const nb = await loadNeighbours(json.cols.pid);
   for (const k of ['parkM', 'parkI', 'crownM', 'planM', 'planK', 'lastCut', 'onCut', 'cut10'] as const) {
@@ -177,6 +178,34 @@ const tsuShare = (i: number) => { const n = L!.num; return Number.isNaN(n.tsuHaz
 const tsuDry = (i: number) => L!.num.acres[i] * (1 - tsuShare(i) / 100);
 const TSU_ROOM_ACRES = 1;
 
+/**
+ * Per-parcel floodplain shares live in their own file (the `flood` stage), aligned with land.json's parcel order and
+ * checked against a hash of its PIDs. floodPct: % of the parcel inside a BC designated floodplain; floodStudy: the
+ * study that mapped most of it (-1 for none). Without the file, land.json's own yes/no `flood` column stands in
+ * (any overlap counts as all of it).
+ */
+let floodOk = false;
+let floodStudies: { name: string; year: number | null }[] = [];
+async function loadFlood(json: LandJson, num: Record<string, Float32Array>) {
+  const n = json.count;
+  num.floodPct = new Float32Array(n);
+  num.floodStudy = new Float32Array(n).fill(-1);
+  for (let i = 0; i < n; i++) num.floodPct[i] = num.flood[i] > 0 ? 100 : 0;
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}data/land-flood.json`);
+    if (!res.ok) return;
+    const t = (await res.json()) as { count: number; check: string; studies: { name: string; year: number | null }[]; pct: number[]; study: number[] };
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-1', new TextEncoder().encode(json.cols.pid.join('|'))))).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 12);
+    if (t.count !== n || t.check !== hash) { console.warn('land-flood.json is out of step with land.json: run `npm run data flood`'); return; }
+    for (let i = 0; i < n; i++) { num.floodPct[i] = t.pct[i]; num.floodStudy[i] = t.study[i]; }
+    floodStudies = t.studies ?? [];
+    floodOk = true;
+  } catch { /* optional data */ }
+}
+/** Acres of the parcel outside any mapped floodplain. */
+const floodDry = (i: number) => L!.num.acres[i] * (1 - L!.num.floodPct[i] / 100);
+const FLOOD_ROOM_ACRES = 1;
+
 // ---------------------------------------------------------------------------------------------
 // filters
 
@@ -185,7 +214,7 @@ type F = {
   acres: number; water: WaterMode; kinds: [boolean, boolean, boolean]; front: number; near: number;
   care: number; careKind: 'any' | 'er'; grocery: number; gas: number;
   road: number; air: number; ind: number;
-  threat: number; unrated: boolean; flood: boolean; high: number; pga: number; fires: number; tsunami: 'any' | 'room' | 'clear';
+  threat: number; unrated: boolean; flood: 'any' | 'room' | 'clear'; high: number; pga: number; fires: number; tsunami: 'any' | 'room' | 'clear';
   slope: number; alr: 'any' | 'avoid' | 'only'; islands: 'any' | 'main' | 'islands';
   trail: number; fall: number; beach: number; launch: number;
   wGpm: number; wDepth: number; wLow: number; aquifer: 'any' | 'over';
@@ -200,7 +229,7 @@ const BRIEF: F = {
   acres: 10, water: 'front', kinds: [true, true, true], front: 30, near: 500,
   care: 45, careKind: 'any', grocery: 45, gas: 45,
   road: 0.3, air: 3, ind: 1,
-  threat: 2, unrated: true, flood: true, high: 10, pga: ANY_PGA, fires: ANY_FIRES, tsunami: 'room',
+  threat: 2, unrated: true, flood: 'room', high: 10, pga: ANY_PGA, fires: ANY_FIRES, tsunami: 'room',
   slope: ANY_SLOPE, alr: 'any', islands: 'any',
   trail: 0, fall: ANY_FALL, beach: ANY_SHORE, launch: ANY_SHORE,
   wGpm: 0, wDepth: ANY_WDEPTH, wLow: ANY_WLOW, aquifer: 'any',
@@ -208,7 +237,7 @@ const BRIEF: F = {
   park: 'any', crown: 'any', logged: 0, plan: 'any',
   budget: 2_000_000,
 };
-const LOOSE: F = { ...BRIEF, acres: 5, water: 'any', care: ANY_MIN, grocery: ANY_MIN, gas: ANY_MIN, road: 0, air: 0, ind: 0, threat: 4, flood: false, high: 0, tsunami: 'any' };
+const LOOSE: F = { ...BRIEF, acres: 5, water: 'any', care: ANY_MIN, grocery: ANY_MIN, gas: ANY_MIN, road: 0, air: 0, ind: 0, threat: 4, flood: 'any', high: 0, tsunami: 'any' };
 const STORE = 'island-atlas:land-filters';
 const SHORT = 'island-atlas:shortlist';
 
@@ -270,7 +299,7 @@ function maskOf(i: number): number {
   if (n.indKm[i] < f.ind) m |= 1 << BIT.ind;
   const t = n.threat[i];
   if (Number.isNaN(t) ? !f.unrated : t > f.threat) m |= 1 << BIT.threat;
-  if (f.flood && n.flood[i] > 0) m |= 1 << BIT.flood;
+  if (f.flood !== 'any' && (f.flood === 'clear' ? n.floodPct[i] > 0 : floodDry(i) < FLOOD_ROOM_ACRES)) m |= 1 << BIT.flood;
   if (f.high > 0 && !(n.elevHi[i] >= f.high)) m |= 1 << BIT.high;
   // missing values (data not built) pass, never penalized
   if (f.tsunami !== 'any' && !Number.isNaN(tsuShare(i)) && (f.tsunami === 'clear' ? tsuShare(i) > 0 : tsuDry(i) < TSU_ROOM_ACRES)) m |= 1 << BIT.tsunami;
@@ -312,7 +341,7 @@ function parts(i: number) {
     water: n.water[i] > 0 ? 0.6 + 0.4 * clamp01(n.front[i] / 400) : 0.35 * clamp01(1 - n.waterM[i] / 1500),
     reach: clamp01(1 - (reachMin - 10) / 80),
     quiet: 0.5 * clamp01(n.roadKm[i] / 2) + 0.25 * clamp01(n.airKm[i] / 10) + 0.25 * clamp01(n.indKm[i] / 5),
-    safety: 0.45 * (Number.isNaN(t) ? 0.7 : [1, 0.9, 0.65, 0.3, 0][t]) + 0.15 * (n.flood[i] ? 0 : 1) + 0.15 * clamp01(nz(n.elevHi[i], 0) / 30) + 0.15 * clamp01(1 - nz(n.fires5[i], 0) / 40) + 0.1 * clamp01(1 - (nz(n.pga[i], 50) - 30) / 50),
+    safety: 0.45 * (Number.isNaN(t) ? 0.7 : [1, 0.9, 0.65, 0.3, 0][t]) + 0.15 * (1 - n.floodPct[i] / 100) + 0.15 * clamp01(nz(n.elevHi[i], 0) / 30) + 0.15 * clamp01(1 - nz(n.fires5[i], 0) / 40) + 0.1 * clamp01(1 - (nz(n.pga[i], 50) - 30) / 50),
     sun: clamp01((nz(n.sun[i], 1750) - 1650) / 500),
   };
 }
@@ -567,7 +596,7 @@ const SECTIONS: Section[] = [
     id: 'safe', title: 'Safety', icon: '⛨', c: '#fb923c', rows: [
       { kind: 'custom', bit: 'threat', label: 'Wildfire threat', hint: 'BC Wildfire Service Provincial Strategic Threat Analysis: the worst rating on the parcel or in the forest within 500 m of it', render: renderThreat },
       { kind: 'range', bit: 'fires', key: 'fires', label: 'Fire history nearby', hint: 'Wildfire starts within 5 km since 1990', min: 0, max: ANY_FIRES, step: 1, dir: 'max', any: ANY_FIRES, value: (i) => L!.num.fires5[i], show: (v) => (v >= ANY_FIRES ? 'Any' : `≤ ${v} starts`) },
-      { kind: 'custom', bit: 'flood', label: 'Floodplain', hint: 'Designated floodplain maps (BC, mostly 1980s–90s; not every river is mapped)', render: renderFlood },
+      { kind: 'custom', bit: 'flood', label: 'Floodplain', render: renderFlood },
       { kind: 'custom', bit: 'tsunami', label: 'Tsunami', render: renderTsunami },
       { kind: 'range', bit: 'high', key: 'high', label: 'High ground', hint: 'Highest point on the parcel above sea level: room to build above storm surge, tsunami run-up and sea-level rise', min: 0, max: 60, step: 1, dir: 'min', value: (i) => L!.num.elevHi[i], show: (v) => (v <= 0 ? 'Any' : `≥ ${v} m`) },
       { kind: 'range', bit: 'pga', key: 'pga', label: 'Earthquake shaking', hint: 'NRCan 2020 hazard: peak shaking with a 2% chance in 50 years, % of gravity', min: 30, max: ANY_PGA, step: 1, dir: 'max', any: ANY_PGA, value: (i) => L!.num.pga[i], show: (v) => (v >= ANY_PGA ? 'Any' : `≤ ${v}% g`) },
@@ -747,8 +776,14 @@ function nextDoorDetail(i: number, m: (label: string, dot: string, v: string, su
 }
 
 function renderFlood(el: HTMLElement) {
-  el.innerHTML = `<label class="lr-switch"><input type="checkbox" ${f.flood ? 'checked' : ''}><span class="sw"></span><span>Outside mapped floodplains</span></label>`;
-  el.querySelector('input')!.addEventListener('change', (e) => { f.flood = (e.target as HTMLInputElement).checked; refreshAll(); });
+  const opts: [F['flood'], string][] = [['room', 'Room to build outside'], ['clear', 'Fully outside'], ['any', 'Any']];
+  el.innerHTML = `
+    <div class="lr-lab"><span>Mapped floodplain</span></div>
+    <div class="chips">${opts.map(([v, t]) => `<button class="chip${f.flood === v ? ' on' : ''}" data-v="${v}">${t}</button>`).join('')}</div>
+    <div class="lr-hint">BC designated 200-year floodplains, mapped 1978–1997 on a few rivers only: unmapped is not the same as safe, and creeks and the shore are not covered. ${floodOk
+      ? `<i>Room to build</i>: at least ${FLOOD_ROOM_ACRES} acre of the parcel outside them.`
+      : 'Per-parcel shares not built yet (<code>npm run data flood</code>): any overlap counts as the whole parcel.'}</div>`;
+  el.querySelectorAll<HTMLButtonElement>('[data-v]').forEach((b) => b.addEventListener('click', () => { f.flood = b.dataset.v as F['flood']; renderFlood(el); refreshAll(); }));
 }
 
 function renderTsunami(el: HTMLElement) {
@@ -968,6 +1003,17 @@ function tsunamiTile(i: number, m: (label: string, dot: string, v: string, sub: 
   return m('Tsunami', '#38e1ff', `${Math.round(share)}%${zone ? ` · Zone ${zone}` : ''}`, sub, share === 0 ? true : dry >= TSU_ROOM_ACRES ? null : false);
 }
 
+function floodTile(i: number, m: (label: string, dot: string, v: string, sub: string, good?: boolean | null) => string) {
+  const n = L!.num, pct = n.floodPct[i];
+  if (!floodOk) return m('Floodplain', '#5b8cff', pct ? 'Mapped' : 'Not mapped', pct ? 'part of the parcel is in a designated floodplain' : 'outside BC designated floodplain maps (unmapped is not the same as safe)', !pct);
+  const s = floodStudies[n.floodStudy[i]];
+  const dry = floodDry(i);
+  const sub = pct > 0
+    ? `in the ${esc(s?.name ?? 'BC designated')} floodplain${s?.year ? ` (mapped ${s.year})` : ''}; ${dry >= 10 ? Math.round(dry) : dry.toFixed(1)} acres outside it`
+    : 'outside BC designated floodplain maps (1978–1997; unmapped is not the same as safe)';
+  return m('Floodplain', '#5b8cff', `${Math.round(pct)}%`, sub, pct === 0 ? true : dry >= FLOOD_ROOM_ACRES ? null : false);
+}
+
 function renderDetail(i: number) {
   const n = L!.num, J = L!.json;
   const p = ctx!.panel;
@@ -1029,7 +1075,7 @@ function renderDetail(i: number) {
     <div class="metric-grid">
       ${m('Wildfire threat', '#fb923c', threat, 'worst rating on or within 500 m of the parcel (BCWS)', Number.isNaN(n.threat[i]) ? null : n.threat[i] <= f.threat)}
       ${m('Fire history', '#f97316', `${n.fires5[i]} starts`, `within 5 km since 1990; ${fmt.ha(n.burn5[i])} burned within 5 km since 1950`)}
-      ${m('Floodplain', '#38bdf8', n.flood[i] ? 'Mapped' : 'Not mapped', n.flood[i] ? 'part of the parcel is in a designated floodplain' : 'outside designated floodplain maps', !n.flood[i])}
+      ${floodTile(i, m)}
       ${m('Earthquake shaking', '#e86cff', Number.isNaN(n.pga[i]) ? '—' : `${n.pga[i]}% g`, '2% chance in 50 years (NRCan 2020)')}
       ${tsunamiOk ? tsunamiTile(i, m) : ''}
     </div>

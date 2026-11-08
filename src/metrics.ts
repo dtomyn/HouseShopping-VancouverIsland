@@ -1,6 +1,6 @@
 // Derived, per-town statistics shared by the Town Report and the Town Finder.
 import { townNet, TownNet } from './internet';
-import { Data, Facility, FutureTown, Muni, NormalsStation, Smoke, TrailTown, TsunamiTown, km, trailingMedianPrice } from './data';
+import { Data, Facility, FutureTown, Muni, NormalsStation, Smoke, TrailTown, TsunamiTown, FloodTown, km, trailingMedianPrice } from './data';
 
 /** A climate-normal value borrowed from the nearest station that reports it. */
 export type NormalPick = { v: number; name: string; dist: number };
@@ -26,6 +26,7 @@ export type TownMetrics = {
   burnedHa25km: number; // perimeter area within 25 km since 1950
   quakes75km: number; // M4+ within 75 km since 1970
   shaking: { pga2: number; pga10: number } | null; // NRCan 2020 hazard at the town centre, g (site class C)
+  flood: FloodTown | null; // % of ground within 2 km in a mapped (BC designated, 1978–1997) floodplain, and which study
   tsunami: TsunamiTown | null; // BC notification zone, % low coastal ground within 2 km, published hazard map if any
   climate: { name: string; dist: number; meanTemp: number; precip: number | null; trend: number | null } | null;
   river: { name: string; dist: number; floodShare: number; record: { year: string; ratio: number } } | null;
@@ -188,6 +189,7 @@ export function townMetrics(data: Data): TownMetrics[] {
     const sz = data.seismic?.towns[m.key];
     const shaking = sz ? { pga2: sz[0], pga10: sz[1] } : null;
     const tsunami = data.tsunami?.towns[m.key] ?? null;
+    const flood = data.flood?.towns[m.key] ?? null;
 
     const ns = data.normals?.stations ?? [];
     // frost and snow come from the same station so the "little snow & frost" score is consistent
@@ -213,7 +215,7 @@ export function townMetrics(data: Data): TownMetrics[] {
     const outdoors = data.trails?.towns[m.key] ?? null;
     const internet = data.internet ? townNet(data.internet, m) : null;
 
-    return { muni: m, price, priceYear, priceChange5y, pop, popYear, popGrowth10y, s65, csi, csiYear: cy ? String(cy) : null, fires15km, burnedHa25km, quakes75km, shaking, tsunami, climate, river, feels, er, care, smoke, future, outdoors, internet };
+    return { muni: m, price, priceYear, priceChange5y, pop, popYear, popGrowth10y, s65, csi, csiYear: cy ? String(cy) : null, fires15km, burnedHa25km, quakes75km, shaking, tsunami, flood, climate, river, feels, er, care, smoke, future, outdoors, internet };
   });
   return cache;
 }
@@ -271,6 +273,8 @@ export const CRITERIA: Criterion[] = [
   // A screening measure from terrain (no open per-town arrival times exist): share of the ground within 2 km of the
   // centre that is under 20 m and within 1 km of the sea. Inland towns score 0, the best.
   { id: 'tsunami', label: 'Low tsunami exposure', hint: 'Less low coastal ground (under 20 m, within 1 km of the sea) within 2 km of the town centre', value: (t) => t.tsunami?.low ?? null, higherIsBetter: false, defaultWeight: 1 },
+  // Old (1978–1997) maps of a few rivers only: a town with no mapped floodplain may still flood, so this is off by default.
+  { id: 'flood', label: 'Out of mapped floodplains', hint: 'Less of the ground within 2 km of the centre inside a BC designated floodplain (BC maps from 1978–1997 of the rivers they cover; unmapped is not the same as safe)', value: (t) => t.flood?.pct ?? null, higherIsBetter: false, defaultWeight: 0 },
   { id: 'quake', label: 'Low quake activity', hint: 'Fewer M4+ quakes within 75 km since 1970 (past record)', value: (t) => t.quakes75km, higherIsBetter: false, defaultWeight: 0 },
   { id: 'warm', label: 'Mild & warm', hint: 'Higher mean annual temperature (1991+)', value: (t) => t.climate?.meanTemp ?? null, higherIsBetter: true, defaultWeight: 2 },
   // Sunshine hours from the nearest of the 8 island stations that measure it (within 60 km). That

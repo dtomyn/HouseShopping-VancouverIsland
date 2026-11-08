@@ -31,6 +31,7 @@ The order puts quick wins that reuse existing code first, then the most decision
 | 13 | ✅ [Internet and cell coverage](#13-internet-and-cell-coverage) | Rural buyers can't judge working from home without it | Medium |
 | 14 | ✅ [Water access and camping](#14-water-access-and-camping) | A coastal retirement is about getting on the water; two small point layers beside Trails | Small–medium |
 | 15 | ✅ [Snowpack](#15-snowpack) | Ski season, summer rivers and town water start in the mountains; a small timeline layer from open CSVs | Small |
+| 16 | ✅ [Floodplains](#16-floodplains) | Riverside towns and acreages: where the province mapped a 200-year flood, how old the map is, and how much of a town or parcel is inside | Small–medium |
 
 ### Static layers
 
@@ -128,6 +129,12 @@ Hospitals, seismic hazard and tsunami zones don't change over time. Before addin
 ✅ **Built.** `snow` stage (`scripts/snow.mjs`) → `public/data/snow.json` (32 KB); time-based *Snowpack* layer in the *Outdoors* group (`src/snow.ts`). The BC River Forecast Centre's manual snow course archive and current season, the automated stations' daily snow water equivalent and hourly snow depth archives, and both station-location layers (all OGL – BC). 22 courses and 5 pillows inside the island outline with 5+ years of 1 April data; each compared with its own normal (median 1 April water, 1991–2020 where it has 15 of those years); the island figure is the median of those shares. Events for the thinnest (2015, 2005, 1981) and deepest (1999, 1974) years.
 
 - **Still open:** coverage is thin (8 stations measured in 2026, 5 of them counted in the island figure; most courses retired) and the early island figure rests on a few stations; no Town Report row, since no town's water or home can honestly be tied to one station; the CRD's Sooke watershed pillows other than Survey Mountain, and BC Wildfire's low weather stations, have no snow water in the archive; mid-winter (1 February, 1 March) and 15 May surveys are in the data but not shown; the River Forecast Centre's published basin indices and normals are not used (the atlas computes its own from the station records).
+
+### 16. Floodplains
+
+✅ **Built.** `flood` stage (`scripts/flood.mjs`, after `land`) → `public/data/flood.json` (7 KB, per study and town), `flood-map.json` (229 KB, loaded on first show) and `land-flood.json` (143 KB, per parcel in `land.json`'s order with a PID hash); static *Floodplains* layer in *Hazard & climate outlook* after Tsunami zones (`src/flood.ts`). Sources: BC's *Mapped Floodplains in BC (Historical)*, its *Study Area Limits* and *Mapsheets Index* with EcoCat report links (all OGL – BC). 17 studies on the islands, designated 1978–1997 (Shawnigan Lake to the Cowichan, Somass and Little Qualicum); one alluvial fan (Oyster River) and one dry island kept out. Town Report *Mapped floodplain* (share of ground within 2 km and which study), Town Finder *Out of mapped floodplains* (weight 0), Land Finder Safety *Mapped floodplain* (room to build outside: an acre / fully outside / any), parcel report tile. Each study is tied to the River floods gauges on its river, and the two layers link to each other.
+
+- **Still open:** newer regional and municipal flood mapping (searched for the Cowichan Valley, Comox Valley, Strathcona/Campbell River, Nanaimo and North Cowichan) turned up only viewer-only web maps or services with no open licence, several of them reusing the provincial layer, so none is shown; coastal flooding (storm surge, sea-level rise; see item 7) and creeks are unmapped here; flood construction levels from the map sheets are not digitized; the town share is a 2 km disc round the centre, not the town's residential area.
 
 ## Explaining the island's history
 

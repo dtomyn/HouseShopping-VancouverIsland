@@ -24,14 +24,14 @@ const INTRO_FROM = { center: [-126.2, 50.4] as [number, number], zoom: 5.1, pitc
 const HOME = { center: [-125.25, 49.55] as [number, number], zoom: 7.15, pitch: 48, bearing: -18 };
 const MUNI_LAYERS = new Set(['population', 'housing', 'crime']);
 // static layers that draw town columns only while focused
-const MUNI_WHEN_FOCUSED = new Set(['hospitals', 'seismic', 'tsunami', 'future']);
+const MUNI_WHEN_FOCUSED = new Set(['hospitals', 'seismic', 'tsunami', 'flood', 'future']);
 // layer menu sections; any layer not listed lands in the last group
 const LAYER_GROUPS: { name: string; ids: string[] }[] = [
   { name: 'Base map', ids: ['island'] },
   { name: 'History on the timeline', ids: ['fires', 'logging', 'quakes', 'rivers', 'climate', 'smoke', 'wells'] },
   { name: 'Towns & living', ids: ['population', 'housing', 'crime', 'hospitals', 'internet'] },
   { name: 'Outdoors', ids: ['trails', 'water', 'camping', 'snow'] },
-  { name: 'Hazard & climate outlook', ids: ['seismic', 'tsunami', 'normals', 'future'] },
+  { name: 'Hazard & climate outlook', ids: ['seismic', 'tsunami', 'flood', 'normals', 'future'] },
 ];
 
 type Mode = 'layer' | 'town' | 'finder' | 'land' | 'event';
@@ -846,6 +846,8 @@ async function boot() {
   // a report's link to a layer opens it at today, where its story ends
   window.addEventListener('atlas:layer', (e) => { const id = (e as CustomEvent).detail; const l = byId[id]; if (!l?.available) return; focus(id); if (!l.static) setTime(l.range[1]); });
   window.addEventListener('atlas:outdoors', (e) => { const d = (e as CustomEvent).detail; openOutdoors(d.kind, d.i); });
+  // a layer's own list opening one of its features (Floodplains' study list)
+  window.addEventListener('atlas:event', (e) => { const ev = (e as CustomEvent).detail as AtlasEvent; if (ev?.title) openEvent(ev); });
   window.addEventListener('atlas:town', (e) => { const k = (e as CustomEvent).detail; if (data.munis.some((m) => m.key === k)) openTown(k); });
   if (location.hash === '#sources') showSources();
   if (location.hash === '#trails') map.once('load', () => setTimeout(() => focus('trails'), 600));
