@@ -1216,6 +1216,20 @@ const SOURCES = {
     await buildTsunami({ log, cached, writeOut, round, pool, BBOX, getIsland, PLACES, OUT });
   },
 
+  // Water access: beaches, beach accesses, boat launches and marinas (OpenStreetMap) and DFO small craft harbours,
+  // with each town's nearest (scripts/outdoors.mjs).
+  async water() {
+    const { buildWater } = await import('./outdoors.mjs');
+    await buildWater({ log, cached, writeOut, round, distKm, BBOX, WFS, getIsland, PLACES, ISLAND_COMMUNITIES });
+  },
+
+  // Camping & recreation sites: Recreation Sites and Trails BC, and OpenStreetMap campgrounds sorted by the park they
+  // sit in (scripts/outdoors.mjs).
+  async camping() {
+    const { buildCamping } = await import('./outdoors.mjs');
+    await buildCamping({ log, cached, writeOut, round, distKm, BBOX, WFS, getIsland, PLACES, ISLAND_COMMUNITIES });
+  },
+
   // A century of logging: every mapped cutblock with its harvest year, plus blocks approved or being logged now
   // (scripts/neighbours.mjs).
   async logging() {
@@ -1234,7 +1248,7 @@ const SOURCES = {
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'logging', 'neighbours'];
+const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'logging', 'neighbours', 'water', 'camping'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};

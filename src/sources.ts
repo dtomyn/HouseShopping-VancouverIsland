@@ -267,7 +267,24 @@ const SOURCES: Source[] = [
     read: (d) => d.trails && { n: d.trails.netPaths + d.trails.routes.length + d.trails.falls.length, what: `${fmt.int(d.trails.netPaths)} footpaths (${fmt.int(d.trails.netKm)} km), ${d.trails.routes.length} named routes, ${fmt.int(d.trails.falls.length)} waterfalls (${d.trails.falls.filter((f) => f.img).length} with photos)` },
     // OpenStreetMap is a map of today, so one ring at the bark
     rings: (d) => d.trails ? { [NOW]: { v: 1, label: `${fmt.int(d.trails.netKm)} km of footpath and ${fmt.int(d.trails.falls.length)} waterfalls as mapped today` } } : {},
-  },  {
+  },
+  {
+    id: 'water', key: 'water', name: 'Water access', color: '#38bdf8', group: 'Outdoors',
+    owner: 'OpenStreetMap contributors', title: 'OpenStreetMap beaches, beach accesses, boat launches and marinas', url: 'https://www.openstreetmap.org/copyright',
+    endpoint: 'overpass-api.de · natural=beach, leisure=slipway, leisure=marina, name~"Beach Access"', licence: 'ODbL',
+    gives: 'Every mapped beach (sea or lake), named beach access, public boat launch and marina on the islands, and each town’s nearest.',
+    read: (d) => { const W = d.water; if (!W) return null; const n = (id: string) => fmt.int(W.rows.filter((r) => W.kinds[r[2]].id === id).length); return { n: W.rows.length, what: `${n('beach')} sea beaches, ${n('lake')} lake and river beaches, ${n('access')} beach accesses, ${n('launch')} boat launches, ${n('marina')} marinas and ${n('harbour')} DFO harbours` }; },
+    rings: (d) => d.water ? { [NOW]: { v: 1, label: `${fmt.int(d.water.rows.length)} beaches, launches and moorages as mapped today` } } : {},
+  },
+  {
+    id: 'camping', key: 'camping', name: 'Camping & rec sites', color: '#a3e635', group: 'Outdoors',
+    owner: 'Recreation Sites and Trails BC · OpenStreetMap contributors', title: 'Recreation Sites Subset (information purposes only); OpenStreetMap campgrounds', url: 'https://catalogue.data.gov.bc.ca/dataset/recreation-sites-subset-information-purposes-only',
+    endpoint: 'WFS openmaps.gov.bc.ca · FTEN_REC_SITE_POINTS_SVW; overpass-api.de · tourism=camp_site|caravan_site', licence: `${OGL_BC}; ODbL`,
+    gives: 'Every established recreation site with its campsite count and access, and every mapped campground, sorted into BC Parks, national park, recreation site and other by the park it sits in.',
+    read: (d) => { const C = d.camping; if (!C) return null; const n = (id: string) => fmt.int(C.rows.filter((r) => C.kinds[r[2]].id === id).length); return { n: C.rows.length, what: `${n('park')} BC Parks and ${n('national')} national park campgrounds, ${n('rec')} recreation sites with camping and ${n('day')} for day use, ${n('other')} private, regional and other campgrounds` }; },
+    rings: (d) => d.camping ? { [NOW]: { v: 1, label: `${fmt.int(d.camping.rows.length)} campgrounds and recreation sites today` } } : {},
+  },
+  {
     id: 'logging', key: 'logging', name: 'Logging', color: '#e9b872', group: 'Outdoors',
     owner: 'BC Ministry of Forests', title: 'Harvested Areas of BC (Consolidated Cutblocks) and Forest Tenure Cutblock Polygons', url: 'https://catalogue.data.gov.bc.ca/dataset/harvested-areas-of-bc-consolidated-cutblocks-',
     endpoint: 'WFS openmaps.gov.bc.ca · VEG_CONSOLIDATED_CUT_BLOCKS_SP, FTEN_CUT_BLOCK_POLY_SVW', licence: OGL_BC,
@@ -294,6 +311,7 @@ const BARK: BarkSource[] = [
   { name: 'Roads', key: 'hospitals', owner: 'OpenStreetMap contributors · OSRM', title: 'OSRM demo router on OpenStreetMap roads', url: 'https://www.openstreetmap.org/copyright', licence: 'ODbL', gives: 'The road routes and free-flow drive times to the nearest ER.' },
   { name: 'Tsunami maps', key: 'tsunami', owner: 'Strathcona Regional District · City of Victoria', title: 'West Coast Tsunami Inundation Models; Tsunami Hazard Zone (2021 model)', url: 'https://storymaps.arcgis.com/stories/ee3f568154ed46d8b3ee3b6be04f9c8a', licence: 'OGL – Canada · City of Victoria Open Data Licence', gives: 'Published hazard areas: Cascadia and Alaska scenarios from Nootka Sound to Quatsino Sound, and the City of Victoria’s 2021 hazard zone.', read: (d) => `${d.tsunami?.areas.reduce((a, x) => a + x.polygons, 0) ?? 0} mapped polygons` },
   { name: 'Parks & ownership', key: 'neighbours', owner: 'BC Parks · Parks Canada · BC Ministry of Forests · GeoBC', title: 'Parks, ecological reserves and protected areas; national parks; Generalized Forest Cover Ownership; Freshwater Atlas lakes', url: 'https://catalogue.data.gov.bc.ca/dataset/generalized-forest-cover-ownership', licence: OGL_BC, gives: 'What is next door to every Land Finder parcel and town: parks, Crown land, water and logging, measured on a 50 m grid.', read: (d) => (d.neighbours ? `${d.neighbours.parks.length} named parks and protected areas, ${Object.keys(d.neighbours.towns).length} towns measured` : 'not built yet') },
+  { name: 'Small craft harbours', key: 'water', owner: 'Fisheries and Oceans Canada', title: 'Small Craft Harbours Locations and Information', url: 'https://open.canada.ca/data/en/dataset/262451e7-6416-47b5-8453-f31d212ea657', licence: OGL_CA, gives: 'The public harbours DFO owns (core and non-core fishing, recreational) and the harbour authority that runs each.', read: (d) => `${d.water?.rows.filter((r) => d.water!.kinds[r[2]].id === 'harbour').length ?? 0} harbours on the islands` },
   { name: 'Basemap', owner: 'CARTO · OpenStreetMap contributors', title: 'Dark Matter vector basemap', url: 'https://carto.com/attributions', licence: 'ODbL / CARTO terms', gives: 'The dark map, place names and roads under every layer.' },
   { name: 'Terrain', owner: 'Mapzen · AWS Open Data', title: 'Terrain Tiles (terrarium)', url: 'https://registry.opendata.aws/terrain-tiles/', licence: 'Open, with attribution', gives: 'The shaded relief of the island’s mountains, the 3D terrain for trail flights and waterfall orbits, trail elevations, and the low coastal ground on the tsunami layer.' },
 ];

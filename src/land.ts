@@ -6,12 +6,13 @@ import * as d3 from 'd3';
 import type * as maplibregl from 'maplibre-gl';
 import { ArcLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import type { Layer, PickingInfo } from '@deck.gl/core';
-import { Internet, Trails, Wells, fmt } from './data';
+import { Internet, Trails, Water, Wells, fmt } from './data';
 import { BANDS, NET_COLOR, parcelNet } from './internet';
 import { trailMetresNear } from './trails';
 import { esc } from './html';
 import { gpmText, lpm, wellStrip, wellsNear, yieldColor } from './wells';
 import { NB_CLASSES, Neighbours, loadNeighbours, ringSvg } from './nextdoor';
+import { nearestFor, outKm, outName } from './outdoors';
 
 let trails: Trails | null = null;
 /** Trail density and waterfalls for the Outdoors filters (from the atlas's trails.json). */
@@ -24,6 +25,9 @@ let landWells: LandWells | null = null;
 let internet: Internet | null = null;
 /** Broadband hexagons for the internet filters (from the atlas's internet.json). */
 export function setLandInternet(i: Internet | null) { internet = i; }
+let water: Water | null = null;
+/** Beaches, boat launches and moorage for the Outdoors filters (from the atlas's water.json). */
+export function setLandWater(w: Water | null) { water = w; }
 
 type Cat = 'care' | 'er' | 'grocery' | 'gas';
 type Poi = [string, number, number];
@@ -94,6 +98,13 @@ async function load(): Promise<Land> {
     }
   }
   num.trail3 = trail3; num.fallKm = fallKm; num.fallI = fallI;
+  // water access, worked out here from water.json: straight-line km to the nearest beach, boat launch and moorage on the parcel's island
+  for (const [k, ids] of [['beach', ['beach', 'lake', 'access']], ['launch', ['launch']], ['moor', ['marina', 'harbour']]] as const) {
+    num[`${k}Km`] = new Float32Array(n).fill(NaN); num[`${k}I`] = new Float32Array(n).fill(NaN);
+    if (!water) continue;
+    const r = nearestFor(water, [...ids], num.lon, num.lat, (i) => json.names.island[num.island[i]] ?? 'Vancouver Island');
+    for (let i = 0; i < n; i++) if (r.idx[i] >= 0) { num[`${k}Km`][i] = r.dist[i]; num[`${k}I`][i] = r.idx[i]; }
+  }
   // well prospects (scripts/wells.mjs writes them to their own file, lined up with land.json by PID)
   const wl: Record<string, Float32Array> = Object.fromEntries(['wN', 'wDepth', 'wGpm', 'wLow', 'wAq', 'wOwn'].map((k) => [k, new Float32Array(n).fill(NaN)]));
   try {
@@ -176,7 +187,7 @@ type F = {
   road: number; air: number; ind: number;
   threat: number; unrated: boolean; flood: boolean; high: number; pga: number; fires: number; tsunami: 'any' | 'room' | 'clear';
   slope: number; alr: 'any' | 'avoid' | 'only'; islands: 'any' | 'main' | 'islands';
-  trail: number; fall: number;
+  trail: number; fall: number; beach: number; launch: number;
   wGpm: number; wDepth: number; wLow: number; aquifer: 'any' | 'over';
   net: 'any' | '25' | '50' | '75'; cell: 'any' | 'yes';
   park: 'any' | 'only'; crown: 'any' | 'only'; logged: number; plan: 'any' | 'avoid';
@@ -184,14 +195,14 @@ type F = {
 };
 /** "Backs onto": the land is within this many metres of the parcel (the 50 m grid, and a road or creek between). */
 const NEXT_DOOR_M = 100;
-const ANY_MIN = 120, ANY_FIRES = 200, ANY_SLOPE = 45, ANY_PGA = 100, ANY_FALL = 40, ANY_WDEPTH = 250, ANY_WLOW = 100;
+const ANY_MIN = 120, ANY_FIRES = 200, ANY_SLOPE = 45, ANY_PGA = 100, ANY_FALL = 40, ANY_SHORE = 30, ANY_WDEPTH = 250, ANY_WLOW = 100;
 const BRIEF: F = {
   acres: 10, water: 'front', kinds: [true, true, true], front: 30, near: 500,
   care: 45, careKind: 'any', grocery: 45, gas: 45,
   road: 0.3, air: 3, ind: 1,
   threat: 2, unrated: true, flood: true, high: 10, pga: ANY_PGA, fires: ANY_FIRES, tsunami: 'room',
   slope: ANY_SLOPE, alr: 'any', islands: 'any',
-  trail: 0, fall: ANY_FALL,
+  trail: 0, fall: ANY_FALL, beach: ANY_SHORE, launch: ANY_SHORE,
   wGpm: 0, wDepth: ANY_WDEPTH, wLow: ANY_WLOW, aquifer: 'any',
   net: 'any', cell: 'any',
   park: 'any', crown: 'any', logged: 0, plan: 'any',
@@ -222,7 +233,7 @@ const saveShort = () => { try { localStorage.setItem(SHORT, JSON.stringify(short
 const keyOf = (i: number) => L!.pid[i] || `${L!.num.lon[i].toFixed(5)},${L!.num.lat[i].toFixed(5)}`;
 
 /** One bit per filter; the funnel groups them into stages. */
-const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17, wGpm: 18, wDepth: 19, wLow: 20, aquifer: 21, net: 22, cell: 23, tsunami: 24, park: 25, crown: 26, logged: 27, plan: 28 } as const;
+const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17, wGpm: 18, wDepth: 19, wLow: 20, aquifer: 21, net: 22, cell: 23, tsunami: 24, park: 25, crown: 26, logged: 27, plan: 28, beach: 29, launch: 30 } as const;
 type Bit = keyof typeof BIT;
 const STAGES: { id: string; label: string; icon: string; bits: Bit[]; c: string }[] = [
   { id: 'size', label: 'Size', icon: '◇', bits: ['acres'], c: '#a3e635' },
@@ -231,7 +242,7 @@ const STAGES: { id: string; label: string; icon: string; bits: Bit[]; c: string 
   { id: 'quiet', label: 'Quiet', icon: '☾', bits: ['road', 'air', 'ind'], c: '#c084fc' },
   { id: 'safe', label: 'Safe', icon: '⛨', bits: ['threat', 'flood', 'tsunami', 'high', 'pga', 'fires'], c: '#fb923c' },
   { id: 'wells', label: 'Wells', icon: '⇣', bits: ['wGpm', 'wDepth', 'wLow', 'aquifer'], c: '#19d3c5' },
-  { id: 'outdoors', label: 'Trails', icon: '⛰', bits: ['trail', 'fall'], c: '#34d399' },
+  { id: 'outdoors', label: 'Outdoors', icon: '⛰', bits: ['trail', 'fall', 'beach', 'launch'], c: '#34d399' },
   { id: 'next', label: 'Next door', icon: '❦', bits: ['park', 'crown', 'logged', 'plan'], c: '#e9b872' },
   { id: 'rules', label: 'Place', icon: '⌂', bits: ['slope', 'alr', 'islands'], c: '#f472b6' },
 ];
@@ -270,6 +281,8 @@ function maskOf(i: number): number {
   if ((f.islands === 'main' && n.island[i] !== 0) || (f.islands === 'islands' && n.island[i] === 0)) m |= 1 << BIT.islands;
   if (f.trail > 0 && !(n.trail3[i] >= f.trail)) m |= 1 << BIT.trail;
   if (fails(n.fallKm[i], f.fall, ANY_FALL)) m |= 1 << BIT.fall;
+  if (fails(n.beachKm[i], f.beach, ANY_SHORE)) m |= 1 << BIT.beach;
+  if (fails(n.launchKm[i], f.launch, ANY_SHORE)) m |= 1 << BIT.launch;
   if (f.wGpm > 0 && !(n.wGpm[i] >= f.wGpm)) m |= 1 << BIT.wGpm;
   if (fails(n.wDepth[i], f.wDepth, ANY_WDEPTH)) m |= 1 << BIT.wDepth;
   if (fails(n.wLow[i], f.wLow, ANY_WLOW)) m |= 1 << BIT.wLow;
@@ -500,7 +513,7 @@ const waterText = (i: number) => {
 const fmtDist = (m: number) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`);
 const BIT_NAME: Record<Bit, string> = {
   acres: 'size', water: 'water', care: 'health care', grocery: 'groceries', gas: 'gas', road: 'busy road', air: 'airport', ind: 'industry',
-  threat: 'wildfire threat', flood: 'floodplain', high: 'high ground', pga: 'shaking', fires: 'fire history', slope: 'slope', alr: 'farmland reserve', islands: 'island', trail: 'trails nearby', fall: 'waterfall distance', tsunami: 'tsunami hazard',
+  threat: 'wildfire threat', flood: 'floodplain', high: 'high ground', pga: 'shaking', fires: 'fire history', slope: 'slope', alr: 'farmland reserve', islands: 'island', trail: 'trails nearby', fall: 'waterfall distance', beach: 'beach distance', launch: 'boat launch distance', tsunami: 'tsunami hazard',
   wGpm: 'well yield', wDepth: 'well depth', wLow: 'low-yield wells', aquifer: 'aquifer', net: '50/10 internet', cell: 'mobile service',
   park: 'park next door', crown: 'Crown land next door', logged: 'recent logging nearby', plan: 'planned logging nearby',
 };
@@ -569,9 +582,11 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'outdoors', title: 'Trails & waterfalls', icon: '⛰', c: '#34d399', rows: [
+    id: 'outdoors', title: 'Outdoors', icon: '⛰', c: '#34d399', rows: [
       { kind: 'range', bit: 'trail', key: 'trail', label: 'Trails to walk', hint: 'Km of mapped footpath and hiking trail within 3 km of the parcel (OpenStreetMap)', min: 0, max: 40, step: 0.5, dir: 'min', value: (i) => L!.num.trail3[i], show: (v) => (v <= 0 ? 'Any' : `≥ ${v.toFixed(v < 10 ? 1 : 0)} km within 3 km`) },
       { kind: 'range', bit: 'fall', key: 'fall', label: 'A waterfall nearby', hint: 'Straight-line distance to the nearest mapped waterfall (OpenStreetMap)', min: 0.5, max: ANY_FALL, step: 0.5, dir: 'max', any: ANY_FALL, value: (i) => L!.num.fallKm[i], show: (v) => (v >= ANY_FALL ? 'Any' : `within ${v.toFixed(v < 10 ? 1 : 0)} km`) },
+      { kind: 'range', bit: 'beach', key: 'beach', label: 'A beach nearby', hint: 'Straight-line distance to the nearest mapped public beach or beach access, sea or lake, on the parcel’s own island (OpenStreetMap)', min: 0.5, max: ANY_SHORE, step: 0.5, dir: 'max', any: ANY_SHORE, value: (i) => L!.num.beachKm[i], show: (v) => (v >= ANY_SHORE ? 'Any' : `within ${v.toFixed(v < 10 ? 1 : 0)} km`) },
+      { kind: 'range', bit: 'launch', key: 'launch', label: 'A boat launch nearby', hint: 'Straight-line distance to the nearest mapped public boat launch on the parcel’s own island (OpenStreetMap)', min: 0.5, max: ANY_SHORE, step: 0.5, dir: 'max', any: ANY_SHORE, value: (i) => L!.num.launchKm[i], show: (v) => (v >= ANY_SHORE ? 'Any' : `within ${v.toFixed(v < 10 ? 1 : 0)} km`) },
     ],
   },
   {
@@ -1023,6 +1038,7 @@ function renderDetail(i: number) {
       ${m('Trails to walk', '#34d399', `${n.trail3[i].toFixed(n.trail3[i] < 10 ? 1 : 0)} km`, 'of mapped footpath within 3 km', f.trail <= 0 || n.trail3[i] >= f.trail)}
       ${(() => { const fl = Number.isNaN(n.fallI[i]) ? null : trails!.falls[n.fallI[i]]; return m('Nearest waterfall', '#8be3ff', Number.isNaN(n.fallKm[i]) ? '—' : `${n.fallKm[i].toFixed(1)} km`, fl ? `${esc(fl.name ?? 'unnamed')}${fl.h ? `, ${Math.round(fl.h)} m drop` : ''}` : '', f.fall >= ANY_FALL || n.fallKm[i] <= f.fall); })()}
     </div>` : ''}
+    ${waterDetail(i, m)}
     ${wellsDetail(i, m)}
     ${nextDoorDetail(i, m)}
     <h3>Quiet</h3>
@@ -1051,6 +1067,22 @@ function renderDetail(i: number) {
   drawRadar(p.querySelector<HTMLElement>('.ld-radar')!, pr, RAMP(s));
   const ws = p.querySelector<HTMLElement>('.ld-wells');
   if (ws && wells) wellStrip(ws, wells, wellsNear(wells, n.lon[i], n.lat[i], landWells?.km ?? 1), { height: 120 });
+}
+
+/** The parcel report's water access: nearest beach, boat launch and moorage on its island, in a straight line. */
+function waterDetail(i: number, m: (label: string, dot: string, v: string, sub: string, good?: boolean | null) => string) {
+  const n = L!.num;
+  if (!water) return '';
+  const tile = (label: string, dot: string, k: 'beach' | 'launch' | 'moor', none: string, max: number | null) => {
+    const d = n[`${k}Km`][i], j = n[`${k}I`][i];
+    return m(label, dot, Number.isNaN(d) ? '—' : outKm(d), Number.isNaN(d) ? none : esc(outName(water!, [j, d])), max == null || max >= ANY_SHORE ? null : d <= max);
+  };
+  return `<h3>Water access</h3>
+    <div class="metric-grid">
+      ${tile('Nearest beach', '#f6d58e', 'beach', 'none mapped on this island', f.beach)}
+      ${tile('Boat launch', '#22d3ee', 'launch', 'no public launch mapped on this island', f.launch)}
+      ${tile('Moorage', '#7aa2ff', 'moor', 'no marina or public harbour on this island', null)}
+    </div>`;
 }
 
 /** The parcel report's water supply: well prospects within 1 km, the aquifer under it, and the nearby wells drawn as drill holes. */

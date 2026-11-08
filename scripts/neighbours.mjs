@@ -30,7 +30,7 @@ const ringArea = (ring) => { let a = 0; for (let i = 0, j = ring.length - 1; i <
 const toM = ([lon, lat]) => [lon * MX, lat * MY];
 
 /** BC WFS pages, cached only once the body is real JSON: when busy the server answers 200 with an XML error page. */
-function pager({ log, cached, WFS, BBOX }) {
+export function pager({ log, cached, WFS, BBOX }, dir = 'neighbours') {
   const getJSON = async (name, url) => JSON.parse((await cached(name, async () => {
     for (let attempt = 1; ; attempt++) {
       try {
@@ -60,7 +60,7 @@ function pager({ log, cached, WFS, BBOX }) {
       if (bbox) q.set('bbox', `${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east},urn:ogc:def:crs:EPSG:4326`);
       if (cql) q.set('CQL_FILTER', cql);
       if (props) q.set('propertyName', props.join(','));
-      const page = await getJSON(`neighbours/${cacheKey}-${start}.json`, `${WFS}?${q}`);
+      const page = await getJSON(`${dir}/${cacheKey}-${start}.json`, `${WFS}?${q}`);
       out.push(...page.features);
       log(`  ${cacheKey}: ${out.length}/${page.numberMatched ?? '?'}`);
       if (page.features.length < pageSize) break;

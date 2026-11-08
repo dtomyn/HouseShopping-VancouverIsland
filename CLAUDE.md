@@ -13,7 +13,7 @@ npm run preview           # serve dist/ at http://localhost:4173
 npm run data [stage…]     # rebuild public/data/*.json from the original sources
 ```
 
-Data stages (in run order): `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails internet land wells tsunami logging neighbours`. Raw downloads cache in `.cache/`; a failing source keeps its old JSON and records the error in `public/data/manifest.json` (shown in the app's Data & sources view). `public/data/` is committed, so the app runs without the pipeline.
+Data stages (in run order): `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails internet land wells tsunami logging neighbours water camping`. Raw downloads cache in `.cache/`; a failing source keeps its old JSON and records the error in `public/data/manifest.json` (shown in the app's Data & sources view). `public/data/` is committed, so the app runs without the pipeline.
 
 Videos (Windows only, needs Edge + `.venv` with Kokoro; see README):
 
@@ -67,13 +67,14 @@ Videos (Windows only, needs Edge + `.venv` with Kokoro; see README):
 - **`src/internet.ts`:** the Internet & cell layer (ISED broadband hexagons + Ookla speeds by quarter) and the `townNet` / `parcelNet` lookups used by metrics and Land Finder.
 - **`src/tsunami.ts`:** the Tsunami zones layer (static). Its shapes and low-ground cells (`tsunami-map.json`) load the first time it's shown; the wave sweep runs off `ctx.clock`. Its per-parcel values live in `land-tsunami.json` (keyed to `land.json`'s order by a PID hash), which `src/land.ts` loads optionally.
 - **`src/logging.ts` + `src/nextdoor.ts`:** the Logging layer (cutblock shapes load on first show) and the Town Report's logging row; `nextdoor.ts` loads `land-neighbours.json` (aligned to `land.json` by order, checked by a PID hash) and draws a parcel's surroundings ring. Both stages live in `scripts/neighbours.mjs`.
+- **`src/outdoors.ts`:** the Water access and Camping & rec sites layers (static points from `water.json` and `camping.json`, one shared point-layer builder with kind chips), their Town Report rows, and `nearestFor`, which the Land Finder uses for each parcel's nearest beach, boat launch and moorage on its own island. Both stages live in `scripts/outdoors.mjs`; the camping stage reuses the `neighbours` stage's park-boundary WFS cache.
 - **`src/land.ts`:** Land Finder, a separate `mode` with its own deck layers, filters and panel, built on `public/data/land.json`.
 - **`src/panels.ts` + `src/metrics.ts`:**
   - `townMetrics(data)` computes every per-town number, consumed by the Town Report, the Town Finder (`CRITERIA` weights) and Land Finder.
   - Home prices go through `trailingMedianPrice` in `src/data.ts`, which ignores zero valuations.
 - **`src/data.ts`:** `loadAll()` fetches `public/data/*.json` and holds the shared types and formatters (`fmt`, `km`, `MONTHS`). **`src/sources.ts`:** the Data & sources view.
 
-**Data pipeline:** `scripts/fetch-data.mjs` holds one async function per stage in `SOURCES`, clips to the island's bounding box, and writes compact JSON. The bigger stages live in `scripts/trails.mjs`, `land.mjs`, `ferries.mjs` and `internet.mjs` (range-reads only the island's rows of Ookla's global parquet files through `hyparquet`). `scripts/municipalities.mjs` lists the 43 towns and islands. The smoke stage streams FTP files through `curl`.
+**Data pipeline:** `scripts/fetch-data.mjs` holds one async function per stage in `SOURCES`, clips to the island's bounding box, and writes compact JSON. The bigger stages live in `scripts/trails.mjs`, `land.mjs`, `ferries.mjs`, `outdoors.mjs` and `internet.mjs` (range-reads only the island's rows of Ookla's global parquet files through `hyparquet`). `scripts/municipalities.mjs` lists the 43 towns and islands. The smoke stage streams FTP files through `curl`.
 
 **Videos (`video/`):**
 - **How it renders:** `render.py` serves `dist/` and `video/stage/` from one origin, opens the stage in headless Edge with a persistent profile (`video/out/browser-profile`), and steps a virtual clock one frame at a time. It runs a film's scenes (`run(f)` functions calling the `Film` API) and muxes the narration (Kokoro, cached by line text in `video/out/vo`).

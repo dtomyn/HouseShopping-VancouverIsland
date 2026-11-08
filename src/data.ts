@@ -188,6 +188,20 @@ export type Neighbours = {
 
 export type CrimeSeries = { csi?: Record<string, number>; vcsi?: Record<string, number>; nvcsi?: Record<string, number> };
 
+/**
+ * Water access (water.json) and camping (camping.json) points, from scripts/outdoors.mjs. A row is
+ * [lon, lat, kind (index into kinds), island (index into islands; the last is "Other": off the atlas's islands but
+ * near a town), name (null: unnamed), details (only the fields the source has), ref (OSM element, DFO harbour, rec site)].
+ */
+export type OutRow = [number, number, number, number, string | null, Record<string, string | number> | null, string];
+/** [row index, km in a straight line], or null when there's none on the town's island */
+export type Nearest = [number, number] | null;
+export type WaterTown = { beach: Nearest; lake: Nearest; launch: Nearest; moor: Nearest; n10: [number, number, number] };
+export type CampTown = { near: Nearest; park: Nearest; rec: Nearest; n25: number[] };
+type Points<T> = { source: string; asOf: string; islands: string[]; kinds: { id: string; label: string }[]; cols: string[]; rows: OutRow[]; towns: Record<string, T> };
+export type Water = Points<WaterTown> & { townKm: number };
+export type Camping = Points<CampTown> & { townKm: number };
+
 export type Data = {
   island: GeoJSON.Feature | null;
   munis: Muni[];
@@ -210,6 +224,8 @@ export type Data = {
   internet: Internet | null;
   logging: Logging | null;
   neighbours: Neighbours | null;
+  water: Water | null;
+  camping: Camping | null;
   manifest: Record<string, { ok: boolean; updated?: string; lastError?: string }>;
 };
 
@@ -227,6 +243,7 @@ async function load<T>(name: string): Promise<T | null> {
 
 export async function loadAll(): Promise<Data> {
   const internet = load<Internet>('internet');
+  const water = load<Water>('water'), camping = load<Camping>('camping');
   const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, wells, logging, neighbours, manifest, tsunami] = await Promise.all([
     load<GeoJSON.Feature>('island'),
     load<Muni[]>('municipalities'),
@@ -266,7 +283,7 @@ export async function loadAll(): Promise<Data> {
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, water: (await water)?.rows?.length ? await water : null, camping: (await camping)?.rows?.length ? await camping : null, manifest: manifest ?? {} };
 }
 
 let netPromise: Promise<TrailNet | null> | null = null;

@@ -8,6 +8,7 @@ import { CRITERIA, TownMetrics, erFerryWait, rankTowns, townMetrics } from './me
 import { drawTownWells, wellsTownRow } from './wells';
 import { internetMetric } from './internet';
 import { CASCADIA_OUTER_COAST_MIN } from './tsunami';
+import { campingTownRow, waterTownRow } from './outdoors';
 
 const STORE_KEY = 'island-atlas:weights';
 
@@ -62,6 +63,8 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
     ${feelsRow(t, data, metric, na)}
     ${futureRow(t, data, metric)}
     ${outdoorsRow(t, data, metric)}
+    ${waterTownRow(data, key, metric)}
+    ${campingTownRow(data, key, metric)}
     ${wellsTownRow(data, key, metric)}
     ${loggingTownRow(data, key, metric)}
     ${t.climate?.trend != null ? `<div class="callout" style="--c:#f25f5c">Nearest long-term station (${t.climate.name}) has warmed <b>${fmt.signed(t.climate.trend, 2)} °C per decade</b> since 1950.</div>` : ''}

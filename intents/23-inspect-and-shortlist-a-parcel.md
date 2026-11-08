@@ -23,6 +23,8 @@ Land Finder → a parcel in the **Matches** list or on the map; the **Shortlist*
   gas station it relies on, with their names and minutes. Its Safety measures include **Tsunami**: the share of the
   parcel in a published hazard map or on low coastal ground, the notification zone, and the acres outside it
   ([30](30-know-where-a-tsunami-could-reach.md)).
+- **Water access**: straight-line distance to the nearest beach or beach access, public boat launch and marina or
+  public harbour on the parcel's own island, with their names ([33](33-get-on-the-water.md)).
 - **Water supply**: the median yield and depth of the wells within 1 km, the share of them that were low yield, the
   mapped aquifer under it, a note when a well is registered on its PID, and those wells drawn as drill holes to their
   depth, coloured by yield ([29](29-know-the-well-water-under-a-place.md)).

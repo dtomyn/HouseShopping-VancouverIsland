@@ -29,6 +29,7 @@ The order puts quick wins that reuse existing code first, then the most decision
 | 11 | [Ongoing costs: property tax and rent](#11-ongoing-costs-property-tax-and-rent) | Useful, but rent data may need a manual export step | Medium |
 | 12 | [Indigenous territories and place names](#8-indigenous-territories-and-original-place-names) | Important, but needs the most care with sources, permissions and wording | Medium |
 | 13 | ✅ [Internet and cell coverage](#13-internet-and-cell-coverage) | Rural buyers can't judge working from home without it | Medium |
+| 14 | ✅ [Water access and camping](#14-water-access-and-camping) | A coastal retirement is about getting on the water; two small point layers beside Trails | Small–medium |
 
 ### Static layers
 
@@ -112,6 +113,14 @@ Hospitals, seismic hazard and tsunami zones don't change over time. Before addin
 - **Measured:** Ookla open data (CC BY-NC-SA 4.0; fine for this non-commercial personal atlas with attribution; derived data stay under the same licence). The global parquet files are sorted by quadkey, and the island's tiles sit in the first few percent of rows, so hyparquet reads only that prefix of each column chunk over HTTP range requests (20–40 MB per file); the clipped rows are cached per quarter in `.cache/internet/`. Tiles are pooled into the ISED hexagons (nearest centre) so both sources share one grid. If the atlas ever went commercial, the measured views would have to go.
 - **Per parcel:** the Land Finder looks each parcel up in the hexagons in the browser (as it does for trails), so `land.json` is unchanged.
 - **Still open:** address-level availability (the PHH file), upload speeds and latency (in the Ookla rows, not yet shown), and separating Starlink from wired home internet (Ookla's open tiles don't).
+
+### 14. Water access and camping
+
+✅ **Built.** `water` and `camping` stages (`scripts/outdoors.mjs`) → `public/data/water.json` and `camping.json`; static *Water access* and *Camping & rec sites* layers in the *Outdoors* group (`src/outdoors.ts`); *Water access* and *Camping nearby* in the Town Report; Land Finder *A beach nearby* and *A boat launch nearby* in *Outdoors*, worked out per parcel in the browser.
+
+- **Water access:** OpenStreetMap beaches, slipways, marinas and features named “Beach Access” (ODbL), with Fisheries and Oceans Canada's small craft harbours (OGL – Canada). Lake and river beaches are told apart by distance from the coast. Distances are straight lines, own island only for the small islands.
+- **Camping:** Recreation Sites and Trails BC's site points (OGL – BC) and OpenStreetMap campgrounds, merged where they are the same site and sorted by the BC and national park boundaries the `neighbours` stage already downloads.
+- **Still open:** BC Parks doesn't publish its campgrounds (or their capacities, fees and reservations) as open data, so park campgrounds come from OpenStreetMap and only carry what volunteers tagged; municipal beach-access inventories (e.g. Saanich, Nanaimo, the CRD) are separate per-council datasets and only accesses named in OpenStreetMap appear; walking or driving times to the water instead of straight lines; no Town Finder criterion yet.
 
 ## Explaining the island's history
 
