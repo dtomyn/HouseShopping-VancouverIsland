@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 import { Data, fmt, trailingMedianPrice } from './data';
 import { lineChart } from './charts';
 import { esc } from './html';
+import { loggingTownRow } from './logging';
 import { CRITERIA, TownMetrics, erFerryWait, rankTowns, townMetrics } from './metrics';
 import { drawTownWells, wellsTownRow } from './wells';
 import { internetMetric } from './internet';
@@ -62,6 +63,7 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
     ${futureRow(t, data, metric)}
     ${outdoorsRow(t, data, metric)}
     ${wellsTownRow(data, key, metric)}
+    ${loggingTownRow(data, key, metric)}
     ${t.climate?.trend != null ? `<div class="callout" style="--c:#f25f5c">Nearest long-term station (${t.climate.name}) has warmed <b>${fmt.signed(t.climate.trend, 2)} °C per decade</b> since 1950.</div>` : ''}
     ${t.river ? `<div class="callout" style="--c:#4cc9f0"><b>${t.river.name}</b> (${t.river.dist.toFixed(0)} km away) reached 1.5× its normal peak in ${Math.round(t.river.floodShare * 100)}% of years; its record was ${t.river.record.ratio.toFixed(1)}× in ${t.river.record.year}.</div>` : ''}
     ${census ? '' : '<h3>Population (dashed = projection)</h3><div id="tr-pop"></div>'}
@@ -69,6 +71,7 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
     ${t.csi != null ? '<h3>Crime Severity Index</h3><div id="tr-crime"></div>' : ''}
     <p class="note">Distances are from the town centre. Hazard counts describe history, not a forecast — check official floodplain, tsunami and wildfire-interface maps for any specific property.</p>`;
   el.querySelector('.close-x')!.addEventListener('click', opts.onClose);
+  el.querySelectorAll<HTMLElement>('[data-layer]').forEach((b) => b.addEventListener('click', () => window.dispatchEvent(new CustomEvent('atlas:layer', { detail: b.dataset.layer }))));
   el.querySelectorAll<HTMLElement>('[data-out]').forEach((b) => b.addEventListener('click', () => window.dispatchEvent(new CustomEvent('atlas:outdoors', { detail: { kind: b.dataset.out, i: +b.dataset.i! } }))));
 
   requestAnimationFrame(() => {

@@ -17,7 +17,7 @@ The order puts quick wins that reuse existing code first, then the most decision
 | # | Feature | Why at this point | Effort |
 |---|---|---|---|
 | 1 | ✅ [Climate normals: what a town feels like](#3-climate-normals-what-a-town-feels-like) | Uses the climate API the pipeline already calls; adds strong Town Finder criteria (sunshine, rain days) | Small |
-| 2 | [A century of logging](#6-a-century-of-logging) | Same BC WFS paging and the same "flare then scar" animation as wildfires; the most dramatic new visual | Small–medium |
+| 2 | ✅ [A century of logging](#6-a-century-of-logging) | Same BC WFS paging and the same "flare then scar" animation as wildfires; the most dramatic new visual | Small–medium |
 | 3 | ✅ [Getting to a hospital](#1-getting-to-a-hospital) | The most important retirement factor missing today; adds the first "static" (non-timeline) layer | Medium |
 | 4 | ✅ [Static-layer support](#static-layers) | Needed by items 3, 8 and 9; small refactor done once | Small |
 | 5 | [Guided story mode](#10-guided-story-mode) | Best done once several layers exist, so tours can tie them together | Medium |
@@ -116,6 +116,10 @@ Hospitals, seismic hazard and tsunami zones don't change over time. Before addin
 ## Explaining the island's history
 
 ### 6. A century of logging
+
+✅ **Built.** `logging` stage → `public/data/logging.json` (yearly totals, the share of the islands logged at least once on a 100 m grid, what's on the books) and `logging-blocks.json` (about 42,000 cutblock outlines simplified to 40 m, about 4 MB, loaded the first time the layer is shown). Time-based "Logging" layer: blocks flash as they're cut, then age through bare ground, regrowth and young forest using stacked layers with soft GPU filter ranges (no per-frame colour updates). Forest-tenure blocks approved but not started, or started in the last 3 years with no end date, pulse pink at today (Crown tenures only; blocks already in the harvest record, cancelled ones and approvals over 5 years old are left out). Events: the five busiest years and each 10% of the islands logged. The `neighbours` stage adds **what's next door**: ownership (Generalized Forest Cover Ownership, `F_OWN`), BC and national parks, lakes and the cutblocks on a 50 m grid, with Crown and park strips under 250 m wide removed by a morphological opening; per parcel → `land-neighbours.json` (parcel order of `land.json`, checked with a PID hash; `land.json` itself isn't touched), per town → `neighbours.json`. Land Finder *Next door* filters and a ring of what surrounds each parcel; Town Report *Logging & parks nearby*.
+
+Still open: private managed forest land (the E&N grant lands on the east coast) has no open layer, so its harvest plans can't be shown; regional parks from `F_OWN` have no names; the record undercounts logging before the 1950s.
 
 **What it teaches:** how much of the island's forest was cut and when. That helps explain today's landscape, river flooding and wildfire behaviour.
 

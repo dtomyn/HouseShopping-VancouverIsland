@@ -267,6 +267,23 @@ const SOURCES: Source[] = [
     read: (d) => d.trails && { n: d.trails.netPaths + d.trails.routes.length + d.trails.falls.length, what: `${fmt.int(d.trails.netPaths)} footpaths (${fmt.int(d.trails.netKm)} km), ${d.trails.routes.length} named routes, ${fmt.int(d.trails.falls.length)} waterfalls (${d.trails.falls.filter((f) => f.img).length} with photos)` },
     // OpenStreetMap is a map of today, so one ring at the bark
     rings: (d) => d.trails ? { [NOW]: { v: 1, label: `${fmt.int(d.trails.netKm)} km of footpath and ${fmt.int(d.trails.falls.length)} waterfalls as mapped today` } } : {},
+  },  {
+    id: 'logging', key: 'logging', name: 'Logging', color: '#e9b872', group: 'Outdoors',
+    owner: 'BC Ministry of Forests', title: 'Harvested Areas of BC (Consolidated Cutblocks) and Forest Tenure Cutblock Polygons', url: 'https://catalogue.data.gov.bc.ca/dataset/harvested-areas-of-bc-consolidated-cutblocks-',
+    endpoint: 'WFS openmaps.gov.bc.ca · VEG_CONSOLIDATED_CUT_BLOCKS_SP, FTEN_CUT_BLOCK_POLY_SVW', licence: OGL_BC,
+    gives: 'Every mapped cutblock with the year it was logged, and the blocks approved or being logged now on Crown tenures.',
+    read: (d) => {
+      if (!d.logging) return null;
+      const n = sum(Object.values(d.logging.years).map((y) => y[1])), p = d.logging.plan;
+      return { n: n + p.n + p.active, what: `${fmt.int(n)} cutblocks logged since ${Math.min(...Object.keys(d.logging.years).map(Number))} and ${fmt.int(p.n + p.active)} approved or being logged now` };
+    },
+    rings: (d) => {
+      if (!d.logging) return {};
+      const ha: Record<number, number> = {};
+      for (const [y, v] of Object.entries(d.logging.years)) ha[+y] = v[0];
+      const f = norm(ha, (v, m) => Math.sqrt((v ?? 0) / m));
+      return Object.fromEntries(Object.keys(ha).map((y) => [y, { v: f(+y), label: `${fmt.ha(ha[+y])} logged in ${d.logging!.years[y][1]} cutblocks` }]));
+    },
   },
 ];
 
@@ -276,6 +293,7 @@ const BARK: BarkSource[] = [
   { name: 'Census 2021', key: 'population', owner: 'Statistics Canada', title: '2021 Census of Population, dissemination areas', url: 'https://www12.statcan.gc.ca/census-recensement/2021/dp-pd/prof/index.cfm', licence: 'Statistics Canada Open Licence', gives: 'Population, 65+ share and average home value for the unincorporated islands.', read: (d) => `${d.munis.filter((m) => m.island).length} island communities` },
   { name: 'Roads', key: 'hospitals', owner: 'OpenStreetMap contributors · OSRM', title: 'OSRM demo router on OpenStreetMap roads', url: 'https://www.openstreetmap.org/copyright', licence: 'ODbL', gives: 'The road routes and free-flow drive times to the nearest ER.' },
   { name: 'Tsunami maps', key: 'tsunami', owner: 'Strathcona Regional District · City of Victoria', title: 'West Coast Tsunami Inundation Models; Tsunami Hazard Zone (2021 model)', url: 'https://storymaps.arcgis.com/stories/ee3f568154ed46d8b3ee3b6be04f9c8a', licence: 'OGL – Canada · City of Victoria Open Data Licence', gives: 'Published hazard areas: Cascadia and Alaska scenarios from Nootka Sound to Quatsino Sound, and the City of Victoria’s 2021 hazard zone.', read: (d) => `${d.tsunami?.areas.reduce((a, x) => a + x.polygons, 0) ?? 0} mapped polygons` },
+  { name: 'Parks & ownership', key: 'neighbours', owner: 'BC Parks · Parks Canada · BC Ministry of Forests · GeoBC', title: 'Parks, ecological reserves and protected areas; national parks; Generalized Forest Cover Ownership; Freshwater Atlas lakes', url: 'https://catalogue.data.gov.bc.ca/dataset/generalized-forest-cover-ownership', licence: OGL_BC, gives: 'What is next door to every Land Finder parcel and town: parks, Crown land, water and logging, measured on a 50 m grid.', read: (d) => (d.neighbours ? `${d.neighbours.parks.length} named parks and protected areas, ${Object.keys(d.neighbours.towns).length} towns measured` : 'not built yet') },
   { name: 'Basemap', owner: 'CARTO · OpenStreetMap contributors', title: 'Dark Matter vector basemap', url: 'https://carto.com/attributions', licence: 'ODbL / CARTO terms', gives: 'The dark map, place names and roads under every layer.' },
   { name: 'Terrain', owner: 'Mapzen · AWS Open Data', title: 'Terrain Tiles (terrarium)', url: 'https://registry.opendata.aws/terrain-tiles/', licence: 'Open, with attribution', gives: 'The shaded relief of the island’s mountains, the 3D terrain for trail flights and waterfall orbits, trail elevations, and the low coastal ground on the tsunami layer.' },
 ];
@@ -290,6 +308,8 @@ const DERIVED = [
   ['Well prospects', 'for a town are medians of the wells within 5 km (or on the whole island); for a parcel, of the wells within 1 km. A yield under 2 US gallons a minute counts as low.'],
   ['Trail climbing and times', 'are worked out here: elevations sampled from terrain tiles along each route, and walking time by Naismith’s rule (4.5 km/h plus an hour per 600 m up).'],
   ['Low coastal ground', 'is a tsunami screening measure worked out here from ~100 m terrain: ground under 20 m within 1 km of the sea. Published hazard maps take its place where they exist.'],
+  ['Share of the islands logged', 'counts land logged at least once on a 100 m grid, so land logged twice counts once.'],
+  ['Next door', 'is measured on a 50 m grid out to 1 km from each parcel; Crown land and parks narrower than 250 m (road allowances, trail corridors) don’t count.'],
   ['Town Finder scores', 'are this atlas’s own blend of the numbers above, weighted by you.'],
 ];
 

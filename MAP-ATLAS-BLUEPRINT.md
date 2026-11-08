@@ -277,7 +277,7 @@ Pick one per layer in the brief:
 
 | Idiom | How it works | Used for |
 |---|---|---|
-| **Flare then scar** | New items extrude and glow white-yellow→red with additive blending for a glow window tied to playback speed (`max(0.25, speed × 0.9)` years), then settle into a dim flat "scar" filtered by `DataFilterExtension` to `[start, time]` | fires, logging, construction, events with area |
+| **Flare then scar** | New items extrude and glow white-yellow→red with additive blending for a glow window tied to playback speed (`max(0.25, speed × 0.9)` years), then settle into a dim flat "scar" filtered by `DataFilterExtension` to `[start, time]`. **Ageing variant** (logging): the scar changes with age (bare ground → regrowth → young forest) by stacking copies of the layer, each one colour, with `filterRange` `[time − age, time]` and a `filterSoftRange` that fades it out on the GPU, so nothing is recoloured per frame. Big shape sets load on first show | fires, logging, construction, events with area |
 | **Ripple at depth** | Points drawn at true depth (exaggerated ×3) with expanding surface shockwave rings | earthquakes, incidents |
 | **Drill holes** | A line from the ground down to each item's real depth (exaggerated, with ×10/×30/×100 chips), coloured by a measured value, a dot at the bottom (hollow when the value is poor) and a tick for a level inside the hole; new items flash down their hole as the timeline passes them; the matching panel chart draws them side by side, shallowest to deepest | water wells, boreholes, mines |
 | **Columns vs. normal** | `ColumnLayer` per station, height = value, colour = ratio to the station's own normal | river gauges, smoke days, counts |
@@ -383,6 +383,7 @@ Rules, all in two functions (`setLayerOn(id, on)` for the switch, `focus(id)` fo
 - **An event has its own panel** (`src/events.ts`), opened from a diamond, the ticker's Details, or the **Key moments** list each layer's panel ends with. The timeline stops at the event's date and the map flies there. Only `t`, `layer`, `title` and `body` are required; optional fields deepen the panel without touching it: `stats` (headline tiles), `sections` (heading + text), `image` (with credit), `sources` (links), `layers` (what "Show it on the map" switches on, at the event's date), `end` (for events that ran a while), and `detail(el)` for anything richer a layer wants to draw. The panel adds context for every event by itself: the layer year by year with the moment marked, **Also happening** (other layers' events within 18 months), the closest towns (each opens its report, and closing it comes back to the event), and earlier / later moments. Back returns to wherever the first event was opened from.
 - **Everything on the map opens a panel on click, never just a hover bubble.** A town (its dot, or its column on any layer) opens its report; any other feature opens the event panel described above, as a record with no date when it's a place rather than a moment (`t` is optional). A layer gives its features rich panels with `describe(info) → AtlasEvent` (an earthquake's rank and depth, a gauge's or station's chart of its record via `detail`). A layer without `describe` still gets a panel built from its tooltip: the bold line becomes the title and each `<span class="tk">label</span> <span class="tv">value</span>` pair a headline tile, so keep tooltips in that shape. Tooltips end with "Click for details" unless they already say what a click does.
 - **Hover** anything for a tooltip; **click** a place dot → Place Report.
+- **A report can open a layer** ("See a century of logging on the map"): it dispatches `atlas:layer` with the layer id; main focuses it and, for a time layer, jumps to the end of its range (today), where the story the report summarised ends.
 
 ### 5.4 Place Report and Finder
 
@@ -404,6 +405,8 @@ Left rail (360px, glass, slides in) + bottom **funnel** + right result list:
 - Item report: hero + score ring, radar of strengths, arcs to the places it relies on, satellite toggle, links out, shortlist star with notes and asking price (localStorage).
 - In deep mode the timeline, layer picker and panel button hide.
 - A measure added later by its own data stage goes in its own file beside the item file (`<deep>-<topic>.json`, in the item file's order with the item ids to check it), loaded optionally: stages stay independent and re-runnable, and the item file isn't rebuilt for every new measure.
+- **Extra measures from another stage** go in a side file (e.g. `land-neighbours.json`) that follows the main file's item order and carries a hash of its id column; the finder loads it if present and checks the hash, so stages built in parallel never rewrite the main file, and a stale side file is ignored rather than misread. Its filters default to off, so the starting brief is unchanged.
+- **Surroundings ring** (optional): a ring around the item, sectors × distance bands, each cell coloured by what covers most of it (park, public land, water, logging by age…), measured in the pipeline on a raster grid, with a key of shares.
 
 ### 5.6 Data & sources view
 
@@ -440,6 +443,8 @@ const order = ['base', /* …stages that others read come first… */, 'deep'];
 - **A failing stage never breaks the others**: it's logged, the old file stays, and `manifest.json` records `{ ok, updated, lastError, lastAttempt }`, which the sources view shows.
 - Rate-limited services (routing, point-query APIs): batch, sleep between calls, cache each response.
 - Huge global files sorted by a spatial key (e.g. quadkey-sorted parquet): read only the region's rows with HTTP range requests and cache the clipped rows, never the whole file.
+- Validate a response before caching it: a busy BC WFS answers HTTP 200 with an XML `ExceptionReport`, which a plain cache would keep forever. Parse it, check for `features`, retry with backoff.
+- Area questions (share of land logged, what's next door) are answered on a raster: rasterize polygons onto a grid (scanline fill with per-row edge buckets) and count cells, so overlaps count once. Remove slivers (road allowances, trail corridors) from ownership masks with a morphological opening.
 - Big stages live in their own module and receive the helpers as arguments.
 - Feeds that change seasonally (timetables) take the most common value over the next few weeks and fail with a clear message when the feed runs out.
 - Acceptance: `rm -rf .cache && npm run data` completes and `npm run build` passes.
