@@ -219,8 +219,8 @@ def timeline(f):
     f.click({"sel": '.ev[title*="Cameron"]'})
     f.camera("fill", 1500, whoosh=0.3)
     f.wait(1600)
-    f.camera({"sel": ".toast", "grow": 16}, 1200, max=1.8)
-    f.board("Event", "The Cameron Bluffs marker is clicked; the map flies there and the event card appears.")
+    f.camera({"sel": "#panel", "grow": 10}, 1200, max=1.5)
+    f.board("Event", "The Cameron Bluffs marker is clicked; the map flies there and its story opens in the side panel.")
     f.voice_done(400)
     f.js("Stage.hideChip()")
     f.camera("fill", 1200)
@@ -266,7 +266,7 @@ def switching(f):
 
 def town(f):
     step(f, 6, "Open a town's report", TOWN)
-    f.run("() => { document.getElementById('toast-stack').innerHTML = ''; atlas.map.flyTo({ center: [-124.55, 49.27], zoom: 8.6, pitch: 40, bearing: -8, duration: 2000 }); }")
+    f.run("() => { document.getElementById('event-ticker').hidden = true; atlas.map.flyTo({ center: [-124.55, 49.27], zoom: 8.6, pitch: 40, bearing: -8, duration: 2000 }); }")
     f.wait(2100)
     f.say("town-1")
     hint(f, "●", "Click a town dot", "point at it first to see its name", TOWN)
@@ -492,7 +492,7 @@ SCENES = [
          lines={"time-1": "History layers play on the timeline. Click play, or press the space bar.",
                 "time-2": "Use Speed to choose how many years pass each second.",
                 "time-3": "Click pause to stop. Drag the slider to jump to any year.",
-                "time-4": "The marks above the slider are events. Click one, and the map jumps there and shows a card about it. The card closes by itself."}),
+                "time-4": "The marks above the slider are events. Click one, and the map jumps there and its story opens in the side panel, with what else was happening at the time."}),
     dict(id="switching", title="Switch, combine and clear layers", run=switching,
          shows="Replacing a layer, keeping one on with its switch, the +1 badge, and clearing the map.", camera="Zoomed on the menu and the Layer button.", motion="Real clicks.", sound="Clicks.",
          lines={"sw-1": "Each layer has a switch. Flip Earthquakes on, and it joins the wildfires on the map.",

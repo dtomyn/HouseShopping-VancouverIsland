@@ -62,7 +62,7 @@ Menu groups (the layer menu's sections):
 
 ### 1.4 Historic events
 
-Curated moments that show as diamonds on the timeline, pop a toast and send a shockwave across the map.
+Curated moments that show as diamonds on the timeline, send a shockwave across the map, and open in the side panel with their full story (see §5.3).
 
 | Date (fractional year) | Layer | Title | One-line body | lon, lat, zoom |
 |---|---|---|---|---|
@@ -141,7 +141,7 @@ Every source is drawn as one visual metaphor that fits the theme (Island Atlas: 
 - Video: **Python 3.12 + Playwright (Microsoft Edge for GPU WebGL) + imageio-ffmpeg + kokoro-onnx + soundfile + numpy**, in a `uv` venv at `.venv/`.
 
 ```
-index.html                 app shell: map, appbar, panel, top actions, timeline, toasts, tooltip, modal, loader
+index.html                 app shell: map, appbar, panel, top actions, timeline (with its event ticker), tooltip, modal, loader
 src/main.ts                state, map init, render loop, focus/menu/timeline, keyboard, hashes, ?film handle
 src/layers.ts              AtlasLayer interface + one factory per layer + CURATED_EVENTS
 src/data.ts                types for every JSON file, loadAll(), formatters (fmt), helpers (km, lowerBound…)
@@ -223,8 +223,8 @@ Fixed feature colours: Finder violet `#a99bff` / `#7b61ff`; deep finder teal→l
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │ (◎) Atlas Name        [● Layer: Wildfires  +1 ▾]     [Deep finder][◎ Finder][Data & sources][▯] │
 │     tagline                                                          ┌───────────┐ │
-│                          ┌ toast ┐                                   │  panel    │ │
-│                          └───────┘                                   │  380px    │ │
+│                                                                      │  panel    │ │
+│                                                                      │  380px    │ │
 │                    full-bleed 3D map + vignette                      │  kicker   │ │
 │                                                                      │  h2       │ │
 │                                                                      │  lede     │ │
@@ -240,13 +240,13 @@ Fixed feature colours: Finder violet `#a99bff` / `#7b61ff`; deep finder teal→l
 - **Top actions** top-right: pill buttons. The Finder button is violet-glowing (`.accent`); the deep finder has a teal-lime gradient; Data & sources has a tiny tree-ring icon; an icon button hides the panel (`P`).
 - **Side panel** right, 380px, glass, `top: 72px`, scrolls; collapses with a fade + slide.
 - **Timeline** bottom, glass, radius 18px, grid `52px 92px 1fr 92px`: round accent play button (pulses while playing), year + month readout, track (sparkline canvas 34px, event diamonds, range scrubber with glowing thumb and filled-to-here track, mono min/label/max), speed select (½, 1, 2, 4, 8 yr/s; default 2).
-- **Toasts** top-centre, max 460px, coloured left bar, mono date, bold title, body.
+- **Event ticker** docked on the timeline's top edge: one line (mono date in the event's colour, bold title, a **Details ›** pill) that shows as playback crosses an event and fades after 7s. Never a stack of cards over the map; the full story belongs in the panel.
 - **Tooltip** follows the pointer (+14px), glass-strong, max 280px, key/value with mono values.
 - **Map controls** moved left of the panel; restyled to glass with inverted icons.
 - **Vignette** radial darkening over the map edges.
 - **Loader** full-screen: spinning conic ring + one-line message ("Loading a century of … history…"), fades out over 0.8s.
 
-**Responsive:** under 1100px the panel is 330px and the brand tagline hides. Under 820px: brand text hides, the layer menu becomes full-width fixed, Data & sources and panel buttons hide, only one toast shows, the panel docks above the timeline (max 34vh), the timeline spans the width without the speed control, and map controls hide.
+**Responsive:** under 1100px the panel is 330px and the brand tagline hides. Under 820px: brand text hides, the layer menu becomes full-width fixed, Data & sources and panel buttons hide, the panel docks above the timeline (max 34vh), the timeline spans the width without the speed control, and map controls hide.
 
 ### 4.5 Components
 
@@ -304,7 +304,7 @@ Shared rules:
 
 ### 4.8 Motion
 
-Menu in: 0.18s fade/slide down. Panel swap: fade + 6px rise. Toast in: 0.45s springy drop. Play button pulse ring. Brand mark slow spin. Selected place: a white ring pulsing out every 1.6s. Event beacons: three staggered expanding white rings over 3.5s. Respect `prefers-reduced-motion` for full-screen views.
+Menu in: 0.18s fade/slide down. Panel swap: fade + 6px rise. Ticker in: 0.4s springy rise. Play button pulse ring. Brand mark slow spin. Selected place: a white ring pulsing out every 1.6s. Event beacons: three staggered expanding white rings over 3.5s. Respect `prefers-reduced-motion` for full-screen views.
 
 ---
 
@@ -352,7 +352,7 @@ const state = {
 };
 ```
 
-One `requestAnimationFrame` loop: advance time when playing (`dt × speed`, stop at the end of the range), fire events crossed since last frame (toast + beacon), `render()` (rebuild the deck layer list from visible layers + place pins/finder columns + selected ring + beacons), sync the timeline UI, update the panel every ~90ms.
+One `requestAnimationFrame` loop: advance time when playing (`dt × speed`, stop at the end of the range), fire events crossed since last frame (ticker + beacon), `render()` (rebuild the deck layer list from visible layers + place pins/finder columns + selected ring + beacons), sync the timeline UI, update the panel every ~90ms.
 
 ### 5.3 Layer behaviour
 
@@ -375,7 +375,8 @@ Rules, all in two functions (`setLayerOn(id, on)` for the switch, `focus(id)` fo
 
 - **Static layers**: when the active layer is static, the timeline dims with a note; the timeline keeps the last active time layer's range, so time layers that are still on keep animating underneath.
 - **Place layers** draw their own columns, so plain place pins hide while one is on the map. Some static layers draw place columns only while active.
-- **Events**: curated (`CURATED_EVENTS`) + each layer's `events()`. Diamonds on the track; click to jump (map flies to lon/lat/zoom). Crossing one during playback shows a toast and a beacon.
+- **Events**: curated (`CURATED_EVENTS`) + each layer's `events()`. Diamonds on the track. Crossing one during playback shows the ticker and a beacon.
+- **An event has its own panel** (`src/events.ts`), opened from a diamond, the ticker's Details, or the **Key moments** list each layer's panel ends with. The timeline stops at the event's date and the map flies there. Only `t`, `layer`, `title` and `body` are required; optional fields deepen the panel without touching it: `stats` (headline tiles), `sections` (heading + text), `image` (with credit), `sources` (links), `layers` (what "Show it on the map" switches on, at the event's date), `end` (for events that ran a while), and `detail(el)` for anything richer a layer wants to draw. The panel adds context for every event by itself: the layer year by year with the moment marked, **Also happening** (other layers' events within 18 months), the closest towns (each opens its report, and closing it comes back to the event), and earlier / later moments. Back returns to wherever the first event was opened from.
 - **Hover** anything for a tooltip; **click** a place dot → Place Report.
 
 ### 5.4 Place Report and Finder
@@ -396,7 +397,7 @@ Left rail (360px, glass, slides in) + bottom **funnel** + right result list:
 - Funnel: one stage per section showing count after that step with a bar; the step that cuts the most is flagged "tightest"; the last stage glows.
 - Matches glow on the map and rank by a score; cards show rank, title, badges, mini meters, score ring.
 - Item report: hero + score ring, radar of strengths, arcs to the places it relies on, satellite toggle, links out, shortlist star with notes and asking price (localStorage).
-- In deep mode the timeline, toasts, layer picker and panel button hide.
+- In deep mode the timeline, layer picker and panel button hide.
 
 ### 5.6 Data & sources view
 
@@ -503,7 +504,7 @@ dict(id="timeline", title="Play the timeline", run=timeline,
 | 1 | Find your way around | Cursor touches a few place dots; spotlight walks: Layer button → top-right buttons → side panel → timeline. |
 | 2 | Move the map | Drag, scroll-zoom, right-drag tilt/turn, zoom onto the map buttons (chips for each gesture). |
 | 3 | Show a data layer | Zoom onto the menu; open Layer (or `L`); explain groups; pick the headline layer; panel updates. |
-| 4 | Play the timeline | Play, change speed, pause, drag the slider, click an event diamond → map jumps, toast shows. |
+| 4 | Play the timeline | Play, change speed, pause, drag the slider, click an event diamond → map jumps, the event's panel opens. |
 | 5 | Switch, combine and clear | Flip a second layer's switch on (it joins the map); click its name (it becomes active, the first stays on); point at the `+1`; click "Clear the map". |
 | 6 | Open a place's report | Hover a dot (name), click; map flies; scroll the report; close. |
 | 7 | Rank places with the Finder | Open; drag one slider (ranking updates); click a preset; point at the columns; open a place; close twice. |
@@ -522,7 +523,7 @@ Give each step its own colour (tour cyan `#4cc9f0`, map `#8fdcff`, layer = the l
 - **Overview**: title → how the menu and timeline work → a few seconds per layer (its own moment, with a chip naming its film) → places and the finders → end card: "every layer has its own film".
 - **Nothing hard-coded about the layer list.** A facts script (`video/layer_facts.js`) runs in the app before filming: it computes the narration's numbers and draws every layer's panel off-screen to read its name, headline, first sentence, four headline numbers and timeline events. The overview and `--film all` are built from that list, and a layer with no hand-written spec gets a generic film and overview moment from it. So a layer added later appears in the overview and gets a film with no film code; write a spec to give it a real hook and wow scene.
 - Narration numbers come from the data or the panel's own headline numbers, so the voice never disagrees with the screen. Counters only take whole numbers; say decimals in the narration instead.
-- During fast playback (4+ years a second), hide the event cards and clear them afterwards, or they pile over the map; keep them for slow playback through a single event.
+- During playback at a year a second or faster, hide the event ticker so it doesn't flicker through every event crossed; keep it for slow playback through a single event. After clicking a marker in a film, tap Back before reading the layer's own panel.
 - `video/films.json` maps film names to their published links; every description links to the overview and the overview lists every layer film.
 
 ### 8.6 Sound and voice
@@ -554,7 +555,7 @@ Do one milestone at a time; each ends with `npm run build` passing and the app c
 1. **Scaffold**: Vite + TS, `index.html` shell, `style.css` tokens and components (Part 4), map with basemap, hillshade, outline glow, loader and intro flight. Empty layer menu with "Just the region" (becomes "Clear the map" once anything is on). Place dots with tooltips.
 2. **Pipeline skeleton**: `fetch-data.mjs` helpers, `base` and `places` stages, manifest. Prove from an empty cache.
 3. **First time layer** end to end: stage → JSON → `AtlasLayer` (map, sparkline, panel with chart + playhead, tooltip) → timeline play/scrub/speed/keys.
-4. **Events**: curated + data-driven, diamonds, toasts, beacons.
+4. **Events**: curated + data-driven, diamonds, the ticker, beacons, and the event panel.
 5. **Remaining layers** from the brief, one per step; static-layer support when the first static one arrives; the on-the-map vs. active rules of §5.3 and `+N`.
 6. **Place Report** (metrics) → **Place Finder** (criteria, ranking, presets, columns, localStorage).
 7. **Data & sources** view with the chosen metaphor.

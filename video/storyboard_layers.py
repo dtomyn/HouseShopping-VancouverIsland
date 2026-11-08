@@ -85,17 +85,17 @@ def set_speed(f, speed):
 
 def play_years(f, start, end, speed, extra=600):
     """Plays the timeline from `start` at `speed` years a second until it reaches `end` (or the end of the layer's range)."""
-    # Playing through the years, every event crossed would pile a card over the map: hide them while playing,
-    # clear them after. Slow playback (under a year a second, through one event you want to see) keeps its card.
+    # Playing through the years, every event crossed would flash up on the timeline's ticker: hide it while playing.
+    # Slow playback (under a year a second, through one event you want to see) keeps it.
     quiet = speed >= 1
-    f.run(f"() => {{ atlas.setPlaying(false); atlas.setTime({start}); {'document.getElementById(`toast-stack`).style.visibility = `hidden`;' if quiet else ''} }}")
+    f.run(f"() => {{ atlas.setPlaying(false); atlas.setTime({start}); {'document.getElementById(`event-ticker`).style.visibility = `hidden`;' if quiet else ''} }}")
     set_speed(f, speed)
     f.click({"sel": "#play"})
     ms = max(1000, (end - start) / speed * 1000)
     f.wait_until(f"!atlas.state.playing || atlas.state.time >= {end}", most=ms + 4000)
     f.run("() => atlas.setPlaying(false)")
     if quiet:
-        f.run("() => { const t = document.getElementById('toast-stack'); t.replaceChildren(); t.style.visibility = ''; }")
+        f.run("() => { const t = document.getElementById('event-ticker'); t.hidden = true; t.style.visibility = ''; }")
     f.wait(extra)
 
 
@@ -143,9 +143,21 @@ def hover_town(f, town, ms=900):
 
 
 def event_marker(f, title_part):
-    """Clicks a timeline marker by part of its title: the map flies there and the event card shows."""
+    """Clicks a timeline marker by part of its title: the map flies there and the event opens in the side panel."""
     f.click({"sel": f'.ev[title*="{title_part}"]'})
     f.camera("fill", 1300, whoosh=0.3)
+
+
+def event_panel(f, title, why):
+    """Settles on the event's own panel, then goes back to the layer's story."""
+    f.camera({"sel": "#panel", "grow": 10}, 1200, max=1.5)
+    f.wait(900)
+    f.board(title, why)
+
+
+def event_back(f):
+    f.click({"sel": "#panel .ev-back"})
+    f.wait(500)
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -175,10 +187,10 @@ def fires_cameron(f):
     event_marker(f, "Cameron")
     f.run("() => atlas.map.easeTo({ pitch: 62, bearing: 20, duration: 4000 })")
     f.wait(2600)
-    f.camera({"sel": ".toast", "grow": 16}, 1200, max=1.8)
-    f.board("Cameron Bluffs", "The 2023 marker is clicked; the map flies to Cameron Lake and the event card shows.")
+    event_panel(f, "Cameron Bluffs", "The 2023 marker is clicked; the map flies to Cameron Lake and the fire's story opens in the side panel.")
     f.voice_done(300)
     f.camera("fill", 1100)
+    event_back(f)
     f.js("Stage.hideChip()")
 
 
@@ -196,8 +208,8 @@ def quakes_1946(f):
     f.say("quakes-46-1")
     fly(f, "{ center: [-125.34, 49.76], zoom: 7.6, pitch: 50, bearing: -10 }", 2400, wait=False)
     play_years(f, 1945.9, 1947.2, 0.5, extra=1200)
-    f.camera({"sel": ".toast", "grow": 16}, 1200, max=1.8)
-    f.board("1946", "The timeline crosses June 1946; a shockwave spreads from the epicentre and its card shows.")
+    f.camera({"sel": ".event-ticker", "grow": 60}, 1200, max=1.8)
+    f.board("1946", "The timeline crosses June 1946; a shockwave spreads from the epicentre and the event shows on the timeline.")
     f.voice_done(300)
     f.camera("fill", 1100)
 
@@ -225,10 +237,10 @@ def rivers_2021(f):
     event_marker(f, "Atmospheric")
     f.run("() => atlas.map.easeTo({ zoom: 8.2, pitch: 60, bearing: -30, duration: 4000 })")
     f.wait(2600)
-    f.camera({"sel": ".toast", "grow": 16}, 1200, max=1.8)
-    f.board("Atmospheric river", "The November 2021 marker: gauges across the south island spike.")
+    event_panel(f, "Atmospheric river", "The November 2021 marker: gauges across the south island spike, and the story opens in the side panel.")
     f.voice_done(300)
     f.camera("fill", 1100)
+    event_back(f)
     f.js("Stage.hideChip()")
 
 
@@ -359,10 +371,10 @@ def smoke_years(f):
     f.wait(400)
     event_marker(f, "2017")
     f.wait(2400)
-    f.camera({"sel": ".toast", "grow": 16}, 1200, max=1.8)
-    f.board("2017", "The smokiest year: the 2017 marker is clicked and its card shows.")
+    event_panel(f, "2017", "The smokiest year: the 2017 marker is clicked and its story opens in the side panel.")
     f.voice_done(300)
     f.camera("fill", 1100)
+    event_back(f)
 
 
 def scene(id, title, run, lines, shows="", camera="", motion="", sound="Clicks, whooshes."):
@@ -379,7 +391,7 @@ SPECS = {
                    "The timeline playing 1919 to today at eight years a second.", "A slow orbit over the island.", "Scars glow and fade."),
              scene("fires-cam", "Cameron Bluffs, 2023", fires_cameron,
                    {"fires-cam-1": "Click a marker to jump to a moment. In June 2023, the Cameron Bluffs fire closed Highway 4, the only road to the west coast, for weeks."},
-                   "Clicking the 2023 event marker.", "Zoomed on the timeline, then the event card.", "The map flies to Cameron Lake.")],
+                   "Clicking the 2023 event marker.", "Zoomed on the timeline, then the event's panel.", "The map flies to Cameron Lake.")],
         panel=("h3", "Ignition cause", "The panel charts the area burned every year, and what started the fires: lightning, or people."),
         moment=lambda f: (fly(f, "{ center: [-125.15, 49.65], zoom: 7.4, pitch: 55, bearing: -30 }", 1800), play_years(f, 1919, 2026.9, 12, extra=100)),
         teaser="Wildfires: every mapped fire since 1919, burning across the island in seconds.",
@@ -393,7 +405,7 @@ SPECS = {
                    "The map tilted almost flat with quakes shown below ground.", "Low, slow orbit.", "Whooshes."),
              scene("quakes-46", "The 1946 earthquake", quakes_1946,
                    {"quakes-46-1": "In June 1946, a magnitude {qu_big_m} earthquake struck the centre of the island, the strongest on its record. Play through it, and the shockwave spreads."},
-                   "The timeline crossing June 1946.", "Over the epicentre; the event card.", "A shockwave.")],
+                   "The timeline crossing June 1946.", "Over the epicentre; the event on the timeline.", "A shockwave.")],
         panel=("h3", "Depth", "The panel charts every quake's magnitude over time, and how deep they strike."),
         moment=lambda f: (f.run("() => atlas.setTime(2026.5)"), fly(f, "{ center: [-126.2, 49.35], zoom: 7.3, pitch: 75, bearing: 60 }", 2600), orbit(f, -20, 6000), f.wait(2500)),
         teaser="Earthquakes: over a century of quakes, hanging at their true depths beneath the island.",
@@ -416,7 +428,7 @@ SPECS = {
         on="{ri_n} river gauges. The biggest peak on record, at {ri_big_river} in {ri_big_year}, ran {ri_big_x} times its normal yearly high.",
         wow=[scene("rivers-ar", "The atmospheric river", rivers_2021,
                    {"rivers-ar-1": "In November 2021, an atmospheric river washed out the Malahat Highway, cutting Victoria off by road. Click its marker to see the gauges spike."},
-                   "Clicking the November 2021 marker.", "Zoomed on the timeline, then the card.", "Columns spike."),
+                   "Clicking the November 2021 marker.", "Zoomed on the timeline, then the event's panel.", "Columns spike."),
              scene("rivers-dec", "Six decades of floods", rivers_decades,
                    {"rivers-dec-1": "Play the years, and the gauges jump in every flood year and settle in the dry ones."},
                    "The timeline playing from 1958.", "A slow orbit.", "Whooshes.")],
@@ -515,7 +527,7 @@ SPECS = {
         wow=[scene("smoke-yrs", "Smoke on the wind", smoke_years,
                    {"smoke-yrs-1": "Play the fire seasons: monitors glow on the days the smoke rolls in.",
                     "smoke-yrs-2": "Click a marker to jump to a smoky year, like {sm_year}."},
-                   "The timeline playing 1998 to today; the 2017 marker.", "A slow orbit; the event card.", "Whooshes.")],
+                   "The timeline playing 1998 to today; the 2017 marker.", "A slow orbit; the event's panel.", "Whooshes.")],
         panel=("h3", "Smokiest years", "The panel ranks the smokiest years, and every monitor's record."),
         moment=lambda f: (fly(f, "{ center: [-124.6, 49.2], zoom: 7.6, pitch: 55, bearing: -15 }", 1800), play_years(f, 1998, 2025.9, 8, extra=100)),
         teaser="Wildfire smoke: how often the smoke reaches each town's air monitor.",
