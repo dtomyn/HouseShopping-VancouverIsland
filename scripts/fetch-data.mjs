@@ -709,7 +709,9 @@ const SOURCES = {
     for (const line of lines.slice(1)) {
       const c = parse(line);
       const stat = STATS[c[iStat]];
-      if (!stat || c[iVal] === '') continue;
+      // A service lists the years before it existed (or stopped reporting) as 0; no real police service has an
+      // index of 0, and taking those zeros as values would also overwrite a town's earlier series in the splice below.
+      if (!stat || c[iVal] === '' || Number(c[iVal]) === 0) continue;
       const geo = c[iGeo];
       const year = c[iDate].slice(0, 4);
       if (/^British Columbia/.test(geo)) { ((bc[stat] ??= {})[year] = Number(c[iVal])); continue; }

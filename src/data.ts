@@ -242,7 +242,8 @@ export function trailingMedianPrice(series: HousingSeries | undefined, t: number
     const y = Math.floor(i / 12);
     const m = i - y * 12;
     const v = series[`${y}-${String(m + 1).padStart(2, '0')}`];
-    if (v && v[2] > 0) vals.push(v[0]);
+    // early months can list sales with no valuation (0): those aren't prices
+    if (v && v[2] > 0 && v[0] > 0) vals.push(v[0]);
   }
   if (vals.length < Math.min(4, months)) return null;
   vals.sort((a, b) => a - b);

@@ -109,6 +109,17 @@ A supplemental film covers just the Trails & waterfalls layer (turning it on, re
 .venv/Scripts/python.exe video/render.py --film trails --preview  # quick 960×540 cut with sound
 ```
 
+**A film for every layer, and an overview.** Each data layer has a short film (about a minute) with a "wow" moment of its own: a century of fire sweeping the island, earthquakes hanging at their true depths beneath it, the 2021 atmospheric river spiking the gauges, a hundred years of weather stations turning red, prices climbing month by month, and so on. Each film turns the layer on, counts up its headline numbers, plays its wow scene(s), reads its side panel and ends by pointing to the overview. The **overview** shows every layer for a few seconds, each with an on-screen chip naming its own film, and closes by sending viewers to them. Trails & waterfalls keeps its longer film above.
+
+```bash
+.venv/Scripts/python.exe video/render.py --film overview                # the overview
+.venv/Scripts/python.exe video/render.py --film layer-fires             # one layer's film (any layer id)
+.venv/Scripts/python.exe video/render.py --film all --storyboard        # storyboards for the overview and every layer film
+.venv/Scripts/python.exe video/render.py --film all                     # render them all (hours)
+```
+
+They're defined in `video/storyboard_layers.py`, with their numbers computed from the app's data by `video/layer_facts.js`. **New layers are picked up automatically**: the overview, `--film all` and the YouTube descriptions read the app's own layer list as they film, and a layer with no hand-written entry in `SPECS` gets a generic film (its timeline played, or a slow orbit, then its panel) built from its name, headline and headline numbers. Add a `SPECS` entry for a proper hook and wow scene. Put each film's YouTube link in `video/films.json` (`{"island-atlas-fires": "https://…"}`) and the overview's and layer films' descriptions link to one another.
+
 ## Data sources
 
 | Layer | Source | Licence |
