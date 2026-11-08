@@ -159,6 +159,8 @@ def waterfall(f):
     f.voice_done(200)
     f.say("tw-fall-3")
     hint(f, "⟳", "Orbit it in 3D", "", FALL)
+    # the card is taller than the panel: bring the orbit button into view before clicking it
+    panel_scroll_to(f, ".tr-acts", offset=260, ms=1000)
     f.click({"sel": "#panel .tr-fly"})
     f.camera("fill", 1400, whoosh=0.4)
     f.move({"x": 760, "y": 620}, 900, wait=False)
@@ -190,6 +192,7 @@ def route(f):
     f.camera("fill", 1200)
     f.say("tw-route-3")
     hint(f, "↔", "Point along the profile", "a marker follows on the map", TRAIL)
+    panel_scroll_to(f, ".tr-prof", offset=200, ms=1000)
     f.move({"sel": "#panel .tr-prof svg", "at": [0.12, 0.55]}, 900)
     for x in (0.3, 0.5, 0.7, 0.9):
         f.move({"sel": "#panel .tr-prof svg", "at": [x, 0.55]}, 900)
@@ -202,6 +205,7 @@ def route(f):
 def fly(f):
     step(f, 5, "Fly the trail in 3D", FLY)
     f.say("tw-fly-1")
+    panel_scroll_to(f, ".tr-acts", offset=260, ms=900)
     f.click({"sel": "#panel .tr-fly"})
     f.camera("fill", 1200, whoosh=0.5)
     f.wait_until("!!document.querySelector('.tr-hud')", most=4000)
@@ -228,6 +232,11 @@ def fly(f):
 
 def tour(f):
     step(f, 6, "Take the waterfall tour", TOUR)
+    # the flight's button was scrolled into view, so the back link at the top is out of sight: glide back up first
+    top = f.run("() => -document.getElementById('panel').scrollTop")
+    if abs(top) > 4:
+        f.move({"sel": "#panel", "at": [0.5, 0.5]}, 500)
+        f.scroll(top, 900)
     f.click({"sel": "#panel .tr-back"})
     f.wait(900)
     f.say("tw-tour-1")
