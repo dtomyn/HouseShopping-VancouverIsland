@@ -26,6 +26,7 @@ export type TownMetrics = {
   burnedHa25km: number; // perimeter area within 25 km since 1950
   quakes75km: number; // M4+ within 75 km since 1970
   shaking: { pga2: number; pga10: number } | null; // NRCan 2020 hazard at the town centre, g (site class C)
+  radon: { area: string; n: number; over200: number; pct: number } | null; // the town's health area in Health Canada's 2009–2011 home survey (area-wide, ~55–110 homes)
   flood: FloodTown | null; // % of ground within 2 km in a mapped (BC designated, 1978–1997) floodplain, and which study
   tsunami: TsunamiTown | null; // BC notification zone, % low coastal ground within 2 km, published hazard map if any
   climate: { name: string; dist: number; meanTemp: number; precip: number | null; trend: number | null } | null;
@@ -190,6 +191,8 @@ export function townMetrics(data: Data): TownMetrics[] {
     const shaking = sz ? { pga2: sz[0], pga10: sz[1] } : null;
     const tsunami = data.tsunami?.towns[m.key] ?? null;
     const flood = data.flood?.towns[m.key] ?? null;
+    const ra = data.radon && data.radon.towns[m.key] != null ? data.radon.areas[data.radon.towns[m.key]] : null;
+    const radon = ra ? { area: ra.name, n: ra.n, over200: ra.over200, pct: ra.n ? (100 * ra.over200) / ra.n : 0 } : null;
 
     const ns = data.normals?.stations ?? [];
     // frost and snow come from the same station so the "little snow & frost" score is consistent
@@ -215,7 +218,7 @@ export function townMetrics(data: Data): TownMetrics[] {
     const outdoors = data.trails?.towns[m.key] ?? null;
     const internet = data.internet ? townNet(data.internet, m) : null;
 
-    return { muni: m, price, priceYear, priceChange5y, pop, popYear, popGrowth10y, s65, csi, csiYear: cy ? String(cy) : null, fires15km, burnedHa25km, quakes75km, shaking, tsunami, flood, climate, river, feels, er, care, smoke, future, outdoors, internet };
+    return { muni: m, price, priceYear, priceChange5y, pop, popYear, popGrowth10y, s65, csi, csiYear: cy ? String(cy) : null, fires15km, burnedHa25km, quakes75km, shaking, tsunami, flood, radon, climate, river, feels, er, care, smoke, future, outdoors, internet };
   });
   return cache;
 }
@@ -275,6 +278,9 @@ export const CRITERIA: Criterion[] = [
   { id: 'tsunami', label: 'Low tsunami exposure', hint: 'Less low coastal ground (under 20 m, within 1 km of the sea) within 2 km of the town centre', value: (t) => t.tsunami?.low ?? null, higherIsBetter: false, defaultWeight: 1 },
   // Old (1978–1997) maps of a few rivers only: a town with no mapped floodplain may still flood, so this is off by default.
   { id: 'flood', label: 'Out of mapped floodplains', hint: 'Less of the ground within 2 km of the centre inside a BC designated floodplain (BC maps from 1978–1997 of the rivers they cover; unmapped is not the same as safe)', value: (t) => t.flood?.pct ?? null, higherIsBetter: false, defaultWeight: 0 },
+  // Three health areas only (each ~1–2% of homes over the guideline), so towns barely differ: off by default, and any
+  // house should be tested whatever its area.
+  { id: 'radon', label: 'Low radon (area survey)', hint: 'Smaller share of tested homes over 200 Bq/m³ in the town’s health area (Health Canada, 2009–2011; three areas, ~55–110 homes each, so it can’t tell towns in one area apart)', value: (t) => t.radon?.pct ?? null, higherIsBetter: false, defaultWeight: 0 },
   { id: 'quake', label: 'Low quake activity', hint: 'Fewer M4+ quakes within 75 km since 1970 (past record)', value: (t) => t.quakes75km, higherIsBetter: false, defaultWeight: 0 },
   { id: 'warm', label: 'Mild & warm', hint: 'Higher mean annual temperature (1991+)', value: (t) => t.climate?.meanTemp ?? null, higherIsBetter: true, defaultWeight: 2 },
   // Sunshine hours from the nearest of the 8 island stations that measure it (within 60 km). That

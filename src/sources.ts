@@ -105,6 +105,14 @@ const SOURCES: Source[] = [
     },
   },
   {
+    id: 'radon', key: 'radon', name: 'Radon', color: '#e9c46a', group: 'Hazards',
+    owner: 'Health Canada (survey); BC Ministry of Health (health area outlines)', title: 'Cross-Canada Survey of Radon Concentrations in Homes; Health Service Delivery Area Boundaries', url: 'https://open.canada.ca/data/en/dataset/b3bad1b0-32d4-4656-8a64-59b43900d482',
+    endpoint: 'open.canada.ca · radon-concentration.csv; WFS openmaps.gov.bc.ca · BCHA_HEALTH_SERV_DEL_AREA_SP', licence: `${OGL_CA}; ${OGL_BC}`,
+    gives: 'Every home’s long-term radon test in the 2009–2011 survey, summed up for the island’s three health areas and compared with the rest of BC; each town’s area.',
+    read: (d) => d.radon && { n: d.radon.totals.island.n, what: `${d.radon.totals.island.n} island homes tested in ${d.radon.areas.length} health areas, ${d.radon.totals.island.over200} over ${d.radon.guideline} Bq/m³` },
+    rings: (d): Record<number, Ring> => (d.radon ? { 2009: { v: 0.35, label: 'Radon survey begins (home tests through 2011)' }, 2010: { v: 0.6, label: 'Radon survey: tests through the heating season' }, 2011: { v: 0.45, label: `Radon survey ends: ${d.radon.totals.island.n} island homes tested` } } : {}),
+  },
+  {
     id: 'rivers', key: 'rivers', name: 'River floods', color: '#4cc9f0', group: 'Hazards',
     owner: 'Environment and Climate Change Canada', title: 'HYDAT national water data archive: annual peak flows', url: 'https://api.weather.gc.ca/collections/hydrometric-annual-peaks',
     endpoint: 'api.weather.gc.ca/collections/hydrometric-annual-peaks', licence: OGL_CA,
@@ -353,6 +361,7 @@ const DERIVED = [
   ['Well prospects', 'for a town are medians of the wells within 5 km (or on the whole island); for a parcel, of the wells within 1 km. A yield under 2 US gallons a minute counts as low.'],
   ['Trail climbing and times', 'are worked out here: elevations sampled from terrain tiles along each route, and walking time by Naismith’s rule (4.5 km/h plus an hour per 600 m up).'],
   ['Floodplain shares', 'are worked out here: ground within 2 km of a town centre (sea left out) sampled every 50 m, and each parcel sampled every 20 m or finer, against the designated floodplain shapes.'],
+  ['Radon shares', 'are worked out here from the survey’s home-by-home results: the share of tested homes over 200 Bq/m³ in each health area (results under 15 Bq/m³, published as "<15", count as under), and each town placed in the health area its centre is in.'],
   ['Low coastal ground', 'is a tsunami screening measure worked out here from ~100 m terrain: ground under 20 m within 1 km of the sea. Published hazard maps take its place where they exist.'],
   ['Share of the islands logged', 'counts land logged at least once on a 100 m grid, so land logged twice counts once.'],
   ['Next door', 'is measured on a 50 m grid out to 1 km from each parcel; Crown land and parks narrower than 250 m (road allowances, trail corridors) don’t count.'],

@@ -81,6 +81,29 @@ export type Flood = { source: string; townRadiusM: number; studies: FloodStudy[]
 export type FloodMap = { polys: { s: number; fan?: 1; poly: [number, number][][] }[]; limits: [number, number][][] };
 /** The year a floodplain study is dated by: its designation, else its report sheets' publication. */
 export const floodYear = (s: FloodStudy) => s.designated ?? s.published;
+/**
+ * Radon (scripts/radon.mjs): Health Canada's Cross-Canada Survey of Radon Concentrations in Homes (2009–2011), one
+ * long-term test per volunteer home. Areas are the island's three health service delivery areas (South, Central, North
+ * Vancouver Island), in that order; `values` is every home's result in Bq/m³, sorted, with results under `lod` as 0;
+ * `median` likewise (0 means under `lod`). `fsas` counts tests by postal-code prefix ('withheld' where the survey
+ * suppressed it). `bc` is every BC health area for comparison; `towns` maps a town key to its area's index.
+ */
+export type RadonArea = {
+  code: string; name: string; surveyName: string;
+  n: number; over200: number; over600: number; belowLod: number; median: number; p90: number; max: number;
+  values: number[];
+  fsas: { fsa: string; n: number; over200: number; max: number }[];
+  label: [number, number] | null;
+};
+export type Radon = {
+  source: string; url: string; years: string; lod: number; guideline: number;
+  areas: RadonArea[];
+  bc: { code: string; name: string; n: number; over200: number; median: number; island: number }[];
+  totals: Record<'island' | 'bc' | 'canada', { n: number; over200: number }>;
+  towns: Record<string, number>;
+};
+/** The radon areas' outlines, in `Radon.areas` order, loaded the first time the layer is shown. */
+export type RadonMap = { areas: [number, number][][][][] };
 /** The tsunami layer's shapes and cells, loaded the first time it is shown. Cells index a z`z` Web Mercator pixel grid from tile (x0, y0), delta-encoded. */
 export type TsunamiMap = {
   zones: { zone: string; label: string; color: string; polys: [number, number][][][] }[];
@@ -255,6 +278,7 @@ export type Data = {
   water: Water | null;
   camping: Camping | null;
   snow: Snow | null;
+  radon: Radon | null;
   manifest: Record<string, { ok: boolean; updated?: string; lastError?: string }>;
 };
 
@@ -273,7 +297,7 @@ async function load<T>(name: string): Promise<T | null> {
 export async function loadAll(): Promise<Data> {
   const internet = load<Internet>('internet');
   const flood = load<Flood>('flood');
-  const water = load<Water>('water'), camping = load<Camping>('camping'), snow = load<Snow>('snow');
+  const water = load<Water>('water'), camping = load<Camping>('camping'), snow = load<Snow>('snow'), radon = load<Radon>('radon');
   const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, wells, logging, neighbours, manifest, tsunami] = await Promise.all([
     load<GeoJSON.Feature>('island'),
     load<Muni[]>('municipalities'),
@@ -313,7 +337,7 @@ export async function loadAll(): Promise<Data> {
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, flood: (await flood)?.studies?.length ? await flood : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, water: (await water)?.rows?.length ? await water : null, camping: (await camping)?.rows?.length ? await camping : null, snow: (await snow)?.stations?.length ? await snow : null, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, flood: (await flood)?.studies?.length ? await flood : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, water: (await water)?.rows?.length ? await water : null, camping: (await camping)?.rows?.length ? await camping : null, snow: (await snow)?.stations?.length ? await snow : null, radon: (await radon)?.areas?.length ? await radon : null, manifest: manifest ?? {} };
 }
 
 let netPromise: Promise<TrailNet | null> | null = null;
@@ -326,6 +350,10 @@ export const loadLoggingBlocks = () => (blocksPromise ??= load<LoggingBlocks>('l
 let floodMapPromise: Promise<FloodMap | null> | null = null;
 /** The floodplain shapes and study limits (~230 KB), loaded the first time the layer is shown. */
 export const loadFloodMap = () => (floodMapPromise ??= load<FloodMap>('flood-map'));
+
+let radonMapPromise: Promise<RadonMap | null> | null = null;
+/** The radon health areas' outlines (~50 KB), loaded the first time the layer is shown. */
+export const loadRadonMap = () => (radonMapPromise ??= load<RadonMap>('radon-map'));
 
 let tsunamiMapPromise: Promise<TsunamiMap | null> | null = null;
 /** The tsunami layer's shapes and low-ground cells (~1.5 MB), loaded the first time the layer is shown. */

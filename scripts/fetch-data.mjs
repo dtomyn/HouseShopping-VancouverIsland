@@ -1244,6 +1244,13 @@ const SOURCES = {
     await buildSnow({ log, cached, writeOut, round, WFS, BBOX, getIsland, onIsland });
   },
 
+  // Radon: Health Canada's Cross-Canada Survey of Radon Concentrations in Homes (2009–2011), every home's result by
+  // health area, with the island's three health service delivery areas drawn from the BC Data Catalogue (scripts/radon.mjs).
+  async radon() {
+    const { buildRadon } = await import('./radon.mjs');
+    await buildRadon({ log, cached, writeOut, round, WFS, BBOX, PLACES });
+  },
+
   // A century of logging: every mapped cutblock with its harvest year, plus blocks approved or being logged now
   // (scripts/neighbours.mjs).
   async logging() {
@@ -1262,7 +1269,7 @@ const SOURCES = {
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'flood', 'logging', 'neighbours', 'water', 'camping', 'snow'];
+const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'flood', 'logging', 'neighbours', 'water', 'camping', 'snow', 'radon'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};

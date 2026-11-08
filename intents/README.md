@@ -43,6 +43,7 @@ same shape:
 | 13 | Know how hard the ground could shake | [13-know-how-hard-the-ground-could-shake.md](13-know-how-hard-the-ground-could-shake.md) |
 | 30 | Know where a tsunami could reach | [30-know-where-a-tsunami-could-reach.md](30-know-where-a-tsunami-could-reach.md) |
 | 36 | Know the mapped floodplains | [36-know-the-mapped-floodplains.md](36-know-the-mapped-floodplains.md) |
+| 37 | Check radon | [37-check-radon.md](37-check-radon.md) |
 | 14 | Compare what each place's climate feels like | [14-compare-day-to-day-climates.md](14-compare-day-to-day-climates.md) |
 | 15 | See the climate the next 25 years could bring | [15-see-the-climate-ahead.md](15-see-the-climate-ahead.md) |
 | 16 | Know how far emergency care is | [16-know-how-far-emergency-care-is.md](16-know-how-far-emergency-care-is.md) |

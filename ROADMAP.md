@@ -32,6 +32,7 @@ The order puts quick wins that reuse existing code first, then the most decision
 | 14 | ✅ [Water access and camping](#14-water-access-and-camping) | A coastal retirement is about getting on the water; two small point layers beside Trails | Small–medium |
 | 15 | ✅ [Snowpack](#15-snowpack) | Ski season, summer rivers and town water start in the mountains; a small timeline layer from open CSVs | Small |
 | 16 | ✅ [Floodplains](#16-floodplains) | Riverside towns and acreages: where the province mapped a 200-year flood, how old the map is, and how much of a town or parcel is inside | Small–medium |
+| 17 | ✅ [Radon](#17-radon) | Every house purchase should include a radon test; shows how low the island is against BC, honestly at health-area grain | Small |
 
 ### Static layers
 
@@ -135,6 +136,12 @@ Hospitals, seismic hazard and tsunami zones don't change over time. Before addin
 ✅ **Built.** `flood` stage (`scripts/flood.mjs`, after `land`) → `public/data/flood.json` (7 KB, per study and town), `flood-map.json` (229 KB, loaded on first show) and `land-flood.json` (143 KB, per parcel in `land.json`'s order with a PID hash); static *Floodplains* layer in *Hazard & climate outlook* after Tsunami zones (`src/flood.ts`). Sources: BC's *Mapped Floodplains in BC (Historical)*, its *Study Area Limits* and *Mapsheets Index* with EcoCat report links (all OGL – BC). 17 studies on the islands, designated 1978–1997 (Shawnigan Lake to the Cowichan, Somass and Little Qualicum); one alluvial fan (Oyster River) and one dry island kept out. Town Report *Mapped floodplain* (share of ground within 2 km and which study), Town Finder *Out of mapped floodplains* (weight 0), Land Finder Safety *Mapped floodplain* (room to build outside: an acre / fully outside / any), parcel report tile. Each study is tied to the River floods gauges on its river, and the two layers link to each other.
 
 - **Still open:** newer regional and municipal flood mapping (searched for the Cowichan Valley, Comox Valley, Strathcona/Campbell River, Nanaimo and North Cowichan) turned up only viewer-only web maps or services with no open licence, several of them reusing the provincial layer, so none is shown; coastal flooding (storm surge, sea-level rise; see item 7) and creeks are unmapped here; flood construction levels from the map sheets are not digitized; the town share is a 2 km disc round the centre, not the town's residential area.
+
+### 17. Radon
+
+✅ **Built.** `radon` stage (`scripts/radon.mjs`) → `public/data/radon.json` (5 KB: the island's three health areas with every home's result and tests by postal area, BC's 16 health areas, BC and Canada totals, each town's area) and `radon-map.json` (46 KB of outlines, loaded on first show); static *Radon* layer in *Hazard & climate outlook* after Floodplains (`src/radon.ts`). Sources: Health Canada's *Cross-Canada Survey of Radon Concentrations in Homes* (2009–2011, one row per home, OGL – Canada) and BC's *Health Service Delivery Area Boundaries* (OGL – BC). 270 island homes: 3 over 200 Bq/m³ (1.1%; South 1 of 55, Central 1 of 109, North 1 of 106), against 7.9% across BC and 11% across Canada. Town Report *Radon (area survey)* with the sample size; Town Finder *Low radon (area survey)* (weight 0). No Land Finder filter: three areas can't say anything about a parcel.
+
+- **Still open:** the BCCDC's BC Radon Data Repository (40,000+ tests, behind the BC Radon Map) and BC Lung's community testing summaries would be finer, but the repository releases data only on approved requests and the community results are published only as PDF reports, not open data, so neither is used; postal areas hold 2–30 tests each on the island, too few to map, so they are only listed; no geological proxy (NRCan airborne gamma-ray uranium) is drawn, since it measures rock rather than homes; the survey is 15 years old and volunteer-based.
 
 ## Explaining the island's history
 
