@@ -6,13 +6,14 @@ import * as d3 from 'd3';
 import type * as maplibregl from 'maplibre-gl';
 import { ArcLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import type { Layer, PickingInfo } from '@deck.gl/core';
-import { Internet, Trails, Water, Wells, fmt } from './data';
+import { Internet, Muni, Trails, Water, Wells, fmt } from './data';
 import { BANDS, NET_COLOR, parcelNet } from './internet';
 import { trailMetresNear } from './trails';
 import { esc } from './html';
 import { gpmText, lpm, wellStrip, wellsNear, yieldColor } from './wells';
 import { NB_CLASSES, Neighbours, loadNeighbours, ringSvg } from './nextdoor';
 import { nearestFor, outKm, outName } from './outdoors';
+import { TripStart, TripStop, renderTripPlanner, trip, tripLayers } from './trip';
 
 let trails: Trails | null = null;
 /** Trail density and waterfalls for the Outdoors filters (from the atlas's trails.json). */
@@ -25,6 +26,9 @@ let landWells: LandWells | null = null;
 let internet: Internet | null = null;
 /** Broadband hexagons for the internet filters (from the atlas's internet.json). */
 export function setLandInternet(i: Internet | null) { internet = i; }
+let towns: TripStart[] = [];
+/** The atlas's towns and islands, as start points for the shortlist's trip planner. */
+export function setLandTowns(m: Muni[]) { towns = m.map((t) => ({ key: t.key, name: t.name, lon: t.lon, lat: t.lat })); }
 let water: Water | null = null;
 /** Beaches, boat launches and moorage for the Outdoors filters (from the atlas's water.json). */
 export function setLandWater(w: Water | null) { water = w; }
@@ -133,6 +137,8 @@ async function load(): Promise<Land> {
   num.net50 = net50; num.cell = cell; num.netMbps = netMbps;
   await loadTsunami(json, num);
   await loadFlood(json, num);
+  await loadFire(json, num);
+  await loadSun(json, num);
   // next door: parks, Crown land and logging around each parcel (optional; NaN where missing)
   const nb = await loadNeighbours(json.cols.pid);
   for (const k of ['parkM', 'parkI', 'crownM', 'planM', 'planK', 'lastCut', 'onCut', 'cut10'] as const) {
@@ -202,6 +208,65 @@ async function loadFlood(json: LandJson, num: Record<string, Float32Array>) {
     floodOk = true;
   } catch { /* optional data */ }
 }
+const pidCheck = async (json: LandJson) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-1', new TextEncoder().encode(json.cols.pid.join('|'))))).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 12);
+
+/**
+ * Fire protection (the `firehalls` stage, land-fire.json, aligned with land.json's order and checked by a PID hash):
+ * fireKm / fireMin: road distance and drive time to the nearest fire hall on the parcel's island (OpenStreetMap halls,
+ * OSRM routes); fireHall: which hall. NaN where no route was found or the file is missing.
+ */
+let fireOk = false;
+let fireHalls: [string, number, number][] = [];
+async function loadFire(json: LandJson, num: Record<string, Float32Array>) {
+  const n = json.count;
+  for (const k of ['fireKm', 'fireMin', 'fireHall']) num[k] = new Float32Array(n).fill(NaN);
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}data/land-fire.json`);
+    if (!res.ok) return;
+    const t = (await res.json()) as { count: number; check: string; halls: [string, number, number][]; km: (number | null)[]; min: (number | null)[]; hall: number[] };
+    if (t.count !== n || t.check !== (await pidCheck(json))) { console.warn('land-fire.json is out of step with land.json: run `npm run data firehalls`'); return; }
+    for (let i = 0; i < n; i++) {
+      if (t.km[i] != null) num.fireKm[i] = t.km[i]!;
+      if (t.min[i] != null) num.fireMin[i] = t.min[i]!;
+      if (t.hall[i] >= 0) num.fireHall[i] = t.hall[i];
+    }
+    fireHalls = t.halls;
+    fireOk = true;
+  } catch { /* optional data */ }
+}
+/** Insurers' usual lines: within 8 km of a hall by road a house can be rated protected; past 13 km, usually unprotected. */
+const FIRE_PROTECTED_KM = 8, FIRE_LIMIT_KM = 13;
+const fireBand = (km: number) => (Number.isNaN(km) ? 'no road route to a fire hall was found' : km <= FIRE_PROTECTED_KM ? 'within the 8 km insurers use for a protected rating (if inside a fire protection area)' : km <= FIRE_LIMIT_KM ? 'between 8 and 13 km: some insurers rate it semi-protected, ask before you buy' : 'past 13 km: usually rated unprotected, with higher premiums and fewer insurers');
+
+/**
+ * Winter sun (the `sun` stage, land-sun.json, aligned like the others): hours of direct sun at the sunniest of up to
+ * seven spots on the parcel once the hills' skyline is in the way, on 21 December (sunDec), late January/November
+ * (sunJan), late February/October (sunFeb) and the equinoxes (sunMar). NaN without the file.
+ */
+let sunOk = false;
+const SUN_KEYS = ['sunDec', 'sunJan', 'sunFeb', 'sunMar'] as const;
+const SUN_LABELS = ['21 Dec', 'Late Jan & Nov', 'Late Feb & Oct', 'Equinoxes'];
+const SUN_DECL = [-23.44, -20, -10.5, 0];
+async function loadSun(json: LandJson, num: Record<string, Float32Array>) {
+  const n = json.count;
+  for (const k of SUN_KEYS) num[k] = new Float32Array(n).fill(NaN);
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}data/land-sun.json`);
+    if (!res.ok) return;
+    const t = (await res.json()) as { count: number; check: string; dec: number[]; jan: number[]; feb: number[]; mar: number[] };
+    if (t.count !== n || t.check !== (await pidCheck(json))) { console.warn('land-sun.json is out of step with land.json: run `npm run data sun`'); return; }
+    const src = [t.dec, t.jan, t.feb, t.mar];
+    SUN_KEYS.forEach((k, j) => { for (let i = 0; i < n; i++) num[k][i] = src[j][i] / 10; });
+    sunOk = true;
+  } catch { /* optional data */ }
+}
+/** Hours the sun is above flat open ground at this latitude (the same -0.5 degree cut-off the stage uses). */
+export function flatSunHours(lat: number, declDeg: number) {
+  const phi = (lat * Math.PI) / 180, d = (declDeg * Math.PI) / 180, h0 = (-0.5 * Math.PI) / 180;
+  const c = (Math.sin(h0) - Math.sin(phi) * Math.sin(d)) / (Math.cos(phi) * Math.cos(d));
+  return c <= -1 ? 24 : c >= 1 ? 0 : (2 * Math.acos(c) * 180) / Math.PI / 15;
+}
+
 /** Acres of the parcel outside any mapped floodplain. */
 const floodDry = (i: number) => L!.num.acres[i] * (1 - L!.num.floodPct[i] / 100);
 const FLOOD_ROOM_ACRES = 1;
@@ -220,6 +285,7 @@ type F = {
   wGpm: number; wDepth: number; wLow: number; aquifer: 'any' | 'over';
   net: 'any' | '25' | '50' | '75'; cell: 'any' | 'yes';
   park: 'any' | 'only'; crown: 'any' | 'only'; logged: number; plan: 'any' | 'avoid';
+  fire: 'any' | '13' | '8'; winter: number;
   budget: number;
 };
 /** "Backs onto": the land is within this many metres of the parcel (the 50 m grid, and a road or creek between). */
@@ -235,9 +301,10 @@ const BRIEF: F = {
   wGpm: 0, wDepth: ANY_WDEPTH, wLow: ANY_WLOW, aquifer: 'any',
   net: 'any', cell: 'any',
   park: 'any', crown: 'any', logged: 0, plan: 'any',
+  fire: 'any', winter: 0,
   budget: 2_000_000,
 };
-const LOOSE: F = { ...BRIEF, acres: 5, water: 'any', care: ANY_MIN, grocery: ANY_MIN, gas: ANY_MIN, road: 0, air: 0, ind: 0, threat: 4, flood: 'any', high: 0, tsunami: 'any' };
+const LOOSE: F = { ...BRIEF, acres: 5, water: 'any', care: ANY_MIN, grocery: ANY_MIN, gas: ANY_MIN, road: 0, air: 0, ind: 0, threat: 4, flood: 'any', high: 0, tsunami: 'any', fire: 'any', winter: 0 };
 const STORE = 'island-atlas:land-filters';
 const SHORT = 'island-atlas:shortlist';
 
@@ -262,18 +329,27 @@ const saveShort = () => { try { localStorage.setItem(SHORT, JSON.stringify(short
 const keyOf = (i: number) => L!.pid[i] || `${L!.num.lon[i].toFixed(5)},${L!.num.lat[i].toFixed(5)}`;
 
 /** One bit per filter; the funnel groups them into stages. */
-const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17, wGpm: 18, wDepth: 19, wLow: 20, aquifer: 21, net: 22, cell: 23, tsunami: 24, park: 25, crown: 26, logged: 27, plan: 28, beach: 29, launch: 30 } as const;
+const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17, wGpm: 18, wDepth: 19, wLow: 20, aquifer: 21, net: 22, cell: 23, tsunami: 24, park: 25, crown: 26, logged: 27, plan: 28, beach: 29, launch: 30, fire: 31, winter: 32 } as const;
 type Bit = keyof typeof BIT;
+/**
+ * Masks outgrew 32 bits, so they are plain numbers (exact up to 2^53) holding a sum of distinct powers of two, and
+ * these helpers stand in for & and &~ by splitting them into two 32-bit words.
+ */
+const BV = Object.fromEntries(Object.entries(BIT).map(([k, v]) => [k, 2 ** v])) as Record<Bit, number>;
+const W32 = 4294967296;
+const band = (a: number, b: number) => (((a % W32) & (b % W32)) >>> 0) + (((Math.floor(a / W32) & Math.floor(b / W32)) >>> 0) * W32);
+const bandNot = (a: number, b: number) => a - band(a, b);
+const bitsOf = (bits: Iterable<Bit>) => [...new Set(bits)].reduce((m, b) => m + BV[b], 0);
 const STAGES: { id: string; label: string; icon: string; bits: Bit[]; c: string }[] = [
   { id: 'size', label: 'Size', icon: '◇', bits: ['acres'], c: '#a3e635' },
   { id: 'water', label: 'Water', icon: '≋', bits: ['water'], c: '#38bdf8' },
   { id: 'reach', label: 'Reach', icon: '✚', bits: ['care', 'grocery', 'gas', 'net', 'cell'], c: '#818cf8' },
   { id: 'quiet', label: 'Quiet', icon: '☾', bits: ['road', 'air', 'ind'], c: '#c084fc' },
-  { id: 'safe', label: 'Safe', icon: '⛨', bits: ['threat', 'flood', 'tsunami', 'high', 'pga', 'fires'], c: '#fb923c' },
+  { id: 'safe', label: 'Safe', icon: '⛨', bits: ['threat', 'fire', 'flood', 'tsunami', 'high', 'pga', 'fires'], c: '#fb923c' },
   { id: 'wells', label: 'Wells', icon: '⇣', bits: ['wGpm', 'wDepth', 'wLow', 'aquifer'], c: '#19d3c5' },
   { id: 'outdoors', label: 'Outdoors', icon: '⛰', bits: ['trail', 'fall', 'beach', 'launch'], c: '#34d399' },
   { id: 'next', label: 'Next door', icon: '❦', bits: ['park', 'crown', 'logged', 'plan'], c: '#e9b872' },
-  { id: 'rules', label: 'Place', icon: '⌂', bits: ['slope', 'alr', 'islands'], c: '#f472b6' },
+  { id: 'rules', label: 'Place', icon: '⌂', bits: ['slope', 'winter', 'alr', 'islands'], c: '#f472b6' },
 ];
 
 const mins = (i: number, cat: Cat) => L!.num[cat][i];
@@ -285,44 +361,47 @@ const fails = (v: number, max: number, any: number) => max < any && !(v <= max);
 function maskOf(i: number): number {
   const n = L!.num;
   let m = 0;
-  if (!(n.acres[i] >= f.acres)) m |= 1 << BIT.acres;
+  if (!(n.acres[i] >= f.acres)) m += BV.acres;
   if (f.water !== 'any') {
     const k = n.water[i];
     const ok = f.water === 'front' ? k > 0 && f.kinds[k - 1] && n.front[i] >= f.front : n.waterM[i] <= f.near && (n.water[i] === 0 || f.kinds[n.water[i] - 1]);
-    if (!ok) m |= 1 << BIT.water;
+    if (!ok) m += BV.water;
   }
-  if (fails(careMin(i), f.care, ANY_MIN)) m |= 1 << BIT.care;
-  if (fails(mins(i, 'grocery'), f.grocery, ANY_MIN)) m |= 1 << BIT.grocery;
-  if (fails(mins(i, 'gas'), f.gas, ANY_MIN)) m |= 1 << BIT.gas;
-  if (n.roadKm[i] < f.road) m |= 1 << BIT.road;
-  if (n.airKm[i] < f.air) m |= 1 << BIT.air;
-  if (n.indKm[i] < f.ind) m |= 1 << BIT.ind;
+  if (fails(careMin(i), f.care, ANY_MIN)) m += BV.care;
+  if (fails(mins(i, 'grocery'), f.grocery, ANY_MIN)) m += BV.grocery;
+  if (fails(mins(i, 'gas'), f.gas, ANY_MIN)) m += BV.gas;
+  if (n.roadKm[i] < f.road) m += BV.road;
+  if (n.airKm[i] < f.air) m += BV.air;
+  if (n.indKm[i] < f.ind) m += BV.ind;
   const t = n.threat[i];
-  if (Number.isNaN(t) ? !f.unrated : t > f.threat) m |= 1 << BIT.threat;
-  if (f.flood !== 'any' && (f.flood === 'clear' ? n.floodPct[i] > 0 : floodDry(i) < FLOOD_ROOM_ACRES)) m |= 1 << BIT.flood;
-  if (f.high > 0 && !(n.elevHi[i] >= f.high)) m |= 1 << BIT.high;
+  if (Number.isNaN(t) ? !f.unrated : t > f.threat) m += BV.threat;
+  if (f.flood !== 'any' && (f.flood === 'clear' ? n.floodPct[i] > 0 : floodDry(i) < FLOOD_ROOM_ACRES)) m += BV.flood;
+  if (f.high > 0 && !(n.elevHi[i] >= f.high)) m += BV.high;
   // missing values (data not built) pass, never penalized
-  if (f.tsunami !== 'any' && !Number.isNaN(tsuShare(i)) && (f.tsunami === 'clear' ? tsuShare(i) > 0 : tsuDry(i) < TSU_ROOM_ACRES)) m |= 1 << BIT.tsunami;
-  if (fails(n.pga[i], f.pga, ANY_PGA)) m |= 1 << BIT.pga;
-  if (fails(n.fires5[i], f.fires, ANY_FIRES)) m |= 1 << BIT.fires;
-  if (fails(n.slope[i], f.slope, ANY_SLOPE)) m |= 1 << BIT.slope;
-  if ((f.alr === 'avoid' && n.alr[i] >= 50) || (f.alr === 'only' && n.alr[i] < 50)) m |= 1 << BIT.alr;
-  if ((f.islands === 'main' && n.island[i] !== 0) || (f.islands === 'islands' && n.island[i] === 0)) m |= 1 << BIT.islands;
-  if (f.trail > 0 && !(n.trail3[i] >= f.trail)) m |= 1 << BIT.trail;
-  if (fails(n.fallKm[i], f.fall, ANY_FALL)) m |= 1 << BIT.fall;
-  if (fails(n.beachKm[i], f.beach, ANY_SHORE)) m |= 1 << BIT.beach;
-  if (fails(n.launchKm[i], f.launch, ANY_SHORE)) m |= 1 << BIT.launch;
-  if (f.wGpm > 0 && !(n.wGpm[i] >= f.wGpm)) m |= 1 << BIT.wGpm;
-  if (fails(n.wDepth[i], f.wDepth, ANY_WDEPTH)) m |= 1 << BIT.wDepth;
-  if (fails(n.wLow[i], f.wLow, ANY_WLOW)) m |= 1 << BIT.wLow;
-  if (f.aquifer === 'over' && !(n.wAq[i] >= 0)) m |= 1 << BIT.aquifer;
-  if (f.net !== 'any' && !(n.net50[i] >= NET_BAND[f.net])) m |= 1 << BIT.net;
-  if (f.cell === 'yes' && !(n.cell[i] > 0)) m |= 1 << BIT.cell;
+  if (f.tsunami !== 'any' && !Number.isNaN(tsuShare(i)) && (f.tsunami === 'clear' ? tsuShare(i) > 0 : tsuDry(i) < TSU_ROOM_ACRES)) m += BV.tsunami;
+  if (fails(n.pga[i], f.pga, ANY_PGA)) m += BV.pga;
+  if (fails(n.fires5[i], f.fires, ANY_FIRES)) m += BV.fires;
+  if (fails(n.slope[i], f.slope, ANY_SLOPE)) m += BV.slope;
+  // no route counts as unprotected; without the file every parcel passes
+  if (fireOk && f.fire !== 'any' && !(n.fireKm[i] <= +f.fire)) m += BV.fire;
+  if (sunOk && f.winter > 0 && !(n.sunDec[i] >= f.winter)) m += BV.winter;
+  if ((f.alr === 'avoid' && n.alr[i] >= 50) || (f.alr === 'only' && n.alr[i] < 50)) m += BV.alr;
+  if ((f.islands === 'main' && n.island[i] !== 0) || (f.islands === 'islands' && n.island[i] === 0)) m += BV.islands;
+  if (f.trail > 0 && !(n.trail3[i] >= f.trail)) m += BV.trail;
+  if (fails(n.fallKm[i], f.fall, ANY_FALL)) m += BV.fall;
+  if (fails(n.beachKm[i], f.beach, ANY_SHORE)) m += BV.beach;
+  if (fails(n.launchKm[i], f.launch, ANY_SHORE)) m += BV.launch;
+  if (f.wGpm > 0 && !(n.wGpm[i] >= f.wGpm)) m += BV.wGpm;
+  if (fails(n.wDepth[i], f.wDepth, ANY_WDEPTH)) m += BV.wDepth;
+  if (fails(n.wLow[i], f.wLow, ANY_WLOW)) m += BV.wLow;
+  if (f.aquifer === 'over' && !(n.wAq[i] >= 0)) m += BV.aquifer;
+  if (f.net !== 'any' && !(n.net50[i] >= NET_BAND[f.net])) m += BV.net;
+  if (f.cell === 'yes' && !(n.cell[i] > 0)) m += BV.cell;
   if (L!.nb) {
-    if (f.park === 'only' && !(n.parkM[i] <= NEXT_DOOR_M)) m |= 1 << BIT.park;
-    if (f.crown === 'only' && !(n.crownM[i] <= NEXT_DOOR_M)) m |= 1 << BIT.crown;
-    if (f.logged > 0 && n.since[i] < f.logged) m |= 1 << BIT.logged;
-    if (f.plan === 'avoid' && !Number.isNaN(n.planM[i])) m |= 1 << BIT.plan;
+    if (f.park === 'only' && !(n.parkM[i] <= NEXT_DOOR_M)) m += BV.park;
+    if (f.crown === 'only' && !(n.crownM[i] <= NEXT_DOOR_M)) m += BV.crown;
+    if (f.logged > 0 && n.since[i] < f.logged) m += BV.logged;
+    if (f.plan === 'avoid' && !Number.isNaN(n.planM[i])) m += BV.plan;
   }
   return m;
 }
@@ -342,7 +421,8 @@ function parts(i: number) {
     reach: clamp01(1 - (reachMin - 10) / 80),
     quiet: 0.5 * clamp01(n.roadKm[i] / 2) + 0.25 * clamp01(n.airKm[i] / 10) + 0.25 * clamp01(n.indKm[i] / 5),
     safety: 0.45 * (Number.isNaN(t) ? 0.7 : [1, 0.9, 0.65, 0.3, 0][t]) + 0.15 * (1 - n.floodPct[i] / 100) + 0.15 * clamp01(nz(n.elevHi[i], 0) / 30) + 0.15 * clamp01(1 - nz(n.fires5[i], 0) / 40) + 0.1 * clamp01(1 - (nz(n.pga[i], 50) - 30) / 50),
-    sun: clamp01((nz(n.sun[i], 1750) - 1650) / 500),
+    // a year's sunshine at the nearest station, and (where built) how much of the winter day the hills let through
+    sun: Number.isNaN(n.sunDec[i]) ? clamp01((nz(n.sun[i], 1750) - 1650) / 500) : 0.5 * clamp01((nz(n.sun[i], 1750) - 1650) / 500) + 0.5 * clamp01(n.sunDec[i] / flatSunHours(n.lat[i], SUN_DECL[0])),
   };
 }
 const W = { size: 0.15, water: 0.2, reach: 0.2, quiet: 0.15, safety: 0.22, sun: 0.08 };
@@ -351,7 +431,7 @@ const scoreOf = (i: number) => { const p = parts(i); return Math.round(100 * (Ob
 // ---------------------------------------------------------------------------------------------
 // state of a run of the finder
 
-let masks = new Uint32Array(0);
+let masks = new Float64Array(0);
 let scores = new Uint8Array(0);
 let matches: number[] = [];
 let stageCounts: number[] = [];
@@ -365,14 +445,14 @@ let ctx: { map: maplibregl.Map; panel: HTMLElement; beforeId?: string; onClose: 
 
 function recompute() {
   const n = L!.n;
-  if (masks.length !== n) { masks = new Uint32Array(n); scores = new Uint8Array(n); }
+  if (masks.length !== n) { masks = new Float64Array(n); scores = new Uint8Array(n); }
   matches = [];
-  const stageMask = STAGES.map((_, s) => STAGES.slice(0, s + 1).flatMap((st) => st.bits).reduce((m, b) => m | (1 << BIT[b]), 0));
+  const stageMask = STAGES.map((_, s) => bitsOf(STAGES.slice(0, s + 1).flatMap((st) => st.bits)));
   stageCounts = STAGES.map(() => 0);
   for (let i = 0; i < n; i++) {
     const m = maskOf(i);
     masks[i] = m;
-    for (let s = 0; s < STAGES.length; s++) { if (m & stageMask[s]) break; stageCounts[s]++; }
+    for (let s = 0; s < STAGES.length; s++) { if (band(m, stageMask[s])) break; stageCounts[s]++; }
     if (!m) { scores[i] = scoreOf(i); matches.push(i); }
   }
   matches.sort((a, b) => scores[b] - scores[a] || L!.num.acres[b] - L!.num.acres[a]);
@@ -385,6 +465,7 @@ function recompute() {
 const RAMP = d3.scaleLinear<string>().domain([30, 60, 85]).range(['#22d3ee', '#a3e635', '#fde047']).clamp(true);
 const rgb = (s: number, a = 255): [number, number, number, number] => { const c = d3.rgb(RAMP(s)); return [c.r, c.g, c.b, a]; };
 const CAT_COLOR: Record<Cat, [number, number, number]> = { care: [129, 140, 248], er: [244, 114, 182], grocery: [74, 222, 128], gas: [251, 191, 36] };
+const FIRE_COLOR: [number, number, number] = [239, 68, 68];
 const CAT_LABEL: Record<Cat, string> = { care: 'Health care', er: '24/7 emergency', grocery: 'Groceries', gas: 'Gas' };
 const CAT_ICON: Record<Cat, string> = { care: '✚', er: '✱', grocery: '🛒', gas: '⛽' };
 
@@ -460,24 +541,28 @@ export function landLayers(): Layer[] {
   if (selected != null) {
     const i = selected;
     const src: [number, number] = [n.lon[i], n.lat[i]];
-    const trips = (['care', 'er', 'grocery', 'gas'] as Cat[]).map((cat) => {
+    type Trip = { c: [number, number, number]; label: string; p: Poi; min: number };
+    const trips = (['care', 'er', 'grocery', 'gas'] as Cat[]).map((cat): Trip | null => {
       const k = L!.num[`${cat}I`][i];
       const p = Number.isNaN(k) ? null : L!.json.pois[cat][k];
-      return p ? { cat, p, min: mins(i, cat) } : null;
-    }).filter(Boolean) as { cat: Cat; p: Poi; min: number }[];
+      return p ? { c: CAT_COLOR[cat], label: CAT_LABEL[cat], p, min: mins(i, cat) } : null;
+    }).filter((t): t is Trip => t != null);
+    // the fire hall that would answer a call, from the fire-protection stage
+    const fh = fireOk && !Number.isNaN(n.fireHall[i]) ? fireHalls[n.fireHall[i]] : null;
+    if (fh) trips.push({ c: FIRE_COLOR, label: `Fire hall · ${n.fireKm[i].toFixed(1)} km`, p: fh, min: n.fireMin[i] });
     out.push(
       new ArcLayer<(typeof trips)[number]>({
         id: 'land-arcs', data: trips, getSourcePosition: () => src, getTargetPosition: (d) => [d.p[1], d.p[2]],
-        getSourceColor: [255, 255, 255, 230], getTargetColor: (d) => [...CAT_COLOR[d.cat], 255] as any, getWidth: 3, getHeight: 0.6,
+        getSourceColor: [255, 255, 255, 230], getTargetColor: (d) => [...d.c, 255] as any, getWidth: 3, getHeight: 0.6,
         greatCircle: false, transitions: { getHeight: { duration: 900, enter: () => [0] } } as any,
       }),
       new ScatterplotLayer<(typeof trips)[number]>({
         id: 'land-pois', data: trips, getPosition: (d) => [d.p[1], d.p[2]], getRadius: 200, radiusMinPixels: 6,
-        getFillColor: (d) => [...CAT_COLOR[d.cat], 255] as any, stroked: true, getLineColor: [6, 10, 18, 255], lineWidthMinPixels: 2,
+        getFillColor: (d) => [...d.c, 255] as any, stroked: true, getLineColor: [6, 10, 18, 255], lineWidthMinPixels: 2,
         parameters: { depthCompare: 'always' } as any,
       }),
       new TextLayer<(typeof trips)[number]>({
-        id: 'land-poi-labels', data: trips, getPosition: (d) => [d.p[1], d.p[2]], getText: (d) => `${CAT_LABEL[d.cat]} · ${d.min} min\n${d.p[0]}`,
+        id: 'land-poi-labels', data: trips, getPosition: (d) => [d.p[1], d.p[2]], getText: (d) => `${d.label} · ${d.min} min\n${d.p[0]}`,
         getSize: 12, getColor: [240, 244, 252, 255], outlineWidth: 3, outlineColor: [6, 10, 18, 240], fontSettings: { sdf: true },
         fontFamily: 'Inter, sans-serif', fontWeight: 600, characterSet: 'auto', getPixelOffset: [0, -24], getTextAnchor: 'middle', parameters: { depthCompare: 'always' } as any,
       } as any),
@@ -488,7 +573,9 @@ export function landLayers(): Layer[] {
 }
 
 /** A ring pulsing around the selected parcel, rebuilt each frame. */
-function withPulse(layers: Layer[]): Layer[] {
+function withPulse(base: Layer[]): Layer[] {
+  // the shortlist's planned trip, while the shortlist is open
+  const layers = tab === 'short' && selected == null && trip ? [...base, ...tripLayers()] : base;
   if (selected == null || !L) return layers;
   const p = (performance.now() % 1800) / 1800;
   return [...layers, new ScatterplotLayer<number>({
@@ -542,11 +629,11 @@ const waterText = (i: number) => {
 const fmtDist = (m: number) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`);
 const BIT_NAME: Record<Bit, string> = {
   acres: 'size', water: 'water', care: 'health care', grocery: 'groceries', gas: 'gas', road: 'busy road', air: 'airport', ind: 'industry',
-  threat: 'wildfire threat', flood: 'floodplain', high: 'high ground', pga: 'shaking', fires: 'fire history', slope: 'slope', alr: 'farmland reserve', islands: 'island', trail: 'trails nearby', fall: 'waterfall distance', beach: 'beach distance', launch: 'boat launch distance', tsunami: 'tsunami hazard',
+  threat: 'wildfire threat', flood: 'floodplain', high: 'high ground', pga: 'shaking', fires: 'fire history', fire: 'fire hall distance', winter: 'winter sun', slope: 'slope', alr: 'farmland reserve', islands: 'island', trail: 'trails nearby', fall: 'waterfall distance', beach: 'beach distance', launch: 'boat launch distance', tsunami: 'tsunami hazard',
   wGpm: 'well yield', wDepth: 'well depth', wLow: 'low-yield wells', aquifer: 'aquifer', net: '50/10 internet', cell: 'mobile service',
   park: 'park next door', crown: 'Crown land next door', logged: 'recent logging nearby', plan: 'planned logging nearby',
 };
-const failedNames = (i: number) => (Object.keys(BIT) as Bit[]).filter((b) => masks[i] & (1 << BIT[b])).map((b) => BIT_NAME[b]);
+const failedNames = (i: number) => (Object.keys(BIT) as Bit[]).filter((b) => band(masks[i], BV[b])).map((b) => BIT_NAME[b]);
 
 // ---------------------------------------------------------------------------------------------
 // the filter rail: every row is a control plus a crossfilter histogram
@@ -566,6 +653,7 @@ const SECTIONS: Section[] = [
     id: 'size', title: 'The land', icon: '◇', c: '#a3e635', rows: [
       { kind: 'range', bit: 'acres', key: 'acres', label: 'Size', hint: 'Parcel area from ParcelMap BC', min: 5, max: 640, step: 1, log: true, dir: 'min', value: (i) => L!.num.acres[i], show: (v) => `≥ ${Math.round(v)} acres` },
       { kind: 'range', bit: 'slope', key: 'slope', label: 'Gentle ground', hint: 'Average slope across the parcel (terrain at ~50 m)', min: 2, max: ANY_SLOPE, step: 1, dir: 'max', any: ANY_SLOPE, value: (i) => L!.num.slope[i], show: (v) => (v >= ANY_SLOPE ? 'Any' : `≤ ${v}° slope`) },
+      { kind: 'range', bit: 'winter', key: 'winter', label: 'Winter sun', hint: 'Hours of direct sun on 21 December at the sunniest spot on the land, once the hills are in the way (terrain at ~50 m; trees and cloud not counted)', min: 0, max: 8, step: 0.5, dir: 'min', value: (i) => L!.num.sunDec[i], show: (v) => (v <= 0 ? 'Any' : `≥ ${v} h on 21 Dec`) },
       { kind: 'chips', bit: 'alr', key: 'alr', label: 'Farmland reserve', hint: 'Agricultural Land Reserve: farming protected, building and subdividing restricted', options: [['any', 'Either'], ['avoid', 'Avoid ALR'], ['only', 'ALR only']] },
       { kind: 'chips', bit: 'islands', key: 'islands', label: 'Island', hint: 'The Gulf and Discovery islands need a ferry for most trips', options: [['any', 'Anywhere'], ['main', 'Vancouver Island'], ['islands', 'Small islands']] },
     ],
@@ -595,6 +683,7 @@ const SECTIONS: Section[] = [
   {
     id: 'safe', title: 'Safety', icon: '⛨', c: '#fb923c', rows: [
       { kind: 'custom', bit: 'threat', label: 'Wildfire threat', hint: 'BC Wildfire Service Provincial Strategic Threat Analysis: the worst rating on the parcel or in the forest within 500 m of it', render: renderThreat },
+      { kind: 'custom', bit: 'fire', label: 'Fire protection', render: renderFire },
       { kind: 'range', bit: 'fires', key: 'fires', label: 'Fire history nearby', hint: 'Wildfire starts within 5 km since 1990', min: 0, max: ANY_FIRES, step: 1, dir: 'max', any: ANY_FIRES, value: (i) => L!.num.fires5[i], show: (v) => (v >= ANY_FIRES ? 'Any' : `≤ ${v} starts`) },
       { kind: 'custom', bit: 'flood', label: 'Floodplain', render: renderFlood },
       { kind: 'custom', bit: 'tsunami', label: 'Tsunami', render: renderTsunami },
@@ -655,9 +744,9 @@ function buildHists() {
 /** Parcels passing every filter but this row's, per bin: what this slider could let through. */
 function crossCounts(h: Hist): Uint32Array {
   const out = new Uint32Array(BINS);
-  const bit = 1 << BIT[h.row.bit];
+  const bit = BV[h.row.bit];
   for (let i = 0; i < L!.n; i++) {
-    if ((masks[i] & ~bit) !== 0 || h.bin[i] === 255) continue;
+    if (bandNot(masks[i], bit) !== 0 || h.bin[i] === 255) continue;
     out[h.bin[i]]++;
   }
   return out;
@@ -786,6 +875,17 @@ function renderFlood(el: HTMLElement) {
   el.querySelectorAll<HTMLButtonElement>('[data-v]').forEach((b) => b.addEventListener('click', () => { f.flood = b.dataset.v as F['flood']; renderFlood(el); refreshAll(); }));
 }
 
+function renderFire(el: HTMLElement) {
+  const opts: [F['fire'], string][] = [['8', 'Within 8 km'], ['13', 'Within 13 km'], ['any', 'Any']];
+  el.innerHTML = `
+    <div class="lr-lab"><span>Fire hall by road</span></div>
+    <div class="chips">${opts.map(([v, t]) => `<button class="chip${f.fire === v ? ' on' : ''}" data-v="${v}">${t}</button>`).join('')}</div>
+    <div class="lr-hint">${fireOk
+      ? 'Drive to the nearest fire hall on the parcel’s island (OpenStreetMap halls, OSRM roads). Insurers rate a house from this: within about 8 km it can be <i>protected</i> (if it is also inside a fire protection area); past about 13 km it is usually <i>unprotected</i>, with higher premiums.'
+      : 'Fire hall distances not built yet (<code>npm run data firehalls</code>): every parcel passes.'}</div>`;
+  el.querySelectorAll<HTMLButtonElement>('[data-v]').forEach((b) => b.addEventListener('click', () => { f.fire = b.dataset.v as F['fire']; renderFire(el); refreshAll(); }));
+}
+
 function renderTsunami(el: HTMLElement) {
   const opts: [F['tsunami'], string][] = [['room', 'Room to build outside'], ['clear', 'Fully outside'], ['any', 'Any']];
   el.innerHTML = `
@@ -855,14 +955,14 @@ function updateRail() {
     h.el.querySelector('.lr-v')!.textContent = r.show(v);
   }
   // water kind counts: parcels passing everything else with each kind of frontage
-  const wbit = 1 << BIT.water;
+  const wbit = BV.water;
   const kc = [0, 0, 0];
-  for (let i = 0; i < L!.n; i++) if ((masks[i] & ~wbit) === 0 && L!.num.water[i] > 0) kc[L!.num.water[i] - 1]++;
+  for (let i = 0; i < L!.n; i++) if (bandNot(masks[i], wbit) === 0 && L!.num.water[i] > 0) kc[L!.num.water[i] - 1]++;
   rail.querySelectorAll<HTMLElement>('[data-kc]').forEach((e) => (e.textContent = fmt.int(kc[+e.dataset.kc!])));
   for (const s of SECTIONS) {
-    const bits = s.rows.map((r) => 1 << BIT[r.bit]).reduce((a, b) => a | b, 0);
+    const bits = bitsOf(s.rows.map((r) => r.bit));
     let cut = 0;
-    for (let i = 0; i < L!.n; i++) if ((masks[i] & bits) && !(masks[i] & ~bits)) cut++;
+    for (let i = 0; i < L!.n; i++) if (band(masks[i], bits) && !bandNot(masks[i], bits)) cut++;
     rail.querySelector(`[data-st="${s.id}"]`)!.textContent = cut ? `−${fmt.int(cut)}` : '';
   }
 }
@@ -938,9 +1038,21 @@ function renderPanel() {
     ${tab === 'matches' && !matches.length ? `<p class="lede">No parcel clears every filter. The funnel below shows which step cuts the most; loosen that one first.</p>` : ''}
     ${tab === 'short' && !keys.length ? `<p class="lede">Star parcels from their report to keep them here, with your notes and the asking price from any listing.</p>` : ''}
     <ol class="ld-list">${list.map((i, r) => card(i, r)).join('')}</ol>
+    ${tab === 'short' ? '<section class="ld-trip-plan"></section>' : ''}
     ${tab === 'matches' && matches.length > 80 ? `<p class="note">Showing the top 80 of ${fmt.int(matches.length)}. Tighten a filter to narrow it down.</p>` : ''}`;
   p.querySelector('.close-x')!.addEventListener('click', () => ctx!.onClose());
   p.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach((b) => b.addEventListener('click', () => { tab = b.dataset.tab as typeof tab; renderPanel(); }));
+  const plan = p.querySelector<HTMLElement>('.ld-trip-plan');
+  if (plan) {
+    const stops: TripStop[] = shortIdx.map((i) => ({ key: keyOf(i), label: `${L!.num.acres[i] >= 100 ? Math.round(L!.num.acres[i]) : L!.num.acres[i].toFixed(1)} ac · ${placeOf(i)}`, lon: L!.num.lon[i], lat: L!.num.lat[i] }));
+    renderTripPlanner(plan, towns, stops, () => {
+      // fit the planned route on the map, clear of the rail and the panel
+      if (!trip) return;
+      let b = [Infinity, Infinity, -Infinity, -Infinity];
+      for (const [x, y] of trip.path) b = [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)];
+      if (b.every(Number.isFinite)) ctx!.map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 120, bottom: 160, left: 420, right: 440 }, pitch: 30, duration: 1800, maxZoom: 12.5 });
+    });
+  }
   p.querySelectorAll<HTMLElement>('.ld-card').forEach((c) => {
     const i = +c.dataset.i!;
     c.addEventListener('click', () => select(i));
@@ -1001,6 +1113,25 @@ function tsunamiTile(i: number, m: (label: string, dot: string, v: string, sub: 
   const what = mapped ? 'inside the published hazard map' : `on low coastal ground (under ${tsunamiScreen} m, near the sea)`;
   const sub = share > 0 ? `${what}; ${dry >= 10 ? Math.round(dry) : dry.toFixed(1)} acres outside it` : mapped ? 'outside the published hazard map' : `no ground under ${tsunamiScreen} m near the sea`;
   return m('Tsunami', '#38e1ff', `${Math.round(share)}%${zone ? ` · Zone ${zone}` : ''}`, sub, share === 0 ? true : dry >= TSU_ROOM_ACRES ? null : false);
+}
+
+function fireTile(i: number, m: (label: string, dot: string, v: string, sub: string, good?: boolean | null) => string) {
+  const n = L!.num, km = n.fireKm[i];
+  const hall = Number.isNaN(n.fireHall[i]) ? null : fireHalls[n.fireHall[i]];
+  const v = Number.isNaN(km) ? 'No route' : `${km < 10 ? km.toFixed(1) : Math.round(km)} km`;
+  const sub = `${hall ? `by road to ${esc(hall[0])}${Number.isNaN(n.fireMin[i]) ? '' : `, about ${n.fireMin[i]} min`}: ` : ''}${fireBand(km)}`;
+  return m('Fire hall', '#ef4444', v, sub, Number.isNaN(km) || km > FIRE_LIMIT_KM ? false : km <= FIRE_PROTECTED_KM ? true : null);
+}
+
+/** Winter sun: hours at the sunniest spot on four dates against flat open ground, as bars. */
+function sunTile(i: number, m: (label: string, dot: string, v: string, sub: string, good?: boolean | null) => string) {
+  const n = L!.num, lat = n.lat[i];
+  const hrs = SUN_KEYS.map((k) => n[k][i]), flat = SUN_DECL.map((d) => flatSunHours(lat, d));
+  const dec = hrs[0], share = dec / flat[0];
+  const bars = hrs.map((h, k) => `<div class="sun-bar" title="${SUN_LABELS[k]}: ${h.toFixed(1)} of ${flat[k].toFixed(1)} h"><div class="sb-col"><span class="sb-day" style="height:${(flat[k] / 12.5) * 100}%"></span><span class="sb-sun" style="height:${(h / 12.5) * 100}%"></span></div><b>${h.toFixed(1)} h</b><i>${SUN_LABELS[k]}</i></div>`).join('');
+  const sub = share >= 0.9 ? 'the hills hardly shade it' : share >= 0.6 ? 'the hills take some of the winter day' : dec >= 1 ? 'the hills take most of the winter day' : 'in the hills’ shadow on the shortest days';
+  return `${m('Winter sun', '#fde047', `${dec.toFixed(1)} h`, `on 21 Dec at the sunniest spot, of ${flat[0].toFixed(1)} h of daylight: ${sub}`, f.winter > 0 ? dec >= f.winter : share >= 0.6 ? null : false)}
+    <div class="sun-bars" aria-label="Hours of direct sun through the year">${bars}<div class="sb-key"><span class="sb-day"></span>daylight on flat ground <span class="sb-sun"></span>sun past the hills (terrain only)</div></div>`;
 }
 
 function floodTile(i: number, m: (label: string, dot: string, v: string, sub: string, good?: boolean | null) => string) {
@@ -1068,11 +1199,13 @@ function renderDetail(i: number) {
       ${m('High ground', '#5eead4', Number.isNaN(n.elevHi[i]) ? '—' : `${n.elevHi[i]} m`, `above sea level at its highest${Number.isNaN(n.elevLo[i]) ? '' : `; lowest ${n.elevLo[i]} m`}`, f.high <= 0 || n.elevHi[i] >= f.high)}
       ${m('Slope', '#a3e635', Number.isNaN(n.slope[i]) ? '—' : `${n.slope[i].toFixed(1)}°`, n.slope[i] < 8 ? 'gentle, easy to build on' : n.slope[i] < 16 ? 'rolling' : 'steep in places')}
       ${m('Farmland reserve', '#f472b6', `${n.alr[i]}%`, n.alr[i] >= 50 ? 'mostly in the ALR: farming protected, building limited' : n.alr[i] > 0 ? 'partly in the ALR' : 'outside the ALR')}
+      ${sunOk ? sunTile(i, m) : ''}
       ${m('Sunshine', '#fde047', Number.isNaN(n.sun[i]) ? '—' : `${fmt.int(n.sun[i])} h`, 'a year, nearest station that measures it')}
       ${m('Frost days', '#93c5fd', Number.isNaN(n.frost[i]) ? '—' : `${n.frost[i]}`, 'a year, 1981–2010 normals')}
     </div>
     <h3>Safety</h3>
     <div class="metric-grid">
+      ${fireOk ? fireTile(i, m) : ''}
       ${m('Wildfire threat', '#fb923c', threat, 'worst rating on or within 500 m of the parcel (BCWS)', Number.isNaN(n.threat[i]) ? null : n.threat[i] <= f.threat)}
       ${m('Fire history', '#f97316', `${n.fires5[i]} starts`, `within 5 km since 1990; ${fmt.ha(n.burn5[i])} burned within 5 km since 1950`)}
       ${floodTile(i, m)}

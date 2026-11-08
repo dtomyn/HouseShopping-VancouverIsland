@@ -106,5 +106,17 @@
   "drought": {
     "ok": true,
     "updated": "2026-11-08T18:48:50.276Z"
+  },
+  "firehalls": {
+    "ok": true,
+    "updated": "2026-11-08T19:18:22.514Z"
+  },
+  "sun": {
+    "ok": true,
+    "updated": "2026-11-08T19:19:19.971Z"
+  },
+  "wind": {
+    "ok": true,
+    "updated": "2026-11-08T19:25:46.027Z"
   }
 }

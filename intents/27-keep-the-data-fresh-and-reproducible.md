@@ -10,7 +10,7 @@ atlas can be refreshed any time and anyone can check how each number was made.
 ## Inputs & controls
 | Command | Effect |
 |---|---|
-| `npm run data` | Every stage, in order: `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails internet land wells tsunami flood logging neighbours water camping snow radon drought`. |
+| `npm run data` | Every stage, in order: `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails internet land wells tsunami flood firehalls sun logging neighbours water camping snow radon drought wind`. |
 | `npm run data fires crime` | Just those stages. |
 | Delete `.cache/` | Forces every download to be fetched again. |
 

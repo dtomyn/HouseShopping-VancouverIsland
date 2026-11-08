@@ -13,7 +13,7 @@ import { eventColor, eventDate, eventLayers, fromTooltip, momentsList, renderEve
 import { loadWeights, renderFinder, renderTownReport } from './panels';
 import { openSources, sourcesOpen } from './sources';
 import { Ranked } from './metrics';
-import { closeLand, landClick, landHover, landKey, landLayers, openLand, setLandInternet, setLandTrails, setLandWater, setLandWells } from './land';
+import { closeLand, landClick, landHover, landKey, landLayers, openLand, setLandInternet, setLandTowns, setLandTrails, setLandWater, setLandWells } from './land';
 import { bindTrails, flyTrailView, goTrailView, leaveTrails, setTrailView, trailsCinema, type TrailView } from './trails';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
@@ -28,7 +28,7 @@ const MUNI_WHEN_FOCUSED = new Set(['hospitals', 'seismic', 'tsunami', 'flood', '
 // layer menu sections; any layer not listed lands in the last group
 const LAYER_GROUPS: { name: string; ids: string[] }[] = [
   { name: 'Base map', ids: ['island'] },
-  { name: 'History on the timeline', ids: ['fires', 'logging', 'quakes', 'rivers', 'climate', 'smoke', 'wells', 'drought'] },
+  { name: 'History on the timeline', ids: ['fires', 'logging', 'quakes', 'rivers', 'climate', 'smoke', 'wind', 'wells', 'drought'] },
   { name: 'Towns & living', ids: ['population', 'housing', 'crime', 'hospitals', 'internet'] },
   { name: 'Outdoors', ids: ['trails', 'water', 'camping', 'snow'] },
   { name: 'Hazard & climate outlook', ids: ['seismic', 'tsunami', 'flood', 'radon', 'normals', 'future'] },
@@ -833,6 +833,7 @@ async function boot() {
   data = await loadAll();
   layers = buildLayers(data);
   setLandTrails(data.trails);
+  setLandTowns(data.munis);
   setLandWater(data.water);
   setLandWells(data.wells);
   setLandInternet(data.internet);

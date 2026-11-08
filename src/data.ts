@@ -265,6 +265,38 @@ export type DroughtGauge = {
   from: number; to: number; n: number; mad: number | null; madYears: number; normalLow: number;
   years: Record<string, [number, number, number]>;
 };
+/**
+ * Winter sun around each town (sun.json, scripts/sun.mjs): hours of direct sun on 21 December once the hills' skyline
+ * is in the way, from terrain tiles (trees, buildings and cloud not counted). dec: median over the ground within
+ * 1.5 km of the centre; under1: % of that ground with under an hour; centre: the centre's hours on the stage's four
+ * dates; flat: daylight hours on flat open ground at the town's latitude on 21 December.
+ */
+export type SunTown = { dec: number; under1: number | null; centre: number[]; flat: number; n: number };
+export type SunData = { source: string; dates: { id: string; label: string; decl: number }[]; towns: Record<string, SunTown> };
+
+/**
+ * Windstorms (wind.json, scripts/wind.mjs): ECCC daily peak gusts at the island's gust-measuring stations. A storm day
+ * is a gust of `storm` km/h or more (90, the coast's wind-warning line), a gale day `gale` (70). years: year ->
+ * [days with a gust value, storm days, gale days, top gust, its date MM-DD]; a year counts once it has `minDays`.
+ * big: every storm day [YYYY-MM-DD, gust, direction in tens of degrees]. record: [gust, date, direction].
+ */
+export type WindStation = {
+  name: string; ids: string[]; lon: number; lat: number; exposed: boolean; from: number; to: number; n: number;
+  record: [number, string, number | null];
+  years: Record<string, [number, number, number, number, string | null]>;
+  big: [string, number, number | null][];
+};
+export type WindStorm = { d: string; rep: number; storm: number; at: [number, number, number | null][] };
+export type WindTown = { st: number; km: number; years: number; storm: number; gale: number };
+export type Wind = {
+  source: string; storm: number; gale: number; minDays: number; recentYears: number; lastYear: number;
+  stations: WindStation[];
+  /** year -> [storm days per reporting station, stations reporting, storm days per sheltered station] */
+  island: Record<string, [number, number, number]>;
+  storms: WindStorm[];
+  towns: Record<string, WindTown>;
+};
+
 export type Drought = {
   source: string; lastYear: number; window: string; minSummers: number; townMinSummers: number;
   gauges: DroughtGauge[]; island: Record<string, [number, number]>; towns: Record<string, [number, number]>;
@@ -300,6 +332,8 @@ export type Data = {
   snow: Snow | null;
   radon: Radon | null;
   drought: Drought | null;
+  sun: SunData | null;
+  wind: Wind | null;
   manifest: Record<string, { ok: boolean; updated?: string; lastError?: string }>;
 };
 
@@ -318,7 +352,7 @@ async function load<T>(name: string): Promise<T | null> {
 export async function loadAll(): Promise<Data> {
   const internet = load<Internet>('internet');
   const flood = load<Flood>('flood');
-  const water = load<Water>('water'), camping = load<Camping>('camping'), snow = load<Snow>('snow'), radon = load<Radon>('radon'), drought = load<Drought>('drought');
+  const water = load<Water>('water'), camping = load<Camping>('camping'), snow = load<Snow>('snow'), radon = load<Radon>('radon'), drought = load<Drought>('drought'), sun = load<SunData>('sun'), wind = load<Wind>('wind');
   const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, wells, logging, neighbours, manifest, tsunami] = await Promise.all([
     load<GeoJSON.Feature>('island'),
     load<Muni[]>('municipalities'),
@@ -358,7 +392,7 @@ export async function loadAll(): Promise<Data> {
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, flood: (await flood)?.studies?.length ? await flood : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, water: (await water)?.rows?.length ? await water : null, camping: (await camping)?.rows?.length ? await camping : null, snow: (await snow)?.stations?.length ? await snow : null, radon: (await radon)?.areas?.length ? await radon : null, drought: (await drought)?.gauges?.length ? await drought : null, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, flood: (await flood)?.studies?.length ? await flood : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, water: (await water)?.rows?.length ? await water : null, camping: (await camping)?.rows?.length ? await camping : null, snow: (await snow)?.stations?.length ? await snow : null, radon: (await radon)?.areas?.length ? await radon : null, drought: (await drought)?.gauges?.length ? await drought : null, sun: (await sun)?.towns ? await sun : null, wind: (await wind)?.stations?.length ? await wind : null, manifest: manifest ?? {} };
 }
 
 let netPromise: Promise<TrailNet | null> | null = null;

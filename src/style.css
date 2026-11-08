@@ -114,6 +114,33 @@ a { color: #9cc7ff; }
 .metric .mv { font-family: var(--display); font-weight: 700; font-size: 19px; margin-top: 3px; font-variant-numeric: tabular-nums; }
 .metric .ms { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
 .mini { margin-top: 6px; }
+/* Land Finder: the shortlist's viewing-trip planner */
+.ld-trip-plan h3 { margin-top: 18px; }
+.tp-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; margin: 8px 0 10px; font-size: 11.5px; color: var(--ink-3); }
+.tp-form label { display: grid; gap: 4px; }
+.tp-form select, .tp-form input[type=time], .tp-form input[type=number] { font: inherit; font-size: 12.5px; color: var(--ink); background: rgba(255,255,255,.04); border: 1px solid var(--line-strong); border-radius: 8px; padding: 5px 7px; min-width: 0; }
+.tp-form .tp-check { display: flex; align-items: center; gap: 6px; align-self: end; padding-bottom: 6px; }
+.tp-list { list-style: none; margin: 12px 0 8px; padding: 0; display: grid; gap: 2px; }
+.tp-list li { display: grid; grid-template-columns: 92px 1fr; gap: 10px; padding: 7px 8px; border-radius: 8px; border-left: 2px solid rgba(255, 95, 162, .6); background: rgba(255,255,255,.025); font-size: 12.5px; }
+.tp-list li.tp-start { border-left-color: var(--line-strong); color: var(--ink-2); }
+.tp-list b { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink); }
+.tp-list b i { font-style: normal; color: var(--ink-3); }
+.tp-list em { font-style: normal; display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: 6px; border-radius: 4px; background: #ff5fa2; color: #080c14; font-weight: 800; font-size: 11px; }
+.tp-list small { display: block; color: var(--ink-3); font-size: 11px; margin-top: 2px; }
+.tp-ferry { color: #38bdf8; }
+.tp-sum { font-size: 12.5px; color: var(--ink-2); margin: 6px 0 4px; }
+
+/* Land Finder: winter sun through the year (daylight on flat ground behind, sun past the hills in front) */
+.sun-bars { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 10px 11px 8px; border-radius: 10px; background: rgba(255,255,255,.035); border: 1px solid var(--line); }
+.sun-bar { display: grid; justify-items: center; gap: 2px; font-size: 10.5px; color: var(--ink-3); text-align: center; }
+.sun-bar .sb-col { position: relative; width: 22px; height: 64px; }
+.sun-bar .sb-col span { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 3px 3px 0 0; }
+.sun-bars .sb-day { background: rgba(253, 224, 71, .26); box-shadow: inset 0 0 0 1px rgba(253, 224, 71, .35); }
+.sun-bars .sb-sun { background: #fde047; }
+.sun-bar b { color: var(--ink); font-family: var(--mono); font-size: 11px; font-weight: 600; }
+.sun-bar i { font-style: normal; line-height: 1.2; }
+.sb-key { grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 10.5px; color: var(--ink-3); }
+.sb-key span { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-left: 4px; }
 
 /* finder */
 .weights { display: grid; gap: 10px; margin: 10px 0 6px; }

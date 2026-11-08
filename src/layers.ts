@@ -16,6 +16,7 @@ import { radonLayer } from './radon';
 import { loggingLayer } from './logging';
 import { campingLayer, waterLayer } from './outdoors';
 import { snowLayer } from './snow';
+import { windLayer } from './wind';
 import { droughtLayer } from './drought';
 import { esc } from './html';
 
@@ -2192,5 +2193,5 @@ function islandLayer(data: Data): AtlasLayer {
 }
 
 export function buildLayers(data: Data): AtlasLayer[] {
-  return [islandLayer(data), firesLayer(data), quakesLayer(data), seismicLayer(data), tsunamiLayer(data), floodLayer(data), radonLayer(data), riversLayer(data), climateLayer(data), normalsLayer(data), futureLayer(data), populationLayer(data), housingLayer(data), crimeLayer(data), hospitalsLayer(data), smokeLayer(data), wellsLayer(data), droughtLayer(data), internetLayer(data), trailsLayer(data), waterLayer(data), campingLayer(data), snowLayer(data), loggingLayer(data)];
+  return [islandLayer(data), firesLayer(data), quakesLayer(data), seismicLayer(data), tsunamiLayer(data), floodLayer(data), radonLayer(data), riversLayer(data), climateLayer(data), normalsLayer(data), futureLayer(data), populationLayer(data), housingLayer(data), crimeLayer(data), hospitalsLayer(data), smokeLayer(data), wellsLayer(data), droughtLayer(data), windLayer(data), internetLayer(data), trailsLayer(data), waterLayer(data), campingLayer(data), snowLayer(data), loggingLayer(data)];
 }

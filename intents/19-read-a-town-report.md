@@ -17,7 +17,10 @@ or a "closest towns" link in any details panel.
     share of the ground within 2 km in a mapped floodplain and which study, or the nearest one
     ([36](36-know-the-mapped-floodplains.md)); the share of tested homes over the radon guideline in the town's
     health area, with the sample size ([37](37-check-radon.md)); how often the nearest long-record river gauge ran
-    nearly dry in summer and its recent driest-10% summers ([38](38-see-drought-and-low-rivers.md));
+    nearly dry in summer and its recent driest-10% summers ([38](38-see-drought-and-low-rivers.md)); winter sun:
+    the median hours of direct sun on 21 December within 1.5 km once the hills are in the way
+    ([40](40-find-winter-sun.md)); storm and gale days a year at the nearest sheltered gust station
+    ([41](41-see-windstorms.md));
   - climate (nearest station, warming trend); sunshine, rain days, frost days and snowfall from the 1981–2010
     normals; smoky days a year;
   - the drive to the nearest 24/7 emergency room (and a closer limited-hours option); for islands, the ferry
