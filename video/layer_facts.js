@@ -59,7 +59,10 @@
     const price = (k, t) => { const s = h[k]; if (!s) return null; const v = []; const end = Math.floor(t * 12 + 1e-6); for (let i = end - 5; i <= end; i++) { const y = Math.floor(i / 12), m = i - y * 12; const x = s[`${y}-${String(m + 1).padStart(2, '0')}`]; if (x && x[2] > 0 && x[0] > 0) v.push(x[0]); } if (v.length < 4) return null; v.sort((p, q) => p - q); return v[Math.floor(v.length / 2)]; };
     const typical = (t) => { const v = big.map((k) => price(k, t)).filter((x) => x); if (v.length < 5) return null; v.sort((p, q) => p - q); return v[Math.floor(v.length / 2)]; };
     let t0 = 2017.4; while (t0 < 2026 && !typical(t0)) t0 += 1 / 12;
-    Object.assign(out, { ho_y0: Math.floor(t0), ho_t0: Math.round(typical(t0) / 1000) });
+    // the priciest and cheapest towns now, by the same rule
+    const now = new Date().getFullYear() + 0.6;
+    const towns = Object.keys(h).map((k) => [k, price(k, now)]).filter(([, v]) => v).sort((x, y) => y[1] - x[1]);
+    Object.assign(out, { ho_y0: Math.floor(t0), ho_t0: Math.round(typical(t0) / 1000), ho_top: name(towns[0][0]), ho_top_k: Math.round(towns[0][1] / 1000), ho_low: name(towns.at(-1)[0]), ho_low_k: Math.round(towns.at(-1)[1] / 1000) });
   });
   safe(() => { // crime
     const c = d.crime.munis; const ys = [...new Set(Object.values(c).flatMap((x) => Object.keys(x.csi || {})))].map(Number).sort((x, y) => x - y); const y1 = ys.at(-1);

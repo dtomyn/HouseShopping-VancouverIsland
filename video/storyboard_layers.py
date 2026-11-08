@@ -209,7 +209,7 @@ def seismic_surface(f):
     f.wait(2500)
     hover_town(f, "{se_top}".format(**f.facts))
     f.wait(1600)
-    f.board("Highest hazard", "The colours run brightest in the south-west; the cursor rests on the highest-hazard town.")
+    f.board("Highest hazard", "The colours run brightest at the southern tip; the cursor rests on the highest-hazard town.")
     f.voice_done(300)
     hover_town(f, "{se_low}".format(**f.facts), 1400)
     f.say("seismic-surf-2")
@@ -403,7 +403,7 @@ SPECS = {
         stats=[("se_top_g", "of gravity in {se_top}", "%"), ("se_low_g", "of gravity in {se_low}", "%"), ("se_n", "towns compared")],
         on="In {se_top}, the ground could shake at {se_top_g} percent of gravity, in a quake that has a two percent chance in fifty years. In {se_low}, {se_low_g} percent.",
         wow=[scene("seismic-surf", "The shaking map", seismic_surface,
-                   {"seismic-surf-1": "The brighter the colour, the harder the shaking. It's strongest in the south-west, closest to the Cascadia fault.",
+                   {"seismic-surf-1": "The brighter the colour, the harder the shaking. It's strongest at the island's southern tip, around Greater Victoria, where deep quakes inside the sinking ocean plate run closest.",
                     "seismic-surf-2": "Point at any town to see its numbers."},
                    "The hazard surface from a low angle; hovering towns.", "A slow orbit.", "Whooshes.")],
         panel=("h3", "Towns, highest to lowest", "The panel explains why it differs across the island, and ranks every town."),
@@ -478,7 +478,7 @@ SPECS = {
     "housing": dict(
         hook="What do homes really sell for? Every recorded sale, town by town, month by month.",
         stats=[("ho_t0", "thousand dollars, typical in {ho_y0}", "", "$"), ("ho_top_k", "thousand: {ho_top}", "", "$"), ("ho_low_k", "thousand: {ho_low}", "", "$")],
-        on="A typical home in the major towns sold for about ${ho_t0} thousand in {ho_y0}. Today it's {h_housing_0}. The priciest town, {ho_top}, is near {h_housing_3}.",
+        on="A typical home in the major towns sold for about ${ho_t0}K in {ho_y0}. Today it's {h_housing_0}. The priciest town, {ho_top}, is near {h_housing_3}.",
         wow=[scene("housing-climb", "Prices climb", housing_climb,
                    {"housing-climb-1": "Play it month by month: watch the columns climb, fastest through the boom of 2021 and 2022."},
                    "The timeline playing 2017 to today.", "A slow orbit over the south island.", "Columns rise.")],
@@ -590,6 +590,11 @@ def make_layer_film(layer_id):
             raise SystemExit(f"the app has no layer '{layer_id}' (it has: {', '.join(l['id'] for l in found.get('layers', []))})")
         spec = spec_for(meta)
         name, colour = meta["name"], meta["color"]
+        # every counter needs its value and label now, not halfway through a render
+        for st in spec["stats"]:
+            if st[0] not in found:
+                raise SystemExit(f"{layer_id}: no fact named '{st[0]}' for a counter")
+            st[1].format(**found)
         film.BOARD_TITLE = f"Island Atlas: {name} storyboard"
         film.SCRIPT_TITLE = f"Island Atlas, {name}: narration script"
         lid = layer_id
@@ -626,7 +631,9 @@ def make_layer_film(layer_id):
                     v = found.get(key)
                     if not isinstance(v, (int, float)):
                         continue
-                    items.append({"v": v, "k": label, "c": colour, "suffix": st[2] if len(st) > 2 else "", "prefix": st[3] if len(st) > 3 else "", "plain": key.endswith(("year", "_y0", "_y1", "warm"))})
+                    year = key.endswith(("year", "_y0", "_y1", "warm"))
+                    # a year counts up from a few decades back, not from zero
+                    items.append({"v": v, "k": label, "c": colour, "suffix": st[2] if len(st) > 2 else "", "prefix": st[3] if len(st) > 3 else "", "plain": year, "from": v - 40 if year else 0})
                 f.js("s => Stage.stats(s)", items)
                 f.sfx("riser", 0.35, seconds=1.8)
             f.say(f"{lid}-on-2")
@@ -663,7 +670,7 @@ def make_layer_film(layer_id):
             f.sfx("impact", 0.5)
             f.mark("end")
             f.wait(700)
-            f.js("([t, u, fine]) => Stage.end(t, u, fine)", [f"{name}, in Island Atlas", f.url, "Watch the overview for every other layer · nothing to install"])
+            f.js("([t, u, fine]) => Stage.end(t, u, fine)", [f"{name}: {meta['h2']}" if meta["h2"] else name, f.url, "Watch the overview for every other layer · nothing to install"])
             f.say(f"{lid}-end")
             f.wait(1500)
             f.board("End card", "The window drifts back; the end card sends you to the overview.")
@@ -774,7 +781,7 @@ def make_overview():
                 chapter(f, k, meta["name"], meta["color"], f"Layer {k - 1} of {n}")
                 f.run(f"() => {{ atlas.setPlaying(false); atlas.clearMap(); atlas.focus({json.dumps(meta['id'])}); }}")
                 f.say(f"ov-{meta['id']}")
-                hint(f, "▶", "Full film", fname, meta["color"], side="right")
+                hint(f, "▶", "Full film", fname, meta["color"])
                 spec["moment"](f)
                 f.board(meta["name"], f"{meta['name']} on its own, with a chip naming its full film.")
                 f.voice_done(250)
@@ -808,7 +815,7 @@ def make_overview():
             f.sfx("impact", 0.5)
             f.mark("end")
             f.wait(700)
-            f.js("([u, fine]) => Stage.end('Island Atlas', u, fine)", [f.url, f"A short film for each of the {n} layers · links in the description"])
+            f.js("([u, fine]) => Stage.end('Every layer has its own short film', u, fine)", [f.url, f"{n} layers, a film for each · links in the description"])
             f.say("ov-end")
             f.wait(1500)
             f.board("End card", "The end card points to a film for each layer.")

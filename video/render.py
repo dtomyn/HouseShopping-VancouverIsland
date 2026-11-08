@@ -325,6 +325,15 @@ def open_stage(playwright, port, scale):
         str(OUT / "browser-profile"), channel="msedge", headless=True,
         args=["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"],
         viewport={"width": LAYOUT[0], "height": LAYOUT[1]}, device_scale_factor=scale)
+    try:
+        return load_stage(context, port)
+    except BaseException:
+        # a stage that fails to open must still let go of the browser profile, or every later film can't launch
+        context.close()
+        raise
+
+
+def load_stage(context, port):
     errors = []
     context.add_init_script(path=str(STAGE / "vt.js"))
     # Town Finder weights, Land Finder filters and the shortlist are saved in the browser; every film starts from the defaults.
@@ -333,7 +342,8 @@ def open_stage(playwright, port, scale):
     page.on("pageerror", lambda error: errors.append(str(error)))
     # Noon today: the app shows the current year, and a re-run on the same day is identical.
     start = datetime.datetime.combine(datetime.date.today(), datetime.time(12))
-    page.clock.install(time=start)
+    # The installed clock starts running, so it begins a few seconds before noon: pausing at noon must never be in its past.
+    page.clock.install(time=start - datetime.timedelta(seconds=5))
     page.clock.pause_at(start)
     page.goto(f"http://127.0.0.1:{port}/stage/stage.html?app=%2F%3Ffilm")
     page.evaluate("document.fonts.ready")
@@ -601,6 +611,17 @@ def write_storyboard(film, found):
 
 def run(playwright, port, args, mode, scale, fps):
     browser, page, errors = open_stage(playwright, port, scale)
+    try:
+        film_pass(browser, page, errors, args, mode, fps)
+    finally:
+        # always let go of the browser profile, so a film that fails doesn't stop the next one launching
+        try:
+            browser.close()
+        except Exception:
+            pass
+
+
+def film_pass(browser, page, errors, args, mode, fps):
     found = facts(page)
     # a film built from the app's own layer list (the overview, the per-layer films) makes its scenes now
     if getattr(storyboard, "prepare", None):
@@ -629,6 +650,9 @@ def run(playwright, port, args, mode, scale, fps):
     print(f"film {clock_label(film.marks['total'] * 1000)}, page errors: {errors or 'none'}", flush=True)
     if mode == "board":
         write_storyboard(film, found)
+    # Narration times are the same in both passes (the clock is virtual), so a master rendered with --video-only
+    # still gets its captions, script and YouTube text; only the storyboard page needs the board pass.
+    if mode == "board" or (mode == "video" and not args.preview and not args.only):
         write_captions(film)
         write_script(film, found)
         write_youtube(film, found, args.url)
@@ -664,6 +688,7 @@ def main():
     parser.add_argument("--stills", help="comma-separated seconds to save as JPEGs")
     parser.add_argument("--no-build", action="store_true", help="use the existing dist/")
     parser.add_argument("--video-only", action="store_true", help="skip the storyboard pass (when storyboard.html is already up to date)")
+    parser.add_argument("--check", action="store_true", help="fill in every narration line and label from the app's data, without filming (quick)")
     parser.add_argument("--film", default="main",
                         help=f"which film: main (the how-to), {', '.join(sorted(FILMS))}, overview, layer-<layer id>, or all (the overview and every layer film)")
     args = parser.parse_args()
@@ -673,10 +698,12 @@ def main():
     server = serve()
     port = server.server_address[1]
     with sync_playwright() as playwright:
-        films = [args.film]
-        if args.film == "all":
-            # the app's layers right now, so a layer added later gets its film without editing this list
-            films = ["overview"] + [f"layer-{i}" for i in app_layer_ids(playwright, port)]
+        # several films can be given comma-separated; "all" is the overview and the app's layers right now,
+        # so a layer added later gets its film without editing any list
+        films = []
+        for name in args.film.split(","):
+            films += ["overview"] + [f"layer-{i}" for i in app_layer_ids(playwright, port)] if name == "all" else [name]
+        if len(films) > 1:
             print("films:", ", ".join(films), flush=True)
         failed = []
         for name in films:
@@ -695,6 +722,17 @@ def main():
 def film_one(playwright, port, args, name):
     pick_film(name)
     print(f"=== film {name} ({NAME})", flush=True)
+    if args.check:
+        browser, page, _ = open_stage(playwright, port, SCALE_PREVIEW)
+        try:
+            found = facts(page)
+            if getattr(storyboard, "prepare", None):
+                storyboard.prepare(found)
+            lines = script_lines(found)
+            print(f"  ok: {len(storyboard.SCENES)} scenes, {len(lines)} lines", flush=True)
+        finally:
+            browser.close()
+        return
     if args.stills:
         run(playwright, port, args, "stills", 1.0, args.fps)
         return
