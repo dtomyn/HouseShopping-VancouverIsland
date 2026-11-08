@@ -157,6 +157,34 @@ export type Internet = {
   fixed: { d: (number | null)[][]; n: number[][] };
   mobile: { d: (number | null)[][]; n: number[][] };
 };
+/**
+ * logging.json: BC's consolidated cutblocks on the islands. years: year -> [hectares logged, cutblocks, area-weighted
+ * lon, lat]; footprint: [year, hectares of land logged at least once by then]; plan: forest-tenure blocks approved
+ * but not started (n, ha) and being logged now (active, activeHa).
+ */
+export type Logging = {
+  source: string; asOf: number; landHa: number; loggedHa: number;
+  years: Record<string, [number, number, number | null, number | null]>;
+  footprint: [number, number][];
+  plan: { n: number; ha: number; active: number; activeHa: number };
+};
+/**
+ * logging-blocks.json (loaded when the layer is first shown): every cutblock's time, hectares, % clearcut and outer
+ * rings as 1e-4 degree integer deltas from (west, south); plan rows are [1 planned | 2 being logged, date, ha,
+ * licensee index, block id, lon, lat].
+ */
+export type LoggingBlocks = {
+  source: string; west: number; south: number; q: number;
+  t: number[]; ha: number[]; cc: number[]; shapes: number[][][];
+  plan: { who: string[]; rows: [number, number, number, number, string, number, number][]; shapes: number[][][] };
+};
+/** Per town, within 5 km (ha): land, logged in the last 10 years, ever logged, approved or being logged, parks; parks nearby as [name, kind, km, ha]. */
+export type NeighbourTown = { land5: number; cut10: number; everCut: number; plan: number; park5: number; parks: [string, string, number, number][] };
+/** neighbours.json: per-town logging and parks, and named park outlines ([park index, rings]) for the map. */
+export type Neighbours = {
+  source: string; asOf: number; towns: Record<string, NeighbourTown>;
+  parks: [string, string, number][]; shapes: [number, number[][]][]; west: number; south: number; q: number;
+};
 
 export type CrimeSeries = { csi?: Record<string, number>; vcsi?: Record<string, number>; nvcsi?: Record<string, number> };
 
@@ -180,6 +208,8 @@ export type Data = {
   ferries: Ferries | null;
   wells: Wells | null;
   internet: Internet | null;
+  logging: Logging | null;
+  neighbours: Neighbours | null;
   manifest: Record<string, { ok: boolean; updated?: string; lastError?: string }>;
 };
 
@@ -197,7 +227,7 @@ async function load<T>(name: string): Promise<T | null> {
 
 export async function loadAll(): Promise<Data> {
   const internet = load<Internet>('internet');
-  const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, wells, manifest, tsunami] = await Promise.all([
+  const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, wells, logging, neighbours, manifest, tsunami] = await Promise.all([
     load<GeoJSON.Feature>('island'),
     load<Muni[]>('municipalities'),
     load<any>('fires'),
@@ -215,6 +245,8 @@ export async function loadAll(): Promise<Data> {
     load<Trails>('trails'),
     load<Ferries>('ferries'),
     load<Wells>('wells'),
+    load<Logging>('logging'),
+    load<Neighbours>('neighbours'),
     load<any>('manifest'),
     load<Tsunami>('tsunami'),
   ]);
@@ -234,12 +266,15 @@ export async function loadAll(): Promise<Data> {
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, manifest: manifest ?? {} };
 }
 
 let netPromise: Promise<TrailNet | null> | null = null;
 /** The full footpath network is a few MB, so it loads the first time the trails layer is shown. */
 export const loadTrailNet = () => (netPromise ??= load<TrailNet>('trails-net'));
+let blocksPromise: Promise<LoggingBlocks | null> | null = null;
+/** Every cutblock's shape is a few MB, so it loads the first time the logging layer is shown. */
+export const loadLoggingBlocks = () => (blocksPromise ??= load<LoggingBlocks>('logging-blocks'));
 
 let tsunamiMapPromise: Promise<TsunamiMap | null> | null = null;
 /** The tsunami layer's shapes and low-ground cells (~1.5 MB), loaded the first time the layer is shown. */

@@ -13,7 +13,7 @@ npm run preview           # serve dist/ at http://localhost:4173
 npm run data [stage…]     # rebuild public/data/*.json from the original sources
 ```
 
-Data stages (in run order): `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails internet land wells tsunami`. Raw downloads cache in `.cache/`; a failing source keeps its old JSON and records the error in `public/data/manifest.json` (shown in the app's Data & sources view). `public/data/` is committed, so the app runs without the pipeline.
+Data stages (in run order): `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails internet land wells tsunami logging neighbours`. Raw downloads cache in `.cache/`; a failing source keeps its old JSON and records the error in `public/data/manifest.json` (shown in the app's Data & sources view). `public/data/` is committed, so the app runs without the pipeline.
 
 Videos (Windows only, needs Edge + `.venv` with Kokoro; see README):
 
@@ -66,6 +66,7 @@ Videos (Windows only, needs Edge + `.venv` with Kokoro; see README):
 - **`src/trails.ts` + `src/trailcards.ts`:** the trails layer with its own panel views (`overview | route | fall | path`) and 3D modes (route flight, waterfall orbit, waterfall tour) on MapLibre terrain with Esri imagery. During 3D modes, `trailsCinema()` makes main stop drawing deck layers. Footpath elevations are sampled client-side from Terrarium tiles. `trailcards.ts` is pure HTML/SVG string builders.
 - **`src/internet.ts`:** the Internet & cell layer (ISED broadband hexagons + Ookla speeds by quarter) and the `townNet` / `parcelNet` lookups used by metrics and Land Finder.
 - **`src/tsunami.ts`:** the Tsunami zones layer (static). Its shapes and low-ground cells (`tsunami-map.json`) load the first time it's shown; the wave sweep runs off `ctx.clock`. Its per-parcel values live in `land-tsunami.json` (keyed to `land.json`'s order by a PID hash), which `src/land.ts` loads optionally.
+- **`src/logging.ts` + `src/nextdoor.ts`:** the Logging layer (cutblock shapes load on first show) and the Town Report's logging row; `nextdoor.ts` loads `land-neighbours.json` (aligned to `land.json` by order, checked by a PID hash) and draws a parcel's surroundings ring. Both stages live in `scripts/neighbours.mjs`.
 - **`src/land.ts`:** Land Finder, a separate `mode` with its own deck layers, filters and panel, built on `public/data/land.json`.
 - **`src/panels.ts` + `src/metrics.ts`:**
   - `townMetrics(data)` computes every per-town number, consumed by the Town Report, the Town Finder (`CRITERIA` weights) and Land Finder.

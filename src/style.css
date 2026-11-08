@@ -743,3 +743,31 @@ body.cinema .maplibregl-ctrl-bottom-right { top: 8px; bottom: auto !important; r
 .tz-zones .rd, .tz-studies .rd { color: var(--ink-3); font-size: 11.5px; }
 .tz-replay { margin: 10px 0 2px; color: var(--ink); --c: #38e1ff; border-color: color-mix(in srgb, var(--c) 55%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--c) 25%, transparent); cursor: pointer; }
 .tz-replay:hover { border-color: var(--c); }
+/* ---- logging layer: decade strip, park chips (src/logging.ts) */
+.lg-decades { display: flex; gap: 3px; align-items: flex-end; height: 92px; padding-top: 14px; }
+.lg-dec { flex: 1; position: relative; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.lg-dec i { display: block; width: 100%; border-radius: 3px 3px 1px 1px; background: color-mix(in srgb, #e9b872 30%, transparent); transition: background .3s, box-shadow .3s; }
+.lg-dec b { position: absolute; top: -2px; font: 500 9px var(--mono); color: var(--ink-3); opacity: 0; transition: opacity .3s; }
+.lg-dec span { font: 500 9.5px var(--mono); color: var(--ink-3); margin-top: 3px; }
+.lg-dec.past i { background: color-mix(in srgb, #e9b872 70%, transparent); }
+.lg-dec.on i { background: #fff3c4; box-shadow: 0 0 12px #e9b872; }
+.lg-dec.on b, .lg-dec:hover b { opacity: 1; color: var(--ink); }
+.lg-dec.on span { color: var(--ink); }
+.tr-fall.lg-park { border-color: rgba(45, 212, 191, .35); background: rgba(45, 212, 191, .07); }
+.lg-dot { width: 8px; height: 8px; border-radius: 2px; background: #2dd4bf; box-shadow: 0 0 6px #2dd4bf; }
+.tr-fall.lg-open { border-color: rgba(233, 184, 114, .45); background: rgba(233, 184, 114, .08); cursor: pointer; }
+.tr-fall.lg-open:hover { background: rgba(233, 184, 114, .2); }
+
+/* ---- Land Finder "Next door": the ring of what surrounds a parcel */
+.nd-ring { display: grid; grid-template-columns: 172px 1fr; gap: 12px; align-items: center; margin: 4px 0 10px; }
+.nd-ring svg { overflow: visible; }
+.nd-ring .nd-cell { opacity: 0; animation: nd-in .5s ease-out forwards; stroke: #060a12; stroke-width: .8; transform-box: fill-box; transform-origin: center; }
+.nd-ring .nd-lab { fill: var(--ink-3); font: 500 8.5px var(--mono); }
+.nd-ring .nd-n { fill: var(--ink); font: 700 10px var(--font); }
+.nd-key { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--ink-2); }
+.nd-key span { display: flex; align-items: center; gap: 6px; }
+.nd-key i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.nd-key em { font-style: normal; margin-left: auto; font: 500 10.5px var(--mono); color: var(--ink-3); }
+@keyframes nd-in { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+.nd-ring g.nd-cells { transform-origin: 86px 86px; }
+@media (prefers-reduced-motion: reduce) { .nd-ring .nd-cell { animation: none; opacity: 1; } }

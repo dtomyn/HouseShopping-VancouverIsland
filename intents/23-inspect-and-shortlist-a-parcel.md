@@ -26,10 +26,13 @@ Land Finder → a parcel in the **Matches** list or on the map; the **Shortlist*
 - **Water supply**: the median yield and depth of the wells within 1 km, the share of them that were low yield, the
   mapped aquifer under it, a note when a well is registered on its PID, and those wells drawn as drill holes to their
   depth, coloured by yield ([29](29-know-the-well-water-under-a-place.md)).
+- **Next door**: a ring of what surrounds the parcel out to 1 km in 16 directions (parks, Crown land, water, logging
+  by age, approved or active cutblocks, private land), with each kind's share, and tiles for the nearest park, Crown
+  land, the last logging nearby and planned logging ([32](32-check-whats-next-door.md)).
 - The shortlist (parcels, notes, asking prices) is saved in the browser; the Shortlist tab lists them.
 
 ## Limits
 Nothing about a parcel's ownership, zoning or listing status is known; links go to outside sites to check.
 
 ## Source
-`src/land.ts` (parcel report, `drawRadar`, `wellsDetail`, `setSatellite`, `shortlist`, `SHORT`), `src/wells.ts` (`wellStrip`).
+`src/land.ts` (parcel report, `drawRadar`, `wellsDetail`, `nextDoorDetail`, `setSatellite`, `shortlist`, `SHORT`), `src/wells.ts` (`wellStrip`), `src/nextdoor.ts` (`ringSvg`).

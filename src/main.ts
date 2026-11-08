@@ -28,7 +28,7 @@ const MUNI_WHEN_FOCUSED = new Set(['hospitals', 'seismic', 'tsunami', 'future'])
 // layer menu sections; any layer not listed lands in the last group
 const LAYER_GROUPS: { name: string; ids: string[] }[] = [
   { name: 'Base map', ids: ['island'] },
-  { name: 'History on the timeline', ids: ['fires', 'quakes', 'rivers', 'climate', 'smoke', 'wells'] },
+  { name: 'History on the timeline', ids: ['fires', 'logging', 'quakes', 'rivers', 'climate', 'smoke', 'wells'] },
   { name: 'Towns & living', ids: ['population', 'housing', 'crime', 'hospitals', 'internet'] },
   { name: 'Outdoors', ids: ['trails'] },
   { name: 'Hazard & climate outlook', ids: ['seismic', 'tsunami', 'normals', 'future'] },
@@ -842,6 +842,8 @@ async function boot() {
   bindControls();
   focus('island');
   requestAnimationFrame(frame);
+  // a report's link to a layer opens it at today, where its story ends
+  window.addEventListener('atlas:layer', (e) => { const id = (e as CustomEvent).detail; const l = byId[id]; if (!l?.available) return; focus(id); if (!l.static) setTime(l.range[1]); });
   window.addEventListener('atlas:outdoors', (e) => { const d = (e as CustomEvent).detail; openOutdoors(d.kind, d.i); });
   window.addEventListener('atlas:town', (e) => { const k = (e as CustomEvent).detail; if (data.munis.some((m) => m.key === k)) openTown(k); });
   if (location.hash === '#sources') showSources();

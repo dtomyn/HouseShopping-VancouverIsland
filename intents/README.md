@@ -35,6 +35,7 @@ same shape:
 | 10 | See who lives here, and how old | [10-see-population-and-age.md](10-see-population-and-age.md) |
 | 11 | See what homes really sell for | [11-see-home-prices.md](11-see-home-prices.md) |
 | 12 | See how safe each town is | [12-see-crime-severity.md](12-see-crime-severity.md) |
+| 31 | See a century of logging | [31-see-a-century-of-logging.md](31-see-a-century-of-logging.md) |
 
 ### Know today's conditions and the outlook
 | # | Intent | File |
@@ -65,6 +66,7 @@ same shape:
 | 21 | Consider the Gulf and Discovery islands fairly | [21-consider-the-small-islands.md](21-consider-the-small-islands.md) |
 | 22 | Search every large parcel for the land we want | [22-search-for-land.md](22-search-for-land.md) |
 | 23 | Inspect a parcel and keep a shortlist | [23-inspect-and-shortlist-a-parcel.md](23-inspect-and-shortlist-a-parcel.md) |
+| 32 | Check what's next door (parks, Crown land, logging) | [32-check-whats-next-door.md](32-check-whats-next-door.md) |
 
 ### Trust it and use it anywhere
 | # | Intent | File |
@@ -77,8 +79,8 @@ same shape:
 ### Proposed (not implemented)
 New drafts go in `proposed/` with the same shape, using **Behaviour (proposed)**, **Open questions** and
 **Touches** (files expected to change) in place of the as-implemented sections. Move a file up into this folder
-and rewrite it as-implemented once it ships. The open ideas are in [../ROADMAP.md](../ROADMAP.md) (logging history,
-story mode, sea level, ongoing costs, Indigenous territories); none has a proposed intent yet.
+and rewrite it as-implemented once it ships. The open ideas are in [../ROADMAP.md](../ROADMAP.md) (story mode, sea
+level, ongoing costs, Indigenous territories); none has a proposed intent yet.
 
 Out of scope: the `video/` explainer films are a separate tooling project that films the app; they are not an
 end-user intent of the application. [../MAP-ATLAS-BLUEPRINT.md](../MAP-ATLAS-BLUEPRINT.md) covers building a new

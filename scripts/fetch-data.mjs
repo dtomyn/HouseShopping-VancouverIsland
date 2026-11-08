@@ -1215,12 +1215,26 @@ const SOURCES = {
     const { buildTsunami } = await import('./tsunami.mjs');
     await buildTsunami({ log, cached, writeOut, round, pool, BBOX, getIsland, PLACES, OUT });
   },
+
+  // A century of logging: every mapped cutblock with its harvest year, plus blocks approved or being logged now
+  // (scripts/neighbours.mjs).
+  async logging() {
+    const { buildLogging } = await import('./neighbours.mjs');
+    await buildLogging({ log, cached, writeOut, round, WFS, BBOX, getIsland, onIsland });
+  },
+
+  // What's next door: parks, Crown land, water and logging around every Land Finder parcel and town, on a 50 m grid
+  // (scripts/neighbours.mjs). Reads the logging and land outputs, so it runs after both.
+  async neighbours() {
+    const { buildNeighbours } = await import('./neighbours.mjs');
+    await buildNeighbours({ log, cached, writeOut, round, WFS, BBOX, getIsland, OUT, PLACES });
+  },
 };
 
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami'];
+const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'logging', 'neighbours'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};

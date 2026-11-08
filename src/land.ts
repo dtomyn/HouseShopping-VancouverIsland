@@ -11,6 +11,7 @@ import { BANDS, NET_COLOR, parcelNet } from './internet';
 import { trailMetresNear } from './trails';
 import { esc } from './html';
 import { gpmText, lpm, wellStrip, wellsNear, yieldColor } from './wells';
+import { NB_CLASSES, Neighbours, loadNeighbours, ringSvg } from './nextdoor';
 
 let trails: Trails | null = null;
 /** Trail density and waterfalls for the Outdoors filters (from the atlas's trails.json). */
@@ -39,6 +40,8 @@ type LandJson = {
 
 type Land = {
   n: number; json: LandJson; pid: string[];
+  /** what's next door (land-neighbours.json), or null when it's missing or no longer lines up with land.json */
+  nb: Neighbours | null;
   num: Record<string, Float32Array>;
   polys: { i: number; ring: [number, number][] }[];
   bounds: [number, number, number, number][];
@@ -118,7 +121,17 @@ async function load(): Promise<Land> {
   }
   num.net50 = net50; num.cell = cell; num.netMbps = netMbps;
   await loadTsunami(json, num);
-  return { n, json, pid: json.cols.pid, num, polys, bounds };
+  // next door: parks, Crown land and logging around each parcel (optional; NaN where missing)
+  const nb = await loadNeighbours(json.cols.pid);
+  for (const k of ['parkM', 'parkI', 'crownM', 'planM', 'planK', 'lastCut', 'onCut', 'cut10'] as const) {
+    const a = new Float32Array(n).fill(NaN);
+    if (nb) for (let i = 0; i < n; i++) { const v = nb.cols[k][i]; if (v != null) a[i] = v; }
+    num[k] = a;
+  }
+  // years since the last cutblock within 1 km; 100 when none is recorded
+  num.since = new Float32Array(n).fill(NaN);
+  if (nb) for (let i = 0; i < n; i++) num.since[i] = Number.isNaN(num.lastCut[i]) ? 100 : Math.max(0, Math.floor(nb.asOf) - num.lastCut[i]);
+  return { n, json, pid: json.cols.pid, nb, num, polys, bounds };
 }
 
 /**
@@ -166,8 +179,11 @@ type F = {
   trail: number; fall: number;
   wGpm: number; wDepth: number; wLow: number; aquifer: 'any' | 'over';
   net: 'any' | '25' | '50' | '75'; cell: 'any' | 'yes';
+  park: 'any' | 'only'; crown: 'any' | 'only'; logged: number; plan: 'any' | 'avoid';
   budget: number;
 };
+/** "Backs onto": the land is within this many metres of the parcel (the 50 m grid, and a road or creek between). */
+const NEXT_DOOR_M = 100;
 const ANY_MIN = 120, ANY_FIRES = 200, ANY_SLOPE = 45, ANY_PGA = 100, ANY_FALL = 40, ANY_WDEPTH = 250, ANY_WLOW = 100;
 const BRIEF: F = {
   acres: 10, water: 'front', kinds: [true, true, true], front: 30, near: 500,
@@ -178,6 +194,7 @@ const BRIEF: F = {
   trail: 0, fall: ANY_FALL,
   wGpm: 0, wDepth: ANY_WDEPTH, wLow: ANY_WLOW, aquifer: 'any',
   net: 'any', cell: 'any',
+  park: 'any', crown: 'any', logged: 0, plan: 'any',
   budget: 2_000_000,
 };
 const LOOSE: F = { ...BRIEF, acres: 5, water: 'any', care: ANY_MIN, grocery: ANY_MIN, gas: ANY_MIN, road: 0, air: 0, ind: 0, threat: 4, flood: false, high: 0, tsunami: 'any' };
@@ -205,7 +222,7 @@ const saveShort = () => { try { localStorage.setItem(SHORT, JSON.stringify(short
 const keyOf = (i: number) => L!.pid[i] || `${L!.num.lon[i].toFixed(5)},${L!.num.lat[i].toFixed(5)}`;
 
 /** One bit per filter; the funnel groups them into stages. */
-const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17, wGpm: 18, wDepth: 19, wLow: 20, aquifer: 21, net: 22, cell: 23, tsunami: 24 } as const;
+const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17, wGpm: 18, wDepth: 19, wLow: 20, aquifer: 21, net: 22, cell: 23, tsunami: 24, park: 25, crown: 26, logged: 27, plan: 28 } as const;
 type Bit = keyof typeof BIT;
 const STAGES: { id: string; label: string; icon: string; bits: Bit[]; c: string }[] = [
   { id: 'size', label: 'Size', icon: '◇', bits: ['acres'], c: '#a3e635' },
@@ -215,6 +232,7 @@ const STAGES: { id: string; label: string; icon: string; bits: Bit[]; c: string 
   { id: 'safe', label: 'Safe', icon: '⛨', bits: ['threat', 'flood', 'tsunami', 'high', 'pga', 'fires'], c: '#fb923c' },
   { id: 'wells', label: 'Wells', icon: '⇣', bits: ['wGpm', 'wDepth', 'wLow', 'aquifer'], c: '#19d3c5' },
   { id: 'outdoors', label: 'Trails', icon: '⛰', bits: ['trail', 'fall'], c: '#34d399' },
+  { id: 'next', label: 'Next door', icon: '❦', bits: ['park', 'crown', 'logged', 'plan'], c: '#e9b872' },
   { id: 'rules', label: 'Place', icon: '⌂', bits: ['slope', 'alr', 'islands'], c: '#f472b6' },
 ];
 
@@ -258,6 +276,12 @@ function maskOf(i: number): number {
   if (f.aquifer === 'over' && !(n.wAq[i] >= 0)) m |= 1 << BIT.aquifer;
   if (f.net !== 'any' && !(n.net50[i] >= NET_BAND[f.net])) m |= 1 << BIT.net;
   if (f.cell === 'yes' && !(n.cell[i] > 0)) m |= 1 << BIT.cell;
+  if (L!.nb) {
+    if (f.park === 'only' && !(n.parkM[i] <= NEXT_DOOR_M)) m |= 1 << BIT.park;
+    if (f.crown === 'only' && !(n.crownM[i] <= NEXT_DOOR_M)) m |= 1 << BIT.crown;
+    if (f.logged > 0 && n.since[i] < f.logged) m |= 1 << BIT.logged;
+    if (f.plan === 'avoid' && !Number.isNaN(n.planM[i])) m |= 1 << BIT.plan;
+  }
   return m;
 }
 
@@ -478,6 +502,7 @@ const BIT_NAME: Record<Bit, string> = {
   acres: 'size', water: 'water', care: 'health care', grocery: 'groceries', gas: 'gas', road: 'busy road', air: 'airport', ind: 'industry',
   threat: 'wildfire threat', flood: 'floodplain', high: 'high ground', pga: 'shaking', fires: 'fire history', slope: 'slope', alr: 'farmland reserve', islands: 'island', trail: 'trails nearby', fall: 'waterfall distance', tsunami: 'tsunami hazard',
   wGpm: 'well yield', wDepth: 'well depth', wLow: 'low-yield wells', aquifer: 'aquifer', net: '50/10 internet', cell: 'mobile service',
+  park: 'park next door', crown: 'Crown land next door', logged: 'recent logging nearby', plan: 'planned logging nearby',
 };
 const failedNames = (i: number) => (Object.keys(BIT) as Bit[]).filter((b) => masks[i] & (1 << BIT[b])).map((b) => BIT_NAME[b]);
 
@@ -547,6 +572,15 @@ const SECTIONS: Section[] = [
     id: 'outdoors', title: 'Trails & waterfalls', icon: '⛰', c: '#34d399', rows: [
       { kind: 'range', bit: 'trail', key: 'trail', label: 'Trails to walk', hint: 'Km of mapped footpath and hiking trail within 3 km of the parcel (OpenStreetMap)', min: 0, max: 40, step: 0.5, dir: 'min', value: (i) => L!.num.trail3[i], show: (v) => (v <= 0 ? 'Any' : `≥ ${v.toFixed(v < 10 ? 1 : 0)} km within 3 km`) },
       { kind: 'range', bit: 'fall', key: 'fall', label: 'A waterfall nearby', hint: 'Straight-line distance to the nearest mapped waterfall (OpenStreetMap)', min: 0.5, max: ANY_FALL, step: 0.5, dir: 'max', any: ANY_FALL, value: (i) => L!.num.fallKm[i], show: (v) => (v >= ANY_FALL ? 'Any' : `within ${v.toFixed(v < 10 ? 1 : 0)} km`) },
+    ],
+  },
+  {
+    id: 'next', title: 'Next door', icon: '❦', c: '#e9b872', rows: [
+      { kind: 'custom', bit: 'park', label: '', render: renderNextDoorNote },
+      { kind: 'chips', bit: 'park', key: 'park', label: 'A park next door', hint: 'Backs onto a provincial, national or regional park, ecological reserve or protected area: land that stays wild', options: [['any', 'Either'], ['only', 'Backs onto a park']] },
+      { kind: 'chips', bit: 'crown', key: 'crown', label: 'Crown land next door', hint: 'Backs onto provincial Crown land (Generalized Forest Cover Ownership). Good for privacy, but Crown land can be logged, leased or sold', options: [['any', 'Either'], ['only', 'Backs onto Crown land']] },
+      { kind: 'range', bit: 'logged', key: 'logged', label: 'No recent logging nearby', hint: 'Years since the last mapped cutblock within 1 km of the parcel or on it (BC consolidated cutblocks). The far right is no logging on record', min: 0, max: 60, step: 1, dir: 'min', value: (i) => L!.num.since[i], show: (v) => (v <= 0 ? 'Any' : `none in ${Math.round(v)} yrs`) },
+      { kind: 'chips', bit: 'plan', key: 'plan', label: 'Planned logging', hint: 'Cutblocks approved or being logged on Crown forest tenures within 1 km (private forest plans are not published)', options: [['any', 'Either'], ['avoid', 'None within 1 km']] },
     ],
   },
 ];
@@ -672,6 +706,29 @@ function renderThreat(el: HTMLElement) {
     <label class="lr-check"><input type="checkbox" ${f.unrated ? 'checked' : ''}> Include parcels with no rating <span class="dim">(no rated land on or near it: mostly farms and built-up areas)</span></label>`;
   el.querySelectorAll<HTMLButtonElement>('[data-t]').forEach((b) => b.addEventListener('click', () => { f.threat = +b.dataset.t!; renderThreat(el); refreshAll(); }));
   el.querySelector<HTMLInputElement>('input')!.addEventListener('change', (e) => { f.unrated = (e.target as HTMLInputElement).checked; refreshAll(); });
+}
+
+function renderNextDoorNote(el: HTMLElement) {
+  el.innerHTML = L!.nb ? '' : '<div class="lr-hint">No next-door data yet: run <code>npm run data logging neighbours</code> to build <code>public/data/land-neighbours.json</code>. These filters do nothing until then.</div>';
+}
+
+/** The parcel report's "Next door": a ring of what lies around it, and the nearest park, Crown land and logging. */
+function nextDoorDetail(i: number, m: (label: string, dot: string, v: string, sub: string, good?: boolean | null) => string) {
+  const nb = L!.nb, n = L!.num;
+  if (!nb) return '';
+  const park = Number.isNaN(n.parkI[i]) ? null : nb.parks[n.parkI[i]];
+  const parkName = park ? esc(park[0] || park[1]) : '';
+  const dist = (v: number) => (v <= NEXT_DOOR_M ? 'Next door' : fmtDist(v));
+  const asOf = Math.floor(nb.asOf);
+  const last = n.lastCut[i], on = n.onCut[i];
+  return `<h3>Next door</h3>
+    ${ringSvg(nb.cols.ring[i], nb)}
+    <div class="metric-grid">
+      ${m('Park', NB_CLASSES[2].c, Number.isNaN(n.parkM[i]) ? 'None' : dist(n.parkM[i]), Number.isNaN(n.parkM[i]) ? 'no park or protected area within 1 km' : `${parkName}${park && park[0] ? ` (${esc(park[1].toLowerCase())})` : ''}`, f.park === 'only' ? n.parkM[i] <= NEXT_DOOR_M : null)}
+      ${m('Crown land', NB_CLASSES[3].c, Number.isNaN(n.crownM[i]) ? 'None' : dist(n.crownM[i]), Number.isNaN(n.crownM[i]) ? 'none within 1 km' : 'provincial Crown land: no neighbours, but it can be logged or leased', f.crown === 'only' ? n.crownM[i] <= NEXT_DOOR_M : null)}
+      ${m('Last logged nearby', NB_CLASSES[4].c, Number.isNaN(last) ? 'Not on record' : String(last), Number.isNaN(last) ? 'no cutblock within 1 km in the record' : `${asOf - last} years ago, within 1 km${n.cut10[i] ? ` · ${fmt.ha(n.cut10[i])} logged within 1 km in the last 10 years` : ''}${Number.isNaN(on) ? '' : ` · the parcel itself was logged in ${on}`}`, f.logged > 0 ? n.since[i] >= f.logged : null)}
+      ${m('Planned logging', NB_CLASSES[7].c, Number.isNaN(n.planM[i]) ? 'None' : dist(n.planM[i]), Number.isNaN(n.planM[i]) ? 'no approved or active cutblock within 1 km' : n.planK[i] === 2 ? 'a cutblock being logged now' : 'an approved cutblock, not started yet', f.plan === 'avoid' ? Number.isNaN(n.planM[i]) : null)}
+    </div>`;
 }
 
 function renderFlood(el: HTMLElement) {
@@ -967,6 +1024,7 @@ function renderDetail(i: number) {
       ${(() => { const fl = Number.isNaN(n.fallI[i]) ? null : trails!.falls[n.fallI[i]]; return m('Nearest waterfall', '#8be3ff', Number.isNaN(n.fallKm[i]) ? '—' : `${n.fallKm[i].toFixed(1)} km`, fl ? `${esc(fl.name ?? 'unnamed')}${fl.h ? `, ${Math.round(fl.h)} m drop` : ''}` : '', f.fall >= ANY_FALL || n.fallKm[i] <= f.fall); })()}
     </div>` : ''}
     ${wellsDetail(i, m)}
+    ${nextDoorDetail(i, m)}
     <h3>Quiet</h3>
     <div class="metric-grid">
       ${m('Busy road', '#c084fc', `${n.roadKm[i].toFixed(1)} km`, 'from the quietest spot on the land', n.roadKm[i] >= f.road)}

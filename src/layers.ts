@@ -11,6 +11,7 @@ import { trailsLayer } from './trails';
 import { wellsLayer } from './wells';
 import { internetLayer } from './internet';
 import { tsunamiLayer } from './tsunami';
+import { loggingLayer } from './logging';
 import { esc } from './html';
 
 /** `hovered` is the municipality key under the pointer (town pin or column), if any. */
@@ -2184,5 +2185,5 @@ function islandLayer(data: Data): AtlasLayer {
 }
 
 export function buildLayers(data: Data): AtlasLayer[] {
-  return [islandLayer(data), firesLayer(data), quakesLayer(data), seismicLayer(data), tsunamiLayer(data), riversLayer(data), climateLayer(data), normalsLayer(data), futureLayer(data), populationLayer(data), housingLayer(data), crimeLayer(data), hospitalsLayer(data), smokeLayer(data), wellsLayer(data), internetLayer(data), trailsLayer(data)];
+  return [islandLayer(data), firesLayer(data), quakesLayer(data), seismicLayer(data), tsunamiLayer(data), riversLayer(data), climateLayer(data), normalsLayer(data), futureLayer(data), populationLayer(data), housingLayer(data), crimeLayer(data), hospitalsLayer(data), smokeLayer(data), wellsLayer(data), internetLayer(data), trailsLayer(data), loggingLayer(data)];
 }

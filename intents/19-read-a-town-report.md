@@ -25,6 +25,9 @@ or a "closest towns" link in any details panel.
     small islands), with a chart of those wells as drill holes ([29](29-know-the-well-water-under-a-place.md)).
   - internet: measured home download within 5 km over the past year (and in 2019), the share of homes nearby
     offered 50/10 Mbps, and whether mobile service is reported ([28](28-check-internet-and-cell-coverage.md)).
+  - logging and parks nearby: hectares logged within 5 km in the last 10 years, the share ever logged, approved or
+    active cutblocks, the share in parks, and the nearest named parks, with a button that opens the Logging layer at
+    today ([31](31-see-a-century-of-logging.md), [32](32-check-whats-next-door.md)).
 - Charts of population (dashed = projection), median sale value and the crime index against BC.
 - Opened from the Town Finder, it shows the town's rank and score.
 - Close (×) returns to where it was opened from: the layer, the Town Finder, or the event that linked to it.
@@ -38,5 +41,5 @@ Hazard counts describe history, not a forecast: the card says to check official 
 wildfire-interface maps for any property.
 
 ## Source
-`src/panels.ts` (`renderTownReport`, `outdoorsRow`, `ferryMetric`, `erMetric`), `src/metrics.ts` (`townMetrics`),
+`src/panels.ts` (`renderTownReport`, `outdoorsRow`, `ferryMetric`, `erMetric`), `src/logging.ts` (`loggingTownRow`), `src/metrics.ts` (`townMetrics`),
 `src/main.ts` (`openTown`).
