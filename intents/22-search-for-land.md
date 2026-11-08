@@ -13,7 +13,7 @@ Top-right **Land Finder** button (or `#land` in the URL). It replaces the map's 
 |---|---|
 | The land | Size (5–640 acres, log scale), gentle ground (average slope), farmland reserve (either / avoid / only), island (anywhere / Vancouver Island / small islands) |
 | Waterfront | Ocean, lake or river (any combination); frontage length, or distance to water |
-| Within reach | Drive minutes to the nearest clinic or hospital (or 24/7 ER only), grocery store and gas station |
+| Within reach | Drive minutes to the nearest clinic or hospital (or 24/7 ER only), grocery store and gas station; share of homes offered 50/10 Mbps internet (any / 25%+ / over half / over 75%) and mobile coverage (any / reported) for the parcel's broadband hexagon ([28](28-check-internet-and-cell-coverage.md)) |
 | Quiet | Distance from the parcel's quietest spot to a busy road; from airports and float bases; from industry and quarries |
 | Safety | Wildfire threat rating on or within 500 m; wildfire starts within 5 km since 1990; avoid mapped floodplains; highest ground above sea level; earthquake shaking |
 | Water supply | Median yield and median depth of the registered wells within 1 km; share of them under 2 US gallons a minute; over a mapped aquifer (all off by default; [29](29-know-the-well-water-under-a-place.md)) |

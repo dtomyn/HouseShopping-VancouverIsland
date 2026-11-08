@@ -226,6 +226,32 @@ const SOURCES: Source[] = [
     },
   },
   {
+    id: 'internet', key: 'internet', name: 'Advertised internet', color: '#7dd3fc', group: 'People & money',
+    owner: 'Innovation, Science and Economic Development Canada', title: 'National Broadband Data', url: 'https://open.canada.ca/data/en/dataset/00a331db-121b-445d-b119-35dbbe3eedd9',
+    endpoint: 'ised-isde.canada.ca/app/scr/sittibc/web/api/openData · Map_Data_CSV.zip, Map_Data_Shapefile.zip', licence: OGL_CA,
+    gives: 'For every ~25 km² hexagon: the share of homes providers say can get 50/10 Mbps, mobile service, and who serves it with what.',
+    read: (d) => d.internet && { n: d.internet.hexes.length, what: `${fmt.int(d.internet.hexes.length)} hexagons on the islands, ${fmt.int(sum(d.internet.hexes.map((h) => h[6])))} provider listings (not counting satellite)` },
+    rings: (d) => d.internet ? { [NOW]: { v: 1, label: `${fmt.int(d.internet.hexes.length)} hexagons as providers report them today` } } : {},
+  },
+  {
+    id: 'internet', key: 'internet', name: 'Measured speeds', color: '#38bdf8', group: 'People & money',
+    owner: 'Ookla', title: 'Speedtest® by Ookla® Global Fixed and Mobile Network Performance Maps', url: 'https://github.com/teamookla/ookla-open-data',
+    endpoint: 'ookla-open-data.s3.amazonaws.com/parquet/performance · fixed and mobile tiles by quarter (range reads)', licence: 'CC BY-NC-SA 4.0',
+    gives: 'Average download speeds people measured on home and mobile connections, every quarter since 2019, pooled into the broadband hexagons.',
+    read: (d) => {
+      if (!d.internet) return null;
+      const n = (k: 'fixed' | 'mobile') => sum(d.internet![k].n.map((row) => sum(row)));
+      return { n: n('fixed') + n('mobile'), what: `${fmt.int(n('fixed'))} home and ${fmt.int(n('mobile'))} mobile speed tests over ${d.internet.quarters.length} quarters` };
+    },
+    rings: (d) => {
+      if (!d.internet) return {};
+      const I = d.internet, tests: Record<number, number> = {};
+      I.quarters.forEach((q, i) => { const y = +q.slice(0, 4); tests[y] = (tests[y] ?? 0) + sum(I.fixed.n[i]) + sum(I.mobile.n[i]); });
+      const f = norm(tests, (v, m) => Math.sqrt(v / m));
+      return Object.fromEntries(Object.keys(tests).map((y) => [y, { v: Math.max(0.15, f(+y)), label: `${fmt.int(tests[+y])} speed tests` }]));
+    },
+  },
+  {
     id: 'trails', key: 'trails', name: 'Trails & waterfalls', color: '#34d399', group: 'Outdoors',
     owner: 'OpenStreetMap contributors · Wikidata', title: 'OpenStreetMap footpaths, hiking routes and waterfalls', url: 'https://www.openstreetmap.org/copyright',
     endpoint: 'overpass-api.de · route=hiking|foot, highway=path|footway|bridleway, waterway=waterfall; wikidata.org wbgetentities (P18 photo, P2048 height)', licence: 'ODbL; Wikidata CC0; photos under their Commons licences',

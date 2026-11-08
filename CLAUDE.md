@@ -13,7 +13,7 @@ npm run preview           # serve dist/ at http://localhost:4173
 npm run data [stage…]     # rebuild public/data/*.json from the original sources
 ```
 
-Data stages (in run order): `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails land wells`. Raw downloads cache in `.cache/`; a failing source keeps its old JSON and records the error in `public/data/manifest.json` (shown in the app's Data & sources view). `public/data/` is committed, so the app runs without the pipeline.
+Data stages (in run order): `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails internet land wells`. Raw downloads cache in `.cache/`; a failing source keeps its old JSON and records the error in `public/data/manifest.json` (shown in the app's Data & sources view). `public/data/` is committed, so the app runs without the pipeline.
 
 Videos (Windows only, needs Edge + `.venv` with Kokoro; see README):
 
@@ -49,7 +49,7 @@ Videos (Windows only, needs Edge + `.venv` with Kokoro; see README):
 - **Side panel:** each view swaps the panel via `swapPanel`: `showLayerPanel`, `openTown`, `openFinder`, `openLandFinder`, `openTrailView`, `openEvent`.
 - **`?film`:** with this in the URL, `window.atlas` exposes state and these functions to the video renderer.
 
-**`src/layers.ts`** holds the `AtlasLayer` contract and every data layer except trails and land:
+**`src/layers.ts`** holds the `AtlasLayer` contract and every data layer except trails, internet and land:
 - **The contract:**
   - `id`, `range`, `static`;
   - `build(ctx)` returns the deck layers;
@@ -64,13 +64,14 @@ Videos (Windows only, needs Edge + `.venv` with Kokoro; see README):
 **Other modules:**
 - **`src/events.ts`:** `renderEventPanel`, the detail view for events and map features; date-based context (also happening, previous and next) appears only when `t` is set. Also `momentsList` and `fromTooltip`.
 - **`src/trails.ts` + `src/trailcards.ts`:** the trails layer with its own panel views (`overview | route | fall | path`) and 3D modes (route flight, waterfall orbit, waterfall tour) on MapLibre terrain with Esri imagery. During 3D modes, `trailsCinema()` makes main stop drawing deck layers. Footpath elevations are sampled client-side from Terrarium tiles. `trailcards.ts` is pure HTML/SVG string builders.
+- **`src/internet.ts`:** the Internet & cell layer (ISED broadband hexagons + Ookla speeds by quarter) and the `townNet` / `parcelNet` lookups used by metrics and Land Finder.
 - **`src/land.ts`:** Land Finder, a separate `mode` with its own deck layers, filters and panel, built on `public/data/land.json`.
 - **`src/panels.ts` + `src/metrics.ts`:**
   - `townMetrics(data)` computes every per-town number, consumed by the Town Report, the Town Finder (`CRITERIA` weights) and Land Finder.
   - Home prices go through `trailingMedianPrice` in `src/data.ts`, which ignores zero valuations.
 - **`src/data.ts`:** `loadAll()` fetches `public/data/*.json` and holds the shared types and formatters (`fmt`, `km`, `MONTHS`). **`src/sources.ts`:** the Data & sources view.
 
-**Data pipeline:** `scripts/fetch-data.mjs` holds one async function per stage in `SOURCES`, clips to the island's bounding box, and writes compact JSON. The bigger stages live in `scripts/trails.mjs`, `land.mjs` and `ferries.mjs`. `scripts/municipalities.mjs` lists the 43 towns and islands. The smoke stage streams FTP files through `curl`.
+**Data pipeline:** `scripts/fetch-data.mjs` holds one async function per stage in `SOURCES`, clips to the island's bounding box, and writes compact JSON. The bigger stages live in `scripts/trails.mjs`, `land.mjs`, `ferries.mjs` and `internet.mjs` (range-reads only the island's rows of Ookla's global parquet files through `hyparquet`). `scripts/municipalities.mjs` lists the 43 towns and islands. The smoke stage streams FTP files through `curl`.
 
 **Videos (`video/`):**
 - **How it renders:** `render.py` serves `dist/` and `video/stage/` from one origin, opens the stage in headless Edge with a persistent profile (`video/out/browser-profile`), and steps a virtual clock one frame at a time. It runs a film's scenes (`run(f)` functions calling the `Film` API) and muxes the narration (Kokoro, cached by line text in `video/out/vo`).

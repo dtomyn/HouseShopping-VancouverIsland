@@ -287,6 +287,7 @@ Pick one per layer in the brief:
 | **Glowing web** | Paths with additive glow, moving particles along them, routes coloured by effort | trails, roads, routes |
 | **Beams** | Vertical columns of light sized by a real value | waterfalls, towers |
 | **Map-wide haze** | Full-map tint whose strength follows a regional average for the year | smoke, drought |
+| **Hexagon field** | The region as extruded hexagons on a published grid (shrunk ~20% so seams show), height and colour by a measured value eased between periods, a soft additive glow under each, and gaps (or dark flat cells) where there is nothing; a chip row switches between measures | internet speeds, coverage, any gridded count |
 
 Shared rules:
 
@@ -436,6 +437,7 @@ const order = ['base', /* …stages that others read come first… */, 'deep'];
 - Every output includes a `source` string (publisher, dataset, licence).
 - **A failing stage never breaks the others**: it's logged, the old file stays, and `manifest.json` records `{ ok, updated, lastError, lastAttempt }`, which the sources view shows.
 - Rate-limited services (routing, point-query APIs): batch, sleep between calls, cache each response.
+- Huge global files sorted by a spatial key (e.g. quadkey-sorted parquet): read only the region's rows with HTTP range requests and cache the clipped rows, never the whole file.
 - Big stages live in their own module and receive the helpers as arguments.
 - Feeds that change seasonally (timetables) take the most common value over the next few weeks and fail with a clear message when the feed runs out.
 - Acceptance: `rm -rf .cache && npm run data` completes and `npm run build` passes.

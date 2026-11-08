@@ -17,7 +17,7 @@ Top-right **Town Finder** button.
 
 Criteria: Affordability, Low crime, Low wildfire exposure, Lower shaking hazard, Low quake activity (off by
 default), Mild & warm, Sunnier, Little snow & frost, Close to a hospital, Not ferry-dependent, Clean air, Mild
-future summers, Trails & waterfalls nearby, Retiree community, Services & amenities.
+future summers, Trails & waterfalls nearby, Fast internet, Retiree community, Services & amenities.
 
 ## Behaviour (as implemented)
 - Each criterion is turned into a **percentile rank** across the towns that have a value (robust to outliers; ties

@@ -124,6 +124,18 @@ export type Wells = {
   rows: WellRow[]; aquifers: Aquifer[]; towns: Record<string, WellStats>;
   summary: { vancouverIsland: WellStats; smallIslands: WellStats };
 };
+/**
+ * internet.json: ISED National Broadband Data hexagons (~25 km²) on the islands and Ookla Speedtest results pooled into
+ * them by quarter. hexes: [lon, lat, homes (2021 estimate), 50/10 band 0–4, over 75% offered 5/1 (0/1), technology
+ * bitmask, providers (not satellite), hexagon id]; fixed/mobile: tests-weighted average download (Mbps) and tests, [quarter][hexagon].
+ */
+export type Internet = {
+  source: string; hex: { r: number; angle: number };
+  hexes: [number, number, number, number, number, number, number, string][];
+  quarters: string[];
+  fixed: { d: (number | null)[][]; n: number[][] };
+  mobile: { d: (number | null)[][]; n: number[][] };
+};
 
 export type CrimeSeries = { csi?: Record<string, number>; vcsi?: Record<string, number>; nvcsi?: Record<string, number> };
 
@@ -145,6 +157,7 @@ export type Data = {
   trails: Trails | null;
   ferries: Ferries | null;
   wells: Wells | null;
+  internet: Internet | null;
   manifest: Record<string, { ok: boolean; updated?: string; lastError?: string }>;
 };
 
@@ -161,6 +174,7 @@ async function load<T>(name: string): Promise<T | null> {
 }
 
 export async function loadAll(): Promise<Data> {
+  const internet = load<Internet>('internet');
   const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, wells, manifest] = await Promise.all([
     load<GeoJSON.Feature>('island'),
     load<Muni[]>('municipalities'),
@@ -197,7 +211,7 @@ export async function loadAll(): Promise<Data> {
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, manifest: manifest ?? {} };
 }
 
 let netPromise: Promise<TrailNet | null> | null = null;

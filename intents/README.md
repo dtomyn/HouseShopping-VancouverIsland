@@ -43,6 +43,7 @@ same shape:
 | 14 | Compare what each place's climate feels like | [14-compare-day-to-day-climates.md](14-compare-day-to-day-climates.md) |
 | 15 | See the climate the next 25 years could bring | [15-see-the-climate-ahead.md](15-see-the-climate-ahead.md) |
 | 16 | Know how far emergency care is | [16-know-how-far-emergency-care-is.md](16-know-how-far-emergency-care-is.md) |
+| 28 | Check internet and cell coverage | [28-check-internet-and-cell-coverage.md](28-check-internet-and-cell-coverage.md) |
 
 ### Get outdoors
 | # | Intent | File |

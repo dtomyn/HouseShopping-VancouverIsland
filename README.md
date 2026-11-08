@@ -32,7 +32,7 @@ Optional extras, all covered below:
 
 ## Features
 
-- **Thirteen layers**, from open government data and OpenStreetMap:
+- **Fourteen layers**, from open government data and OpenStreetMap:
 
   | Layer | What you see | Years |
   |---|---|---|
@@ -49,6 +49,7 @@ Optional extras, all covered below:
   | ◆ Crime severity | Statistics Canada Crime Severity Index by police service | 1998 → today |
   | ✚ Hospital access | Hospitals and ERs (24/7 highlighted); town columns = drive minutes to the nearest 24/7 ER; hover a town for its road routes | today (static) |
   | ⇣ Wells & groundwater | Every registered water well (about 35,000, from BC's GWELLS registry) drawn as a drill hole going down beneath the map to its real depth (×10, ×30 or ×100), coloured by the yield the driller measured, with low-yield wells as hollow rings and the standing water level marked; tilt the map to look at a forest of drill holes. The timeline drills them by construction year. Mapped aquifers lie flat underneath, coloured by productivity. The panel ranks every town and island by typical depth and yield, and shows how much drier the small islands are | 1900 → today |
+  | ⌁ Internet & cell | The islands as glowing 3D hexagon columns (~25 km² each): height and colour are the average download Speedtest users measured over the past year, home or mobile, playing quarter by quarter; dark red cells are homes where providers report neither 50/10 Mbps nor mobile service; an *Advertised 50/10* view shows what providers report to ISED. The panel names the towns whose speeds jumped most and the dead zones | 2019 → today (quarterly) |
   | ⛰ Trails & waterfalls | Every mapped footpath as a glowing web with hikers moving along it; named hiking routes coloured by effort; waterfalls as beams of falling water, as tall as their drop where it's known. Click a route or any footpath for its elevation profile and a **3D flight** along it over satellite imagery on real terrain; click a waterfall to **orbit it in 3D**; **Waterfall tour** flies to each photographed fall in turn; a **Satellite** switch lays imagery over the map | mapped today (static) |
 
 - **The Layer menu**: the atlas starts on just the island. Each layer's switch puts it on the map or takes it off. Clicking a layer's name makes it the *picked* layer, whose story fills the side panel and whose years drive the timeline; the other layers stay on. Switching off the picked layer takes its timeline away too, and *Clear the map* at the top turns everything off. The `+N` on the Layer button counts the other layers on the map.
@@ -69,7 +70,8 @@ Optional extras, all covered below:
   - projected hot days, temperature, frost and summer rain for the 2050s, with model ranges;
   - the trails and waterfalls nearby, each opening on the map;
   - the wells nearby (within 5 km, or the whole island for the small islands): median depth and yield, the share of low-yield wells, and every well drawn as a drill hole, shallowest to deepest.
-- **Town Finder**: weight what matters to you and every municipality is ranked and raised as 3D columns on the map. The criteria are affordability, low crime, low wildfire exposure, lower shaking hazard, low quake activity, mild & warm, sunnier, little snow & frost, close to a hospital, not ferry-dependent, clean air, mild future summers, trails & waterfalls nearby, retiree community, and services & amenities. Presets set them all at once, and your weights are remembered in your browser.
+  - measured home internet speed within 5 km (and in 2019), the share of homes nearby offered 50/10 Mbps, and mobile service.
+- **Town Finder**: weight what matters to you and every municipality is ranked and raised as 3D columns on the map. The criteria are affordability, low crime, low wildfire exposure, lower shaking hazard, low quake activity, mild & warm, sunnier, little snow & frost, close to a hospital, not ferry-dependent, clean air, mild future summers, trails & waterfalls nearby, fast internet, retiree community, and services & amenities. Presets set them all at once, and your weights are remembered in your browser.
 - **Gulf and Discovery islands**: Salt Spring, Galiano, Thetis, Gabriola, Lasqueti, Denman and Quadra are included alongside the island's municipalities (list in `scripts/municipalities.mjs`). Every map layer is clipped to them too. They are unincorporated, so a few figures come from other sources and are labelled in their reports:
   - population and 65+ share from the 2021 Census (dissemination areas on each island)
   - crime from the island's rural RCMP detachment (Salt Spring, Gabriola, Quadra; Galiano shares the Outer Gulf Islands detachment)
@@ -79,7 +81,7 @@ Optional extras, all covered below:
 - **Land Finder** (button top right, or `#land` in the URL): every private parcel of 5+ acres on Vancouver Island and the shortlisted islands (about 29,000, from ParcelMap BC), filtered live. Every criterion is a slider or switch, starting from our brief: 10+ acres, waterfront, within 45 minutes' drive of health care, groceries and gas, quiet, and safe:
   - **The land**: size, slope, Agricultural Land Reserve share, Vancouver Island or the small islands
   - **Waterfront**: ocean, lake or river frontage (boundary within 35 m of the Freshwater Atlas shoreline) and how much, or distance to water
-  - **Within reach**: drive minutes to the nearest clinic or hospital (or 24/7 ER), grocery store and gas station (OSRM on OpenStreetMap roads)
+  - **Within reach**: drive minutes to the nearest clinic or hospital (or 24/7 ER), grocery store and gas station (OSRM on OpenStreetMap roads); the share of homes offered 50/10 Mbps internet and whether mobile service is reported, for the parcel's ~25 km² broadband hexagon (both off by default)
   - **Quiet**: distance from the quietest spot on the land to a busy road, from airports and float bases, and from industry and quarries
   - **Safety**: BC Wildfire Service strategic threat rating on or within 500 m of the parcel, fire starts nearby since 1990, mapped floodplains, highest ground above sea level, earthquake shaking hazard
   - **Water supply**: median yield and depth of the registered wells within 1 km, the share of them that gave under 2 US gallons a minute, and whether the parcel sits over a mapped aquifer (all off by default; the per-parcel figures are in `public/data/land-wells.json`)
@@ -117,11 +119,11 @@ npm run data trails       # trails, routes and waterfalls (about 7 minutes from 
 npm run data ferries      # ferry links from BC Ferries' timetable feed (re-run when the season changes)
 ```
 
-The stages are `island`, `ferries`, `fires`, `quakes`, `rivers`, `climate`, `normals`, `population`, `housing`, `crime`, `hospitals`, `seismic`, `smoke`, `future`, `trails`, `land` and `wells` (which reads `land.json` and writes the parcels' well figures to their own `land-wells.json`). `scripts/fetch-data.mjs` downloads from the sources below, clips everything to the island, and writes compact JSON to `public/data/`.
+The stages are `island`, `ferries`, `fires`, `quakes`, `rivers`, `climate`, `normals`, `population`, `housing`, `crime`, `hospitals`, `seismic`, `smoke`, `future`, `trails`, `internet`, `land` and `wells` (which reads `land.json` and writes the parcels' well figures to their own `land-wells.json`). `scripts/fetch-data.mjs` downloads from the sources below, clips everything to the island, and writes compact JSON to `public/data/`.
 
 - **Caching:** raw downloads are cached in `.cache/`, so re-runs are quick. Delete it to fetch everything fresh.
 - **When a source is down:** that layer keeps its existing data, and **Data & sources** in the app shows its status.
-- **First run:** a full run from an empty cache downloads several gigabytes and takes a while. The smoke stage alone streams about 100 MB a year from the province's FTP server through `curl`.
+- **First run:** a full run from an empty cache downloads several gigabytes and takes a while. The smoke stage alone streams about 100 MB a year from the province's FTP server through `curl`. The internet stage reads only the island's rows of Ookla's global quarterly files with HTTP range requests (20–40 MB per file instead of ~200 MB; about 4 minutes in all).
 
 ### Dev container (optional)
 
@@ -191,6 +193,8 @@ Rendering takes about 15–25 seconds of real time per second of film, so a one-
 | Home prices | BC Ministry of Finance, Property Transfer Tax data | OGL – British Columbia |
 | Crime | Statistics Canada Table 35-10-0063-01 | Statistics Canada Open Licence |
 | Hospital access | BC Ministry of Health / HealthLinkBC “Hospitals in BC” + “Emergency Rooms in BC” (BC Data Catalogue); drive times from the public OSRM demo router on OpenStreetMap roads | OGL – British Columbia; routes © OpenStreetMap contributors (ODbL) |
+| Internet & cell (advertised) | ISED Canada *National Broadband Data*: 50/10 Mbps availability bands, 5/1 availability, 2021 dwellings and providers by technology for each ~25 km² hexagon (`ised-isde.canada.ca/app/scr/sittibc/web/api/openData`, `Map_Data_CSV.zip` and `Map_Data_Shapefile.zip`) | OGL – Canada |
+| Internet & cell (measured) | Speedtest® by Ookla® *Global Fixed and Mobile Network Performance Maps*: quarterly zoom-16 tiles since 2019 (`ookla-open-data.s3.amazonaws.com/parquet/performance`), island rows read by HTTP range request and pooled into the ISED hexagons | CC BY-NC-SA 4.0 (non-commercial; this atlas is) |
 | Coastline | BC Freshwater Atlas islands | OGL – British Columbia |
 | Ferries | BC Ferries GTFS timetable feed, maintained by Trillium Solutions (`data.trilliumtransit.com/gtfs/bcferries-bc-ca/bcferries-bc-ca.zip`, re-fetched each month); Lasqueti from Western Pacific Marine's timetable, typed by hand | Public feed, no licence stated |
 | Land Finder parcels | ParcelMap BC parcel fabric (private parcels of 5+ acres) | OGL – British Columbia |
@@ -203,7 +207,7 @@ Basemap © OpenStreetMap contributors © CARTO. Terrain tiles: Mapzen / AWS Open
 
 ## Roadmap
 
-Built so far from the original plan: climate normals, hospital access, wildfire smoke, future climate and earthquake shaking hazard. Still open: a century of logging, a guided story mode, sea level, tsunami zones and a Cascadia scenario, ongoing costs (property tax and rent), and Indigenous territories and place names. The details and a suggested build order are in [ROADMAP.md](ROADMAP.md). [MAP-ATLAS-BLUEPRINT.md](MAP-ATLAS-BLUEPRINT.md) describes how to build a new atlas in the same style for another region.
+Built so far from the original plan: climate normals, hospital access, wildfire smoke, future climate and earthquake shaking hazard; since then, internet and cell coverage. Still open: a century of logging, a guided story mode, sea level, tsunami zones and a Cascadia scenario, ongoing costs (property tax and rent), and Indigenous territories and place names. The details and a suggested build order are in [ROADMAP.md](ROADMAP.md). [MAP-ATLAS-BLUEPRINT.md](MAP-ATLAS-BLUEPRINT.md) describes how to build a new atlas in the same style for another region.
 
 ## Caveats
 
@@ -213,5 +217,6 @@ This is an exploration tool, not professional advice:
 - Hazard counts describe history, not risk forecasts.
 - Trails can be closed, overgrown, on private land or seasonal.
 - Well yields are the driller's short test when each well was finished, not a long-term supply, and nearby wells are a guide, not a promise for a new well. Older wells are under-counted, and the registry's 0 yields are treated as not recorded.
+- Internet availability is what providers report for a ~25 km² hexagon, not a specific address; measured speeds depend on the plans people bought and their Wi-Fi. Ask the provider about the address before buying.
 
 For a specific property, check the official floodplain, tsunami and wildfire-interface maps.

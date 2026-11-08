@@ -5,6 +5,7 @@ import { lineChart } from './charts';
 import { esc } from './html';
 import { CRITERIA, TownMetrics, erFerryWait, rankTowns, townMetrics } from './metrics';
 import { drawTownWells, wellsTownRow } from './wells';
+import { internetMetric } from './internet';
 
 const STORE_KEY = 'island-atlas:weights';
 
@@ -53,6 +54,7 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
       ${erMetric(t, data, metric, na)}
       ${smokeMetric(t, data, metric, na)}
       ${ferryMetric(t, metric)}
+      ${internetMetric(data, m, metric, na)}
     </div>
     ${feelsRow(t, data, metric, na)}
     ${futureRow(t, data, metric)}

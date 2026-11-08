@@ -1186,6 +1186,13 @@ const SOURCES = {
     await buildTrails({ log, cached, writeOut, round, distKm, pool, BBOX, getIsland, onIsland, PLACES });
   },
 
+  // Internet & cell coverage: ISED's advertised availability by hexagon, and Ookla's measured speeds
+  // by quarter pooled into the same hexagons (scripts/internet.mjs).
+  async internet() {
+    const { buildInternet } = await import('./internet.mjs');
+    await buildInternet({ log, cached, writeOut, round, pool, BBOX, getIsland, onIsland });
+  },
+
   // Land Finder: private parcels of 5+ acres, scored for waterfront, quiet, safety and drive times to
   // health care, groceries and gas (scripts/land.mjs). Reads the island, fires, hospitals, seismic and
   // normals outputs, so it runs last.
@@ -1205,7 +1212,7 @@ const SOURCES = {
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'land', 'wells'];
+const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};
