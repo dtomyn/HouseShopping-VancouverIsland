@@ -10,12 +10,12 @@ Top-right **Town Finder** button.
 ## Inputs & controls
 | Control | Effect |
 |---|---|
-| 15 sliders, 0–5 | Weight of each criterion (0 = ignore). Each has a hint saying exactly what it measures. |
+| 16 sliders, 0–5 | Weight of each criterion (0 = ignore). Each has a hint saying exactly what it measures. |
 | Presets | *Balanced* (the defaults), *On a budget*, *Sun & safety*, *Quiet & low-risk*. |
 | A town in the ranking | Opens its report ([19](19-read-a-town-report.md)); closing returns to the ranking. |
 | × | Leaves the Town Finder. |
 
-Criteria: Affordability, Low crime, Low wildfire exposure, Lower shaking hazard, Low quake activity (off by
+Criteria: Affordability, Low crime, Low wildfire exposure, Lower shaking hazard, Low tsunami exposure, Low quake activity (off by
 default), Mild & warm, Sunnier, Little snow & frost, Close to a hospital, Not ferry-dependent, Clean air, Mild
 future summers, Trails & waterfalls nearby, Fast internet, Retiree community, Services & amenities.
 

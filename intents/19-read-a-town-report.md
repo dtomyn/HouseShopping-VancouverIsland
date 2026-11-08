@@ -13,6 +13,7 @@ or a "closest towns" link in any details panel.
   the area it covers:
   - median sale value (estimated for islands) and 5-year change; population and growth; share aged 65+;
   - Crime Severity Index; wildfire starts and area burned nearby; felt-size quakes nearby; shaking hazard;
+    tsunami notification zone and low coastal ground nearby ([30](30-know-where-a-tsunami-could-reach.md));
   - climate (nearest station, warming trend); sunshine, rain days, frost days and snowfall from the 1981–2010
     normals; smoky days a year;
   - the drive to the nearest 24/7 emergency room (and a closer limited-hours option); for islands, the ferry

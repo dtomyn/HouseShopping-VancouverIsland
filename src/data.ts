@@ -57,6 +57,27 @@ export type Seismic = {
   towns: Record<string, [number, number, number]>;
 };
 /**
+ * Tsunami exposure (scripts/tsunami.mjs). Towns: BC notification zone of the nearest coast; `low`, the % of ground
+ * within `townRadiusM` of the centre that is low coastal ground (below `screenM`, within `nearSeaM` of the sea);
+ * `study`/`inHazard`/`mappedHaz` where a published hazard map covers the town.
+ */
+export type TsunamiTown = { zone: string | null; low: number; lowKm2: number; centreM: number; study?: string; inHazard?: boolean; mappedHaz?: number };
+export type TsunamiArea = { id: string; kind: 'local' | 'distant'; name: string; where: string; publisher: string; licence: string; polygons: number };
+export type Tsunami = {
+  source: string; screenM: number; nearSeaM: number; townRadiusM: number; groundKm2: number;
+  zones: { zone: string; label: string; color: string }[];
+  areas: TsunamiArea[];
+  towns: Record<string, TsunamiTown>;
+};
+/** The tsunami layer's shapes and cells, loaded the first time it is shown. Cells index a z`z` Web Mercator pixel grid from tile (x0, y0), delta-encoded. */
+export type TsunamiMap = {
+  zones: { zone: string; label: string; color: string; polys: [number, number][][][] }[];
+  areas: { id: string; polys: [number, number][][][] }[];
+  z: number; x0: number; y0: number; w: number; maxS: number;
+  ground: { idx: number[]; e: number[]; s: number[] };
+  wave: { idx: number[]; s: number[] };
+};
+/**
  * BC ENV verified hourly PM2.5, reduced to station-years. y: year -> [days with a daily mean over
  * `threshold`, highest daily mean µg/m³, share of days with data, days over in May–Oct]; the counts
  * are null when under 75% of the year had data.
@@ -152,6 +173,7 @@ export type Data = {
   crime: { munis: Record<string, CrimeSeries>; bc: CrimeSeries; source: string } | null;
   hospitals: { facilities: Facility[]; towns: Record<string, Trip[]>; source: string; routing: string; routingSource: string | null } | null;
   seismic: Seismic | null;
+  tsunami: Tsunami | null;
   smoke: Smoke | null;
   future: Future | null;
   trails: Trails | null;
@@ -175,7 +197,7 @@ async function load<T>(name: string): Promise<T | null> {
 
 export async function loadAll(): Promise<Data> {
   const internet = load<Internet>('internet');
-  const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, wells, manifest] = await Promise.all([
+  const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, wells, manifest, tsunami] = await Promise.all([
     load<GeoJSON.Feature>('island'),
     load<Muni[]>('municipalities'),
     load<any>('fires'),
@@ -194,6 +216,7 @@ export async function loadAll(): Promise<Data> {
     load<Ferries>('ferries'),
     load<Wells>('wells'),
     load<any>('manifest'),
+    load<Tsunami>('tsunami'),
   ]);
 
   // Flatten multipolygon perimeters so each render item is a single polygon.
@@ -211,12 +234,16 @@ export async function loadAll(): Promise<Data> {
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, manifest: manifest ?? {} };
 }
 
 let netPromise: Promise<TrailNet | null> | null = null;
 /** The full footpath network is a few MB, so it loads the first time the trails layer is shown. */
 export const loadTrailNet = () => (netPromise ??= load<TrailNet>('trails-net'));
+
+let tsunamiMapPromise: Promise<TsunamiMap | null> | null = null;
+/** The tsunami layer's shapes and low-ground cells (~1.5 MB), loaded the first time the layer is shown. */
+export const loadTsunamiMap = () => (tsunamiMapPromise ??= load<TsunamiMap>('tsunami-map'));
 
 // ---------------------------------------------------------------------------------------------
 // shared helpers

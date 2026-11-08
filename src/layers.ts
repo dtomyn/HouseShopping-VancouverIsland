@@ -10,6 +10,7 @@ import { NormalVar, islandAnomalies, slope, townMetrics } from './metrics';
 import { trailsLayer } from './trails';
 import { wellsLayer } from './wells';
 import { internetLayer } from './internet';
+import { tsunamiLayer } from './tsunami';
 import { esc } from './html';
 
 /** `hovered` is the municipality key under the pointer (town pin or column), if any. */
@@ -2103,13 +2104,22 @@ function smokeLayer(data: Data): AtlasLayer {
 /** Curated events that aren’t derivable from the datasets. */
 export const CURATED_EVENTS: TimedEvent[] = [
   {
-    t: 1964.24, layer: '*', title: '1964 — Tsunami floods Port Alberni',
-    body: 'Waves from the Great Alaska Earthquake funnelled up Alberni Inlet overnight on 27–28 March, damaging hundreds of homes in Port Alberni.',
-    lon: -124.81, lat: 49.23, zoom: 9.5,
-    stats: [{ v: 'M9.2', l: 'the Great Alaska Earthquake' }, { v: '27–28 Mar', l: 'the waves arrived overnight' }],
-    sections: [{ title: 'Why it matters here', text: 'Alberni Inlet narrows as it runs inland, piling a tsunami higher by the time it reaches the head of the inlet. Port Alberni now has tsunami sirens and mapped inundation zones: check them before buying low-lying property.' }],
-    sources: [{ label: '1964 Alaska earthquake (Wikipedia)', url: 'https://en.wikipedia.org/wiki/1964_Alaska_earthquake' }],
-    layers: ['quakes'],
+    t: 1964.24, layer: '*', kind: 'Tsunami', title: '1964 — Tsunami floods Port Alberni',
+    body: 'Waves from the Great Alaska Earthquake reached Tofino, then ran some 40 km up Alberni Inlet and struck Port Alberni twice overnight on 27–28 March, washing away 55 homes and damaging 375 more.',
+    // looking up Alberni Inlet from its mouth toward Port Alberni at the head
+    lon: -124.87, lat: 49.16, zoom: 9.5,
+    stats: [{ v: 'M9.2', l: 'the Great Alaska Earthquake, 27 March, 5:36 p.m. Alaska time' }, { v: '55', l: 'homes washed away in Port Alberni' }, { v: '375', l: 'more homes damaged' }, { v: '3 m', l: 'above the high-water mark' }],
+    sections: [
+      { title: 'What happened', text: 'The earthquake struck Prince William Sound, Alaska, nearly 2,000 km away in a straight line. Its tsunami crossed the Gulf of Alaska, reached the exposed west coast at Tofino and travelled up the long, narrow Alberni Inlet to Port Alberni at its head. There the water rose about 30 cm in a minute, to about 3 m above the high-water mark, and the town was hit twice. About 375 homes were damaged and 55 washed away, yet no one was hurt. Damage across British Columbia was estimated at about CA$10 million.' },
+      { title: 'Why Alberni Inlet funnels a tsunami', text: 'The inlet is a fjord about 40 km long that narrows and shallows toward Port Alberni. A wave entering its mouth is squeezed into less and less water, so it grows taller as it goes, and the inlet’s length lets the water slosh back and forth for hours. Ocean Networks Canada’s modelling still names Port Alberni, with Boundary Bay and the north-west coast, as where a local Cascadia tsunami would hit hardest.' },
+      { title: 'Distant versus local', text: 'In 1964 the danger came from far away, so there were hours between the quake and the waves. A Cascadia earthquake just off the coast would bring the first waves to the outer north-west coast in about 20 minutes (Ocean Networks Canada, 2023): the shaking itself is the warning. Turn on Tsunami zones to see the notification zones and the low ground near the sea.' },
+    ],
+    sources: [
+      { label: '1964 Alaska earthquake (Wikipedia)', url: 'https://en.wikipedia.org/wiki/1964_Alaska_earthquake' },
+      { label: 'Port Alberni: history (Wikipedia)', url: 'https://en.wikipedia.org/wiki/Port_Alberni' },
+      { label: 'Kouhi et al. (2023), tsunami hazard along BC coastlines, Ocean Networks Canada', url: 'https://tos.org/oceanography/article/assessment-of-tsunami-hazard-along-british-columbia-coastlines-from-coseismic-sources' },
+    ],
+    layers: ['quakes', 'tsunami'],
   },
   {
     t: 2021.49, layer: '*', title: 'June 2021 — The heat dome',
@@ -2174,5 +2184,5 @@ function islandLayer(data: Data): AtlasLayer {
 }
 
 export function buildLayers(data: Data): AtlasLayer[] {
-  return [islandLayer(data), firesLayer(data), quakesLayer(data), seismicLayer(data), riversLayer(data), climateLayer(data), normalsLayer(data), futureLayer(data), populationLayer(data), housingLayer(data), crimeLayer(data), hospitalsLayer(data), smokeLayer(data), wellsLayer(data), internetLayer(data), trailsLayer(data)];
+  return [islandLayer(data), firesLayer(data), quakesLayer(data), seismicLayer(data), tsunamiLayer(data), riversLayer(data), climateLayer(data), normalsLayer(data), futureLayer(data), populationLayer(data), housingLayer(data), crimeLayer(data), hospitalsLayer(data), smokeLayer(data), wellsLayer(data), internetLayer(data), trailsLayer(data)];
 }

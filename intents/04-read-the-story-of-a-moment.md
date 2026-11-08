@@ -7,7 +7,9 @@ heat dome) and read its story with context, so that I understand what happened, 
 ## Where
 - Diamond markers on the timeline.
 - The **event ticker**: one line docked on the timeline's top edge as playback crosses an event, with **Details ›**.
-- **Key moments**: a list at the end of each layer's story panel.
+- **Key moments**: a list at the end of each layer's story panel: the layer's own events, island-wide events in a
+  time layer's years, and any island-wide event that names the layer in its `layers` (so the 1964 tsunami appears
+  on the static *Tsunami zones* layer).
 
 ## Behaviour (as implemented)
 - Opening an event stops playback, moves the timeline to its date, flies the map there, sends a shockwave, and

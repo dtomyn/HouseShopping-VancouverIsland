@@ -6,6 +6,7 @@ import { esc } from './html';
 import { CRITERIA, TownMetrics, erFerryWait, rankTowns, townMetrics } from './metrics';
 import { drawTownWells, wellsTownRow } from './wells';
 import { internetMetric } from './internet';
+import { CASCADIA_OUTER_COAST_MIN } from './tsunami';
 
 const STORE_KEY = 'island-atlas:weights';
 
@@ -50,6 +51,7 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
       ${metric('Area burned nearby', '#ff8a3d', fmt.ha(t.burnedHa25km), 'mapped within 25 km since 1950')}
       ${metric('Felt-size quakes', '#f9d65c', fmt.int(t.quakes75km), 'M4+ within 75 km since 1970')}
       ${data.seismic ? metric('Shaking hazard', '#e86cff', t.shaking ? `${Math.round(t.shaking.pga2 * 100)}% of g` : na, t.shaking ? 'peak ground shaking with a 2% chance in 50 years (NRCan 2020)' : '') : ''}
+      ${data.tsunami ? tsunamiMetric(t, data, metric, na) : ''}
       ${metric('Climate', '#f25f5c', t.climate ? `${t.climate.meanTemp.toFixed(1)} °C` : na, t.climate ? `${t.climate.precip ? `${Math.round(t.climate.precip)} mm/yr · ` : ''}${t.climate.name} (${Math.round(t.climate.dist)} km)` : '')}
       ${erMetric(t, data, metric, na)}
       ${smokeMetric(t, data, metric, na)}
@@ -143,6 +145,20 @@ function erMetric(t: TownMetrics, data: Data, metric: (l: string, dot: string, v
 }
 
 /** Days a year over the BC 24-hour PM2.5 objective at the nearest air monitor. */
+/** Tsunami: notification zone, low coastal ground near the centre, a published hazard map if one covers the town. */
+function tsunamiMetric(t: TownMetrics, data: Data, metric: (l: string, dot: string, v: string, sub: string) => string, na: string) {
+  const z = t.tsunami;
+  if (!z) return metric('Tsunami', '#38e1ff', na, '');
+  const study = z.study ? data.tsunami?.areas.find((a) => a.id === z.study) : null;
+  const parts = [
+    z.zone ? `${esc(data.tsunami?.zones.find((x) => x.zone === z.zone)?.label ?? '')} notification zone` : 'inland: in no notification zone',
+    `${Math.round(z.low)}% of the ground within 2 km is low and near the sea`,
+    study ? `centre ${z.inHazard ? '<b>inside</b>' : 'outside'} the mapped hazard area: ${esc(study.name)}` : '',
+    z.zone === 'C' ? `Cascadia: first waves reach the outer north-west coast in about ${CASCADIA_OUTER_COAST_MIN} min (ONC 2023); no published time for this town` : '',
+  ].filter(Boolean);
+  return metric('Tsunami', '#38e1ff', z.zone ? `Zone ${esc(z.zone)}` : 'None', parts.join(' · '));
+}
+
 function smokeMetric(t: TownMetrics, data: Data, metric: (l: string, dot: string, v: string, sub: string) => string, na: string) {
   if (!data.smoke) return '';
   const s = t.smoke, c = '#c9a27e';
