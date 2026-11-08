@@ -22,6 +22,8 @@ or a "closest towns" link in any details panel.
   - trails and waterfalls nearby, each opening on the map;
   - wells nearby: median depth and yield and the share of low-yield wells, within 5 km (or the whole island for the
     small islands), with a chart of those wells as drill holes ([29](29-know-the-well-water-under-a-place.md)).
+  - internet: measured home download within 5 km over the past year (and in 2019), the share of homes nearby
+    offered 50/10 Mbps, and whether mobile service is reported ([28](28-check-internet-and-cell-coverage.md)).
 - Charts of population (dashed = projection), median sale value and the crime index against BC.
 - Opened from the Town Finder, it shows the town's rank and score.
 - Close (×) returns to where it was opened from: the layer, the Town Finder, or the event that linked to it.

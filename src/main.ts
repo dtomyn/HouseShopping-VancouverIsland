@@ -13,7 +13,7 @@ import { eventColor, eventDate, eventLayers, fromTooltip, momentsList, renderEve
 import { loadWeights, renderFinder, renderTownReport } from './panels';
 import { openSources, sourcesOpen } from './sources';
 import { Ranked } from './metrics';
-import { closeLand, landClick, landHover, landKey, landLayers, openLand, setLandTrails, setLandWells } from './land';
+import { closeLand, landClick, landHover, landKey, landLayers, openLand, setLandInternet, setLandTrails, setLandWells } from './land';
 import { bindTrails, flyTrailView, goTrailView, leaveTrails, setTrailView, trailsCinema, type TrailView } from './trails';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
@@ -29,7 +29,7 @@ const MUNI_WHEN_FOCUSED = new Set(['hospitals', 'seismic', 'future']);
 const LAYER_GROUPS: { name: string; ids: string[] }[] = [
   { name: 'Base map', ids: ['island'] },
   { name: 'History on the timeline', ids: ['fires', 'quakes', 'rivers', 'climate', 'smoke', 'wells'] },
-  { name: 'Towns & living', ids: ['population', 'housing', 'crime', 'hospitals'] },
+  { name: 'Towns & living', ids: ['population', 'housing', 'crime', 'hospitals', 'internet'] },
   { name: 'Outdoors', ids: ['trails'] },
   { name: 'Hazard & climate outlook', ids: ['seismic', 'normals', 'future'] },
 ];
@@ -834,6 +834,7 @@ async function boot() {
   layers = buildLayers(data);
   setLandTrails(data.trails);
   setLandWells(data.wells);
+  setLandInternet(data.internet);
   byId = Object.fromEntries(layers.map((l) => [l.id, l]));
   events = [...layers.flatMap((l) => (l.available ? l.events() : [])), ...CURATED_EVENTS].sort((a, b) => a.t - b.t);
   state.time = byId.fires.range[0];

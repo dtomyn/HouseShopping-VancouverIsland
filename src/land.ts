@@ -6,7 +6,8 @@ import * as d3 from 'd3';
 import type * as maplibregl from 'maplibre-gl';
 import { ArcLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import type { Layer, PickingInfo } from '@deck.gl/core';
-import { Trails, Wells, fmt } from './data';
+import { Internet, Trails, Wells, fmt } from './data';
+import { BANDS, NET_COLOR, parcelNet } from './internet';
 import { trailMetresNear } from './trails';
 import { esc } from './html';
 import { gpmText, lpm, wellStrip, wellsNear, yieldColor } from './wells';
@@ -19,6 +20,9 @@ let wells: Wells | null = null;
 export function setLandWells(w: Wells | null) { wells = w; }
 type LandWells = { km: number; lowGpm: number; count: number; pid: string[]; n: number[]; depth: (number | null)[]; gpm: (number | null)[]; low: (number | null)[]; aq: number[]; own: number[] };
 let landWells: LandWells | null = null;
+let internet: Internet | null = null;
+/** Broadband hexagons for the internet filters (from the atlas's internet.json). */
+export function setLandInternet(i: Internet | null) { internet = i; }
 
 type Cat = 'care' | 'er' | 'grocery' | 'gas';
 type Poi = [string, number, number];
@@ -106,6 +110,13 @@ async function load(): Promise<Land> {
     }
   } catch { /* no well prospects: the Water supply filters stay at Any */ }
   Object.assign(num, wl);
+  // internet, looked up here in the broadband hexagons: the 50/10 band (0–4), mobile service (0/1), measured home Mbps
+  const net50 = new Float32Array(n).fill(NaN), cell = new Float32Array(n).fill(NaN), netMbps = new Float32Array(n).fill(NaN);
+  if (internet) for (let i = 0; i < n; i++) {
+    const p = parcelNet(internet, num.lon[i], num.lat[i]);
+    if (p) { net50[i] = p.band; cell[i] = p.mobile ? 1 : 0; if (p.fixed != null) netMbps[i] = p.fixed; }
+  }
+  num.net50 = net50; num.cell = cell; num.netMbps = netMbps;
   return { n, json, pid: json.cols.pid, num, polys, bounds };
 }
 
@@ -121,6 +132,7 @@ type F = {
   slope: number; alr: 'any' | 'avoid' | 'only'; islands: 'any' | 'main' | 'islands';
   trail: number; fall: number;
   wGpm: number; wDepth: number; wLow: number; aquifer: 'any' | 'over';
+  net: 'any' | '25' | '50' | '75'; cell: 'any' | 'yes';
   budget: number;
 };
 const ANY_MIN = 120, ANY_FIRES = 200, ANY_SLOPE = 45, ANY_PGA = 100, ANY_FALL = 40, ANY_WDEPTH = 250, ANY_WLOW = 100;
@@ -132,6 +144,7 @@ const BRIEF: F = {
   slope: ANY_SLOPE, alr: 'any', islands: 'any',
   trail: 0, fall: ANY_FALL,
   wGpm: 0, wDepth: ANY_WDEPTH, wLow: ANY_WLOW, aquifer: 'any',
+  net: 'any', cell: 'any',
   budget: 2_000_000,
 };
 const LOOSE: F = { ...BRIEF, acres: 5, water: 'any', care: ANY_MIN, grocery: ANY_MIN, gas: ANY_MIN, road: 0, air: 0, ind: 0, threat: 4, flood: false, high: 0 };
@@ -159,12 +172,12 @@ const saveShort = () => { try { localStorage.setItem(SHORT, JSON.stringify(short
 const keyOf = (i: number) => L!.pid[i] || `${L!.num.lon[i].toFixed(5)},${L!.num.lat[i].toFixed(5)}`;
 
 /** One bit per filter; the funnel groups them into stages. */
-const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17, wGpm: 18, wDepth: 19, wLow: 20, aquifer: 21 } as const;
+const BIT = { acres: 0, water: 1, care: 2, grocery: 3, gas: 4, road: 5, air: 6, ind: 7, threat: 8, flood: 9, high: 10, pga: 11, fires: 12, slope: 13, alr: 14, islands: 15, trail: 16, fall: 17, wGpm: 18, wDepth: 19, wLow: 20, aquifer: 21, net: 22, cell: 23 } as const;
 type Bit = keyof typeof BIT;
 const STAGES: { id: string; label: string; icon: string; bits: Bit[]; c: string }[] = [
   { id: 'size', label: 'Size', icon: '◇', bits: ['acres'], c: '#a3e635' },
   { id: 'water', label: 'Water', icon: '≋', bits: ['water'], c: '#38bdf8' },
-  { id: 'reach', label: 'Reach', icon: '✚', bits: ['care', 'grocery', 'gas'], c: '#818cf8' },
+  { id: 'reach', label: 'Reach', icon: '✚', bits: ['care', 'grocery', 'gas', 'net', 'cell'], c: '#818cf8' },
   { id: 'quiet', label: 'Quiet', icon: '☾', bits: ['road', 'air', 'ind'], c: '#c084fc' },
   { id: 'safe', label: 'Safe', icon: '⛨', bits: ['threat', 'flood', 'high', 'pga', 'fires'], c: '#fb923c' },
   { id: 'wells', label: 'Wells', icon: '⇣', bits: ['wGpm', 'wDepth', 'wLow', 'aquifer'], c: '#19d3c5' },
@@ -174,6 +187,8 @@ const STAGES: { id: string; label: string; icon: string; bits: Bit[]; c: string 
 
 const mins = (i: number, cat: Cat) => L!.num[cat][i];
 const careMin = (i: number) => (f.careKind === 'er' ? mins(i, 'er') : mins(i, 'care'));
+/** The lowest ISED 50/10 band each internet chip accepts (bands: 1 under 25%, 2 25–50%, 3 50–75%, 4 over 75% of homes). */
+const NET_BAND = { '25': 2, '50': 3, '75': 4 } as const;
 const fails = (v: number, max: number, any: number) => max < any && !(v <= max); // NaN fails unless "any"
 
 function maskOf(i: number): number {
@@ -206,6 +221,8 @@ function maskOf(i: number): number {
   if (fails(n.wDepth[i], f.wDepth, ANY_WDEPTH)) m |= 1 << BIT.wDepth;
   if (fails(n.wLow[i], f.wLow, ANY_WLOW)) m |= 1 << BIT.wLow;
   if (f.aquifer === 'over' && !(n.wAq[i] >= 0)) m |= 1 << BIT.aquifer;
+  if (f.net !== 'any' && !(n.net50[i] >= NET_BAND[f.net])) m |= 1 << BIT.net;
+  if (f.cell === 'yes' && !(n.cell[i] > 0)) m |= 1 << BIT.cell;
   return m;
 }
 
@@ -425,7 +442,7 @@ const fmtDist = (m: number) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).
 const BIT_NAME: Record<Bit, string> = {
   acres: 'size', water: 'water', care: 'health care', grocery: 'groceries', gas: 'gas', road: 'busy road', air: 'airport', ind: 'industry',
   threat: 'wildfire threat', flood: 'floodplain', high: 'high ground', pga: 'shaking', fires: 'fire history', slope: 'slope', alr: 'farmland reserve', islands: 'island', trail: 'trails nearby', fall: 'waterfall distance',
-  wGpm: 'well yield', wDepth: 'well depth', wLow: 'low-yield wells', aquifer: 'aquifer',
+  wGpm: 'well yield', wDepth: 'well depth', wLow: 'low-yield wells', aquifer: 'aquifer', net: '50/10 internet', cell: 'mobile service',
 };
 const failedNames = (i: number) => (Object.keys(BIT) as Bit[]).filter((b) => masks[i] & (1 << BIT[b])).map((b) => BIT_NAME[b]);
 
@@ -462,6 +479,8 @@ const SECTIONS: Section[] = [
       { kind: 'chips', bit: 'care', key: 'careKind', label: '', options: [['any', 'Any clinic or hospital'], ['er', '24/7 emergency room']] },
       minutesRow('grocery', 'grocery', 'Groceries', 'Drive to the nearest supermarket or grocery store', (i) => mins(i, 'grocery')),
       minutesRow('gas', 'gas', 'Gas', 'Drive to the nearest gas station', (i) => mins(i, 'gas')),
+      { kind: 'chips', bit: 'net', key: 'net', label: '50/10 Mbps internet', hint: 'Share of homes in the parcel’s ~25 km² hexagon that providers say can get 50/10 Mbps (ISED National Broadband Data)', options: [['any', 'Any'], ['25', '25%+ of homes'], ['50', 'Over half'], ['75', 'Over 75%']] },
+      { kind: 'chips', bit: 'cell', key: 'cell', label: 'Mobile coverage', hint: 'A mobile (LTE/5G) provider reports service in the parcel’s hexagon (ISED National Broadband Data)', options: [['any', 'Any'], ['yes', 'Mobile reported']] },
     ],
   },
   {
@@ -555,7 +574,7 @@ function buildRail() {
       <summary><span class="lr-ic">$</span><span class="lr-t">Budget</span></summary>
       <div class="lr-rows lr-budget"></div>
     </details>
-    <p class="note lr-fine">Parcels are private lots of 5+ acres in ParcelMap BC. Drive times are free-flow estimates from the OSRM router on OpenStreetMap roads, from a point within about a kilometre; island trips include the ferry crossing but not the wait. Hazard layers describe mapped history and models, not a guarantee. Check zoning, title, water rights, septic and official hazard maps with the local government before buying.</p>`;
+    <p class="note lr-fine">Parcels are private lots of 5+ acres in ParcelMap BC. Drive times are free-flow estimates from the OSRM router on OpenStreetMap roads, from a point within about a kilometre; island trips include the ferry crossing but not the wait. Internet is what providers report for the parcel’s ~25 km² hexagon, not the address: confirm with the provider. Hazard layers describe mapped history and models, not a guarantee. Check zoning, title, water rights, septic and official hazard maps with the local government before buying.</p>`;
   document.body.appendChild(rail);
 
   SECTIONS.forEach((s) => s.rows.forEach((r, k) => renderRow(rail.querySelector<HTMLElement>(`[data-row="${s.id}-${k}"]`)!, r)));
@@ -864,6 +883,11 @@ function renderDetail(i: number) {
     ${sh ? `<div class="ld-notes"><label>Asking price <input type="text" inputmode="numeric" placeholder="e.g. 1,850,000" value="${sh.price ? sh.price.toLocaleString('en-CA') : ''}"></label>${sh.price ? `<span class="ld-price${sh.price > f.budget ? ' over' : ''}">${sh.price > f.budget ? `${fmt.money(sh.price - f.budget)} over budget` : `${fmt.money(f.budget - sh.price)} under budget`}</span>` : ''}<textarea placeholder="Notes: listing link, viewing date, well, septic…">${esc(sh.note)}</textarea></div>` : ''}
     <h3>Within reach</h3>
     <div class="ld-trip-list">${trip(f.careKind === 'er' ? 'er' : 'care')}${f.careKind === 'er' ? trip('care') : trip('er')}${trip('grocery')}${trip('gas')}</div>
+    ${internet && !Number.isNaN(n.net50[i]) ? `<div class="metric-grid">
+      ${m('50/10 internet', NET_COLOR, BANDS[n.net50[i]], 'of homes in this ~25 km² hexagon offered 50/10 Mbps (ISED)', f.net === 'any' ? null : n.net50[i] >= NET_BAND[f.net])}
+      ${m('Measured speed', NET_COLOR, Number.isNaN(n.netMbps[i]) ? '—' : `${Math.round(n.netMbps[i])} Mbps`, Number.isNaN(n.netMbps[i]) ? 'no home speed tests in the hexagon last year' : `average home download in the hexagon, past year (Ookla)`)}
+      ${m('Mobile', '#f2a33a', n.cell[i] ? 'Reported' : 'Not reported', 'LTE/5G service in the hexagon, as providers report it (ISED)', f.cell === 'yes' ? n.cell[i] > 0 : null)}
+    </div>` : ''}
     <h3>The land</h3>
     <div class="metric-grid">
       ${m('Waterfront', '#38bdf8', n.water[i] ? `${n.front[i]} m` : fmtDist(n.waterM[i]), n.water[i] ? waterText(i) : 'to the nearest water', n.water[i] > 0)}

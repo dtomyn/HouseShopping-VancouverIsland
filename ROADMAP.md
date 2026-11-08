@@ -28,6 +28,7 @@ The order puts quick wins that reuse existing code first, then the most decision
 | 10 | [Tsunami zones and a Cascadia scenario](#9-tsunami-zones-and-a-cascadia-scenario) | Builds on items 4 and 9; arrival times must come from published modelling | Medium–large |
 | 11 | [Ongoing costs: property tax and rent](#11-ongoing-costs-property-tax-and-rent) | Useful, but rent data may need a manual export step | Medium |
 | 12 | [Indigenous territories and place names](#8-indigenous-territories-and-original-place-names) | Important, but needs the most care with sources, permissions and wording | Medium |
+| 13 | ✅ [Internet and cell coverage](#13-internet-and-cell-coverage) | Rural buyers can't judge working from home without it | Medium |
 
 ### Static layers
 
@@ -102,6 +103,15 @@ Hospitals, seismic hazard and tsunami zones don't change over time. Before addin
 - **Town Finder:** replace or supplement *Low quake activity* (which counts past quakes) with the official hazard value.
 
 ---
+
+### 13. Internet and cell coverage
+
+✅ **Built.** `internet` source (`scripts/internet.mjs`) → `public/data/internet.json`; time-based "Internet & cell" layer (`src/internet.ts`); *Internet* in the Town Report; Town Finder *Fast internet*; Land Finder *50/10 Mbps internet* and *Mobile coverage* in *Within reach*.
+
+- **Advertised:** ISED's National Broadband Data (OGL – Canada), the open data behind the National Broadband Internet Service Availability Map. The CSV package gives each ~25 km² hexagon's 50/10 band (none, under 25%, 25–50%, 50–75%, over 75% of homes), whether 75%+ get 5/1, 2021 dwellings in ranges, and a row per provider and technology; geometry comes from the shapefile package (Lambert conformal conic, inverted in the script). Mobile coverage = a mobile-wireless provider listed for the hexagon. ISED also publishes per-pseudo-household speeds (`NBD_PHH_Speeds.zip`, 186 MB, with an LTE flag); not used yet because each point needs the separate PHH locations file.
+- **Measured:** Ookla open data (CC BY-NC-SA 4.0; fine for this non-commercial personal atlas with attribution; derived data stay under the same licence). The global parquet files are sorted by quadkey, and the island's tiles sit in the first few percent of rows, so hyparquet reads only that prefix of each column chunk over HTTP range requests (20–40 MB per file); the clipped rows are cached per quarter in `.cache/internet/`. Tiles are pooled into the ISED hexagons (nearest centre) so both sources share one grid. If the atlas ever went commercial, the measured views would have to go.
+- **Per parcel:** the Land Finder looks each parcel up in the hexagons in the browser (as it does for trails), so `land.json` is unchanged.
+- **Still open:** address-level availability (the PHH file), upload speeds and latency (in the Ookla rows, not yet shown), and separating Starlink from wired home internet (Ookla's open tiles don't).
 
 ## Explaining the island's history
 
