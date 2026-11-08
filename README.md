@@ -48,12 +48,13 @@ Optional extras, all covered below:
   | ⌂ Home prices | Monthly median sale value from BC Property Transfer Tax data | 2017 → today |
   | ◆ Crime severity | Statistics Canada Crime Severity Index by police service | 1998 → today |
   | ✚ Hospital access | Hospitals and ERs (24/7 highlighted); town columns = drive minutes to the nearest 24/7 ER; hover a town for its road routes | today (static) |
+  | ⇣ Wells & groundwater | Every registered water well (about 35,000, from BC's GWELLS registry) drawn as a drill hole going down beneath the map to its real depth (×10, ×30 or ×100), coloured by the yield the driller measured, with low-yield wells as hollow rings and the standing water level marked; tilt the map to look at a forest of drill holes. The timeline drills them by construction year. Mapped aquifers lie flat underneath, coloured by productivity. The panel ranks every town and island by typical depth and yield, and shows how much drier the small islands are | 1900 → today |
   | ⛰ Trails & waterfalls | Every mapped footpath as a glowing web with hikers moving along it; named hiking routes coloured by effort; waterfalls as beams of falling water, as tall as their drop where it's known. Click a route or any footpath for its elevation profile and a **3D flight** along it over satellite imagery on real terrain; click a waterfall to **orbit it in 3D**; **Waterfall tour** flies to each photographed fall in turn; a **Satellite** switch lays imagery over the map | mapped today (static) |
 
 - **The Layer menu**: the atlas starts on just the island. Each layer's switch puts it on the map or takes it off. Clicking a layer's name makes it the *picked* layer, whose story fills the side panel and whose years drive the timeline; the other layers stay on. Switching off the picked layer takes its timeline away too, and *Clear the map* at the top turns everything off. The `+N` on the Layer button counts the other layers on the map.
 - **Static layers** (Shaking hazard, Climate normals, Future climate, Hospital access, Trails & waterfalls) don't change over time. While one is the picked layer the timeline dims, and any time-based layers that are on keep playing underneath.
 - **The timeline** has play/pause, speeds, a sparkline of the picked layer, and markers for key moments: big fires, the 1946 Vancouver Island earthquake, the 1964 Port Alberni tsunami, the 2021 heat dome and more. As playback passes one, a line with **Details** appears above the timeline.
-- **Click anything for details.** A timeline marker, an event's **Details**, a layer's **Key moments**, or anything you can point at on the map opens a panel on the right. Map features include an earthquake, a fire, a river gauge, a weather or air-quality station, a hospital, a footpath, or a spot on the hazard and future-climate maps. Each panel has:
+- **Click anything for details.** A timeline marker, an event's **Details**, a layer's **Key moments**, or anything you can point at on the map opens a panel on the right. Map features include an earthquake, a fire, a river gauge, a weather or air-quality station, a hospital, a well or aquifer, a footpath, or a spot on the hazard and future-climate maps. Each panel has:
   - its own numbers and, for gauges and stations, a chart of its record;
   - the layer year by year with that moment marked, and what else was happening on other layers at the time;
   - the closest towns, and the moments before and after;
@@ -66,7 +67,8 @@ Optional extras, all covered below:
   - local climate and warming trend, and the nearest river's flood record;
   - the drive to the nearest 24/7 emergency room;
   - projected hot days, temperature, frost and summer rain for the 2050s, with model ranges;
-  - the trails and waterfalls nearby, each opening on the map.
+  - the trails and waterfalls nearby, each opening on the map;
+  - the wells nearby (within 5 km, or the whole island for the small islands): median depth and yield, the share of low-yield wells, and every well drawn as a drill hole, shallowest to deepest.
 - **Town Finder**: weight what matters to you and every municipality is ranked and raised as 3D columns on the map. The criteria are affordability, low crime, low wildfire exposure, lower shaking hazard, low quake activity, mild & warm, sunnier, little snow & frost, close to a hospital, not ferry-dependent, clean air, mild future summers, trails & waterfalls nearby, retiree community, and services & amenities. Presets set them all at once, and your weights are remembered in your browser.
 - **Gulf and Discovery islands**: Salt Spring, Galiano, Thetis, Gabriola, Lasqueti, Denman and Quadra are included alongside the island's municipalities (list in `scripts/municipalities.mjs`). Every map layer is clipped to them too. They are unincorporated, so a few figures come from other sources and are labelled in their reports:
   - population and 65+ share from the 2021 Census (dissemination areas on each island)
@@ -80,14 +82,15 @@ Optional extras, all covered below:
   - **Within reach**: drive minutes to the nearest clinic or hospital (or 24/7 ER), grocery store and gas station (OSRM on OpenStreetMap roads)
   - **Quiet**: distance from the quietest spot on the land to a busy road, from airports and float bases, and from industry and quarries
   - **Safety**: BC Wildfire Service strategic threat rating on or within 500 m of the parcel, fire starts nearby since 1990, mapped floodplains, highest ground above sea level, earthquake shaking hazard
+  - **Water supply**: median yield and depth of the registered wells within 1 km, the share of them that gave under 2 US gallons a minute, and whether the parcel sits over a mapped aquifer (all off by default; the per-parcel figures are in `public/data/land-wells.json`)
   - **Trails & waterfalls**: km of mapped footpath within 3 km, and distance to the nearest waterfall (both off by default)
   - **Budget**: BC publishes no per-parcel prices, so the budget checks the asking prices you add to shortlisted parcels; each parcel links to listings near it
 
-  Behind every slider is a histogram of the parcels that value would let through given all the other filters, and a funnel along the bottom shows how each step narrows the island and which one cuts the most. Matches glow on the map and rank by a score. A parcel's report has a radar chart of its strengths, drive-time arcs to the places it relies on, satellite imagery, and a shortlist for your notes and asking price, kept in the browser.
+  Behind every slider is a histogram of the parcels that value would let through given all the other filters, and a funnel along the bottom shows how each step narrows the island and which one cuts the most. Matches glow on the map and rank by a score. A parcel's report has a radar chart of its strengths, drive-time arcs to the places it relies on, satellite imagery, its water supply (the nearby wells drawn as drill holes, the aquifer under it, and any well registered on its PID), and a shortlist for your notes and asking price, kept in the browser.
 - **Data & sources** (button top right, `S`, or `#sources` in the URL): every source drawn as a cedar round. Each wedge is a source, each ring a year from 1900 at the pith to today at the bark, lit by that source's own record for the year, with projections as a hatched halo out to 2070. Cards give each source's publisher, dataset, the endpoint read, record counts (counted from the loaded data), licence and refresh status, plus what the atlas works out itself.
 - **Getting around**: drag to pan, scroll to zoom, right-drag (or Ctrl-drag) to tilt and turn the map.
   - **Keys:** `L` opens the Layer menu, `Space` plays and pauses, `←`/`→` step a year (or a month), `P` hides the side panel, `S` opens Data & sources, and `Esc` closes things.
-  - **Links:** `#trails`, `#land` and `#sources` in the URL open straight to those views.
+  - **Links:** `#trails`, `#wells`, `#land` and `#sources` in the URL open straight to those views.
 
 ## Tech
 
@@ -114,7 +117,7 @@ npm run data trails       # trails, routes and waterfalls (about 7 minutes from 
 npm run data ferries      # ferry links from BC Ferries' timetable feed (re-run when the season changes)
 ```
 
-The stages are `island`, `ferries`, `fires`, `quakes`, `rivers`, `climate`, `normals`, `population`, `housing`, `crime`, `hospitals`, `seismic`, `smoke`, `future`, `trails` and `land`. `scripts/fetch-data.mjs` downloads from the sources below, clips everything to the island, and writes compact JSON to `public/data/`.
+The stages are `island`, `ferries`, `fires`, `quakes`, `rivers`, `climate`, `normals`, `population`, `housing`, `crime`, `hospitals`, `seismic`, `smoke`, `future`, `trails`, `land` and `wells` (which reads `land.json` and writes the parcels' well figures to their own `land-wells.json`). `scripts/fetch-data.mjs` downloads from the sources below, clips everything to the island, and writes compact JSON to `public/data/`.
 
 - **Caching:** raw downloads are cached in `.cache/`, so re-runs are quick. Delete it to fetch everything fresh.
 - **When a source is down:** that layer keeps its existing data, and **Data & sources** in the app shows its status.
@@ -193,6 +196,7 @@ Rendering takes about 15–25 seconds of real time per second of film, so a one-
 | Land Finder parcels | ParcelMap BC parcel fabric (private parcels of 5+ acres) | OGL – British Columbia |
 | Land Finder water, hazards and rules | Freshwater Atlas coastline, lakes and rivers; BC Wildfire Service Provincial Strategic Threat Analysis; BC floodplain maps; Agricultural Land Reserve; BC airports | OGL – British Columbia |
 | Trails & waterfalls | OpenStreetMap via Overpass: `route=hiking`/`foot` relations, footpaths (`highway=path`, `bridleway` and unpaved `footway`), `waterway=waterfall`; photos and heights from Wikidata (P18, P2048) and photos geotagged on Wikimedia Commons whose file name matches the fall; elevations from Mapzen / AWS terrain tiles; satellite imagery from Esri World Imagery | ODbL; Wikidata CC0; photos under their own Commons licences; imagery © Esri, Maxar, Earthstar Geographics |
+| Wells & groundwater | BC Ministry of Water, Land and Resource Stewardship: GWELLS groundwater wells (`WHSE_WATER_MANAGEMENT.GW_WATER_WELLS_WRBC_SVW`) and the aquifer classification (`GW_AQUIFERS_CLASSIFICATION_SVW`), BC Data Catalogue WFS; depths converted from feet, yields kept in US gallons a minute | OGL – British Columbia |
 | Land Finder services and roads | OpenStreetMap via Overpass (grocery stores, gas, clinics, busy roads, industry); drive times from the OSRM demo router; terrain from Mapzen / AWS terrain tiles | ODbL; public terrain tiles |
 
 Basemap © OpenStreetMap contributors © CARTO. Terrain tiles: Mapzen / AWS Open Data.
@@ -208,5 +212,6 @@ This is an exploration tool, not professional advice:
 - River-gauge ratios describe high water, not flooded area.
 - Hazard counts describe history, not risk forecasts.
 - Trails can be closed, overgrown, on private land or seasonal.
+- Well yields are the driller's short test when each well was finished, not a long-term supply, and nearby wells are a guide, not a promise for a new well. Older wells are under-counted, and the registry's 0 yields are treated as not recorded.
 
 For a specific property, check the official floodplain, tsunami and wildfire-interface maps.

@@ -279,6 +279,7 @@ Pick one per layer in the brief:
 |---|---|---|
 | **Flare then scar** | New items extrude and glow white-yellow→red with additive blending for a glow window tied to playback speed (`max(0.25, speed × 0.9)` years), then settle into a dim flat "scar" filtered by `DataFilterExtension` to `[start, time]` | fires, logging, construction, events with area |
 | **Ripple at depth** | Points drawn at true depth (exaggerated ×3) with expanding surface shockwave rings | earthquakes, incidents |
+| **Drill holes** | A line from the ground down to each item's real depth (exaggerated, with ×10/×30/×100 chips), coloured by a measured value, a dot at the bottom (hollow when the value is poor) and a tick for a level inside the hole; new items flash down their hole as the timeline passes them; the matching panel chart draws them side by side, shallowest to deepest | water wells, boreholes, mines |
 | **Columns vs. normal** | `ColumnLayer` per station, height = value, colour = ratio to the station's own normal | river gauges, smoke days, counts |
 | **Station colour** | Points/columns coloured on a diverging ramp (blue → grey → red) + warming-stripes chart | climate anomalies |
 | **Surface** | Interpolated grid drawn to a bitmap, clipped to the outline, translucent, under labels; hatched for projections | hazard models, projections |
@@ -399,6 +400,7 @@ Left rail (360px, glass, slides in) + bottom **funnel** + right result list:
 - Matches glow on the map and rank by a score; cards show rank, title, badges, mini meters, score ring.
 - Item report: hero + score ring, radar of strengths, arcs to the places it relies on, satellite toggle, links out, shortlist star with notes and asking price (localStorage).
 - In deep mode the timeline, layer picker and panel button hide.
+- A measure added later by its own data stage goes in its own file beside the item file (`<deep>-<topic>.json`, in the item file's order with the item ids to check it), loaded optionally: stages stay independent and re-runnable, and the item file isn't rebuilt for every new measure.
 
 ### 5.6 Data & sources view
 

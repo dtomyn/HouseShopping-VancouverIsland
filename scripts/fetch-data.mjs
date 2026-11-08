@@ -1193,12 +1193,19 @@ const SOURCES = {
     const { buildLand } = await import('./land.mjs');
     await buildLand({ log, cached, writeOut, round, distKm, pool, WFS, BBOX, getIsland, onIsland, OUT });
   },
+
+  // Groundwater: GWELLS water wells and mapped aquifers, per-town well figures, and per-parcel well
+  // prospects for the Land Finder in their own file (scripts/wells.mjs). Reads land.json, so it runs after land.
+  async wells() {
+    const { buildWells } = await import('./wells.mjs');
+    await buildWells({ log, writeOut, round, distKm, wfsAll, getIsland, onIsland, OUT, PLACES, ISLAND_COMMUNITIES });
+  },
 };
 
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'land'];
+const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'land', 'wells'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};

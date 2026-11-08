@@ -21,10 +21,13 @@ Land Finder → a parcel in the **Matches** list or on the map; the **Shortlist*
 - The parcel report: rank and score, PID, size, and every measure behind the filters; a **radar chart** of its
   strengths (size, water, reach, quiet, safety, sun); **drive-time arcs** on the map to the clinic, grocery store and
   gas station it relies on, with their names and minutes.
+- **Water supply**: the median yield and depth of the wells within 1 km, the share of them that were low yield, the
+  mapped aquifer under it, a note when a well is registered on its PID, and those wells drawn as drill holes to their
+  depth, coloured by yield ([29](29-know-the-well-water-under-a-place.md)).
 - The shortlist (parcels, notes, asking prices) is saved in the browser; the Shortlist tab lists them.
 
 ## Limits
 Nothing about a parcel's ownership, zoning or listing status is known; links go to outside sites to check.
 
 ## Source
-`src/land.ts` (parcel report, `drawRadar`, `setSatellite`, `shortlist`, `SHORT`).
+`src/land.ts` (parcel report, `drawRadar`, `wellsDetail`, `setSatellite`, `shortlist`, `SHORT`), `src/wells.ts` (`wellStrip`).

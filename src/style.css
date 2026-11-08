@@ -719,3 +719,20 @@ body.cinema .vignette { background: radial-gradient(ellipse at 50% 45%, transpar
 }
 /* the map credits move to the top corner in 3D views, clear of the flight panel and tour card */
 body.cinema .maplibregl-ctrl-bottom-right { top: 8px; bottom: auto !important; right: 8px !important; }
+
+/* wells & groundwater: the depth/aquifer controls, the by-area table and the drill-hole strip */
+.w-ctl { grid-template-columns: 64px auto 1fr; }
+.w-ctl .lr-switch { justify-self: end; font-size: 12px; }
+.w-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+.w-table th { text-align: right; font-weight: 600; font-size: 10.5px; letter-spacing: .8px; text-transform: uppercase; color: var(--ink-3); padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.w-table td { text-align: right; padding: 4px 6px; font-family: var(--mono); font-size: 11.5px; border-bottom: 1px solid rgba(148, 170, 210, .06); }
+.w-table th:first-child, .w-table td:first-child { text-align: left; font-family: var(--font); font-size: 12.5px; }
+.w-table tbody tr { cursor: pointer; transition: background .15s; }
+.w-table tbody tr:hover { background: rgba(255, 255, 255, .05); }
+.w-table tr.isl td:first-child { color: #ffb347; }
+.w-table tr.isl td:first-child::after { content: ' ◦ island'; color: var(--ink-3); font-size: 10.5px; }
+.well-strip svg { display: block; overflow: visible; }
+.well-strip .axis text, .well-strip .ws-cap { fill: var(--ink-3); font: 500 10px var(--mono); }
+.well-strip .ws-med { fill: #fff; font: 500 10px var(--mono); paint-order: stroke; stroke: #0b111e; stroke-width: 3px; }
+.well-strip .ws-hole:hover line:first-child { stroke-opacity: 1; filter: drop-shadow(0 0 3px currentColor); }
+.tr-wells, .ld-wells { margin-top: 10px; }

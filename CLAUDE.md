@@ -13,7 +13,7 @@ npm run preview           # serve dist/ at http://localhost:4173
 npm run data [stage…]     # rebuild public/data/*.json from the original sources
 ```
 
-Data stages (in run order): `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails land`. Raw downloads cache in `.cache/`; a failing source keeps its old JSON and records the error in `public/data/manifest.json` (shown in the app's Data & sources view). `public/data/` is committed, so the app runs without the pipeline.
+Data stages (in run order): `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails land wells`. Raw downloads cache in `.cache/`; a failing source keeps its old JSON and records the error in `public/data/manifest.json` (shown in the app's Data & sources view). `public/data/` is committed, so the app runs without the pipeline.
 
 Videos (Windows only, needs Edge + `.venv` with Kokoro; see README):
 

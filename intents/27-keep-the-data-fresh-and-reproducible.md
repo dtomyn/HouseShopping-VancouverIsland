@@ -10,7 +10,7 @@ atlas can be refreshed any time and anyone can check how each number was made.
 ## Inputs & controls
 | Command | Effect |
 |---|---|
-| `npm run data` | Every stage, in order: `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails land`. |
+| `npm run data` | Every stage, in order: `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails land wells`. |
 | `npm run data fires crime` | Just those stages. |
 | Delete `.cache/` | Forces every download to be fetched again. |
 
@@ -35,5 +35,5 @@ A full first run downloads several gigabytes (the smoke stage alone streams ~100
 trails stage takes about 7 minutes.
 
 ## Source
-`scripts/fetch-data.mjs` (`SOURCES`, `order`, manifest), `scripts/trails.mjs`, `scripts/land.mjs`,
+`scripts/fetch-data.mjs` (`SOURCES`, `order`, manifest), `scripts/trails.mjs`, `scripts/land.mjs`, `scripts/wells.mjs`,
 `scripts/ferries.mjs`, `scripts/municipalities.mjs`.

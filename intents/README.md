@@ -50,6 +50,11 @@ same shape:
 | 17 | Find hikes and waterfalls near a place | [17-find-hikes-and-waterfalls.md](17-find-hikes-and-waterfalls.md) |
 | 18 | Fly a trail and orbit a waterfall in 3D | [18-fly-trails-and-orbit-waterfalls.md](18-fly-trails-and-orbit-waterfalls.md) |
 
+### Water and land
+| # | Intent | File |
+|---|--------|------|
+| 29 | Know the well water under a place | [29-know-the-well-water-under-a-place.md](29-know-the-well-water-under-a-place.md) |
+
 ### Choose a place
 | # | Intent | File |
 |---|--------|------|
