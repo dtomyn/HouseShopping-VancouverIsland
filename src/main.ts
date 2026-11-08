@@ -8,8 +8,8 @@ import { ColumnLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import type { Layer, PickingInfo } from '@deck.gl/core';
 import * as d3 from 'd3';
 import { Data, MONTHS, clamp, loadAll } from './data';
-import { AtlasEvent, AtlasLayer, CURATED_EVENTS, Ctx, PanelHandle, buildLayers } from './layers';
-import { eventColor, eventDate, eventLayers, momentsList, renderEventPanel } from './events';
+import { AtlasEvent, AtlasLayer, CURATED_EVENTS, Ctx, PanelHandle, TimedEvent, buildLayers } from './layers';
+import { eventColor, eventDate, eventLayers, fromTooltip, momentsList, renderEventPanel } from './events';
 import { loadWeights, renderFinder, renderTownReport } from './panels';
 import { openSources, sourcesOpen } from './sources';
 import { Ranked } from './metrics';
@@ -51,7 +51,7 @@ const state = {
   hovered: null as string | null,
   mode: 'layer' as Mode,
   ranked: null as Ranked[] | null,
-  beacons: [] as { ev: AtlasEvent; born: number }[],
+  beacons: [] as { ev: TimedEvent; born: number }[],
   // the event open in the side panel (mode 'event')
   event: null as AtlasEvent | null,
 };
@@ -59,7 +59,7 @@ const state = {
 let data: Data;
 let layers: AtlasLayer[] = [];
 let byId: Record<string, AtlasLayer> = {};
-let events: AtlasEvent[] = [];
+let events: TimedEvent[] = [];
 let map: maplibregl.Map;
 let overlay: MapboxOverlay;
 let panelHandle: PanelHandle | null = null;
@@ -300,6 +300,8 @@ function onHover(info: PickingInfo) {
     html = owner?.tooltip(info) ?? null;
   }
   if (!html) { t.hidden = true; return; }
+  // every feature opens a details panel on click; say so unless the tooltip already says what a click does
+  if (state.mode !== 'land' && !/click/i.test(html)) html += '<br><span class="tk tk-click">Click for details</span>';
   t.innerHTML = html;
   t.hidden = false;
   const r = t.getBoundingClientRect();
@@ -313,8 +315,21 @@ function onClick(info: PickingInfo) {
   if (!o) return;
   const owner = info.layer ? layers.find((l) => info.layer!.id.startsWith(l.id)) : null;
   if (owner?.click?.(info)) return;
+  // a town (a dot, or a town's column on any layer) opens its report
   const key = o.m?.key ?? o.t?.muni?.key ?? (info.layer?.id.startsWith('towns') ? o.key : null);
-  if (key) openTown(key);
+  if (key) { openTown(key); return; }
+  // anything else opens its details: the layer's own description, or one built from its tooltip
+  const rec = featureDetails(owner, info);
+  if (rec) openEvent(rec);
+}
+
+/** What a click on a map feature opens: the layer's describe(), or failing that, its tooltip turned into a panel. */
+function featureDetails(owner: AtlasLayer | null | undefined, info: PickingInfo): AtlasEvent | null {
+  if (!owner) return null;
+  const own = owner.describe?.(info);
+  if (own) return own;
+  const html = owner.tooltip(info);
+  return html ? fromTooltip(owner, html, (info.coordinate as [number, number] | undefined) ?? null) : null;
 }
 
 function openTown(key: string) {
@@ -689,7 +704,7 @@ function syncTimelineUI() {
 
 let tickerTimer = 0;
 /** Announces an event the timeline just crossed: a line above the timeline (with Details) and a shockwave on the map. */
-function ticker(ev: AtlasEvent) {
+function ticker(ev: TimedEvent) {
   const el = $('event-ticker');
   el.style.setProperty('--c', eventColor(ev, byId));
   el.replaceChildren();
@@ -718,12 +733,13 @@ function openEvent(ev: AtlasEvent) {
       : { label: state.focused === 'island' ? 'Back to the map' : focusedLayer().name, go: () => showLayerPanel() };
   }
   setPlaying(false);
-  setTime(ev.t + 0.001);
+  // a moment moves the timeline to its date; a place (a gauge, a station) leaves it where it is
+  if (ev.t != null) setTime(ev.t + 0.001);
   $('event-ticker').hidden = true;
   state.mode = 'event';
   state.event = ev;
   if (ev.lon != null) {
-    state.beacons.push({ ev, born: performance.now() });
+    if (ev.t != null) state.beacons.push({ ev: ev as TimedEvent, born: performance.now() });
     map.flyTo({ center: [ev.lon, ev.lat!], zoom: ev.zoom ?? 8.5, pitch: Math.max(map.getPitch(), 40), duration: 1600, essential: true });
   }
   swapPanel(() => {
@@ -745,7 +761,7 @@ function showEvent(ev: AtlasEvent) {
   for (const id of ids) state.visible.add(id);
   if (!ids.includes(state.focused)) focus(ids[0], true);
   else { renderLayerMenu(); setupTimeline(); }
-  setTime(ev.t + 0.001);
+  if (ev.t != null) setTime(ev.t + 0.001);
   if (ev.lon != null) map.flyTo({ center: [ev.lon, ev.lat!], zoom: ev.zoom ?? 8.5, duration: 1200, essential: true });
 }
 

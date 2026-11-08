@@ -18,7 +18,11 @@ export type Ctx = { time: number; speed: number; data: Data; selected: string | 
  * touching the panel. Text fields are plain text (escaped when shown); only `detail` can draw HTML or charts.
  */
 export type AtlasEvent = {
-  t: number; layer: string; title: string; body: string;
+  /** when it happened; left out for a place or thing on the map (a river gauge, a station, a hospital) */
+  t?: number;
+  layer: string; title: string; body: string;
+  /** what it is, shown above the title ("River gauge", "Earthquake"); defaults to the layer's name */
+  kind?: string;
   /** where the map flies when the event opens */
   lon?: number; lat?: number; zoom?: number;
   /** when it ended, for events that ran a while (a fire season, a closure) */
@@ -36,6 +40,8 @@ export type AtlasEvent = {
   /** anything richer a layer wants to draw in the event's panel (a chart, a table), below the headline numbers */
   detail?: (el: HTMLElement) => void;
 };
+/** A timeline event: one with a date. Layers' events() and CURATED_EVENTS are always these. */
+export type TimedEvent = AtlasEvent & { t: number };
 export type PanelHandle = { update: (ctx: Ctx) => void };
 
 export interface AtlasLayer {
@@ -57,7 +63,12 @@ export interface AtlasLayer {
   unavailable?: string;
   build: (ctx: Ctx) => Layer[];
   spark: () => { x: number; y: number; color?: string }[];
-  events: () => AtlasEvent[];
+  events: () => TimedEvent[];
+  /**
+   * What clicking a feature of this layer on the map opens in the side panel (a quake, a gauge, a station), in the
+   * same shape as an event. Optional: a layer without it still gets a panel, built from its tooltip.
+   */
+  describe?: (info: PickingInfo) => AtlasEvent | null;
   panel: (el: HTMLElement, ctx: Ctx) => PanelHandle;
   tooltip: (info: PickingInfo) => string | null;
   /** Handles a click on one of its own map objects; true if it did. */
@@ -78,6 +89,20 @@ const filterExt = [new DataFilterExtension({ filterSize: 1 })];
 
 /** How long (in timeline years) a "new" event keeps glowing; tied to playback speed so it reads the same at any speed. */
 const glowWindow = (speed: number, k = 1) => Math.max(0.25, speed * 0.9 * k);
+
+/** A fractional year (2021.49) as a date, "2021-06-28". */
+const isoDate = (t: number) => new Date(Date.UTC(Math.floor(t), 0, 1) + (t % 1) * 365.25 * 864e5).toISOString().slice(0, 10);
+/** A detail chart for a map feature's panel: a heading and a bar chart, drawn once the panel has its width. */
+function detailBars(title: string, data: { x: number; y: number; color?: string }[], color: string, yFormat: (v: number) => string, tip: (d: { x: number; y: number }) => string) {
+  return (el: HTMLElement) => {
+    if (!data.length) return;
+    el.insertAdjacentHTML('beforeend', `<h3>${esc(title)}</h3>`);
+    const box = el.appendChild(document.createElement('div'));
+    box.className = 'ev-chart';
+    const xs = data.map((d) => d.x);
+    requestAnimationFrame(() => barChart(box, { data, xDomain: [Math.min(...xs), Math.max(...xs)], color, height: 120, yFormat, tooltip: tip, diverging: data.some((d) => d.y < 0) }));
+  };
+}
 
 export function nearestTown(munis: Muni[], lon: number, lat: number) {
   let best = munis[0], bd = Infinity;
@@ -283,6 +308,35 @@ function firesLayer(data: Data): AtlasLayer {
         },
       };
     },
+    describe(info) {
+      const o: any = info.object;
+      const id = info.layer?.id ?? '';
+      if (!o) return null;
+      if (id.startsWith('fires-scars') || id.startsWith('fires-burning')) {
+        const f = fireTotals.get(o.id) ?? { ...o, total: o.ha };
+        const { town, km: d } = nearestTown(data.munis, f.c[0], f.c[1]);
+        const bigger = [...fireTotals.values()].filter((x) => x.total > f.total).length;
+        return {
+          t: f.t, layer: 'fires', kind: 'Mapped wildfire', lon: f.c[0], lat: f.c[1], zoom: 10,
+          title: `${fmt.ha(f.total)} wildfire ${d < 8 ? 'at' : 'near'} ${town.name}`,
+          body: `Fire ${f.id}, mapped by the BC Wildfire Service in ${f.year}${d >= 8 ? `, about ${Math.round(d)} km from ${town.name}` : ''}.`,
+          stats: [{ v: fmt.ha(f.total), l: 'burned' }, { v: CAUSE[f.cause].name, l: 'cause' }, { v: `#${bigger + 1}`, l: `largest of ${fmt.int(fireTotals.size)} mapped fires` }, { v: String(f.year), l: 'year' }],
+          sources: [{ label: 'BC Wildfire Service fire perimeters (BC Data Catalogue)', url: 'https://catalogue.data.gov.bc.ca/dataset/fire-perimeters-historical' }],
+        };
+      }
+      if (Array.isArray(o)) {
+        const [lon, lat, t, ha, cause] = o as FirePoint;
+        const { town, km: d } = nearestTown(data.munis, lon, lat);
+        return {
+          t, layer: 'fires', kind: 'Fire ignition', lon, lat, zoom: 10,
+          title: `${ha < 1 ? 'A spot fire' : `A ${fmt.ha(ha)} fire`} ${d < 4 ? 'in' : 'near'} ${town.name}`,
+          body: `Where a recorded fire started${d >= 4 ? `, about ${Math.round(d)} km from ${town.name}` : ''}. Most island fires are small and caught early.`,
+          stats: [{ v: isoDate(t), l: 'started' }, { v: ha < 1 ? 'under 1 ha' : fmt.ha(ha), l: 'final size' }, { v: CAUSE[cause].name, l: 'cause' }],
+          sources: [{ label: 'BC Wildfire Service fire incidents (BC Data Catalogue)', url: 'https://catalogue.data.gov.bc.ca/dataset/fire-incident-locations-historical' }],
+        };
+      }
+      return null;
+    },
     tooltip(info) {
       const o: any = info.object;
       if (!o) return null;
@@ -432,6 +486,27 @@ function quakesLayer(data: Data): AtlasLayer {
           hero(3, fmt.int(n4), 'M4+ since 1900');
           set(time);
         },
+      };
+    },
+    describe(info) {
+      const q = info.object as Quake;
+      if (!Array.isArray(q) || !info.layer?.id.startsWith('quakes')) return null;
+      const near = nearestTown(data.munis, q[0], q[1]);
+      const stronger = rows.filter((r) => r[3] > q[3]).length;
+      const weaker = rows.filter((r) => r[3] < q[3]).length;
+      const ord = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0]}`;
+      // the biggest few get their rank; "stronger than 100%" would just be rounding
+      const rank = stronger < 10 ? `${stronger === 0 ? 'The strongest' : `The ${ord(stronger + 1)} strongest`} of the ${fmt.int(rows.length)} quakes recorded around the island since 1900.`
+        : `Stronger than ${Math.floor((weaker / Math.max(1, rows.length)) * 100)}% of the ${fmt.int(rows.length)} quakes recorded around the island since 1900.`;
+      const depth = q[2] < 20 ? 'Shallow quakes are felt most strongly close to where they strike.'
+        : q[2] > 35 ? 'Deep quakes like this one, inside the sinking ocean plate, tend to be felt over a wide area.' : '';
+      return {
+        t: q[4], layer: 'quakes', kind: 'Earthquake', lon: q[0], lat: q[1], zoom: 8,
+        // the catalogue's own place names can be odd ("km SW of Vernon"), so lead with the nearest atlas town
+        title: `M${q[3]} earthquake`, body: `${near.km < 3 ? `At ${near.town.name}` : `About ${Math.round(near.km)} km from ${near.town.name}`}, ${q[2]} km deep. The USGS catalogue lists it as “${q[5]}”.`,
+        stats: [{ v: `M${q[3]}`, l: 'magnitude' }, { v: `${q[2]} km`, l: 'deep' }, { v: isoDate(q[4]), l: 'date (UTC)' }, { v: `${Math.round(near.km)} km`, l: `from ${near.town.name}` }],
+        sections: [{ title: 'How it compares', text: `${rank} ${depth}`.trim() }],
+        sources: [{ label: 'USGS earthquake catalogue', url: 'https://earthquake.usgs.gov/earthquakes/search/' }],
       };
     },
     tooltip(info) {
@@ -1056,7 +1131,7 @@ function riversLayer(data: Data): AtlasLayer {
     },
     spark: () => ys.filter((y) => y >= y0).map((x) => ({ x, y: share[x].n >= 3 ? share[x].high / share[x].n : 0 })),
     events() {
-      const ev: AtlasEvent[] = ys
+      const ev: TimedEvent[] = ys
         .filter((y) => share[y].n >= 8 && share[y].high / share[y].n >= 0.4)
         .map((y) => ({ stats: [{ v: `${share[y].high} of ${share[y].n}`, l: 'gauges at 1.5× normal or more' }, { v: `${Math.round((share[y].high / share[y].n) * 100)}%`, l: 'of gauged rivers' }], t: y + 0.05, layer: 'rivers', title: `${y}: island-wide high water`, body: `${share[y].high} of ${share[y].n} gauged rivers peaked at 1.5× their normal annual high or more.` }));
       return ev;
@@ -1098,6 +1173,22 @@ function riversLayer(data: Data): AtlasLayer {
           hero(3, String(y0), 'first year with 3+ gauges');
           set(time);
         },
+      };
+    },
+    describe(info) {
+      const o: any = info.object;
+      if (!o || !info.layer?.id.startsWith('rivers')) return null;
+      const st = o.s ?? o;
+      const years = Object.keys(st.peaks).map(Number).sort((a, b) => a - b);
+      if (!years.length) return null;
+      const rec = years.reduce((a, y) => (st.peaks[y] > st.peaks[a] ? y : a), years[0]);
+      const high = years.filter((y) => st.peaks[y] / st.median >= 1.5).length;
+      return {
+        layer: 'rivers', kind: 'River gauge', lon: st.lon, lat: st.lat, zoom: 9.5,
+        title: st.name, body: `Water Survey of Canada gauge ${st.id}, ${years.length} years of record (${years[0]}–${years.at(-1)}). Each bar is a year's highest flow against the river's normal annual peak.`,
+        stats: [{ v: `${st.median} m³/s`, l: 'normal annual peak' }, { v: `${(st.peaks[rec] / st.median).toFixed(1)}×`, l: `record, ${rec}` }, { v: `${high} of ${years.length}`, l: 'years at 1.5× normal or more' }, ...(st.area ? [{ v: `${fmt.int(st.area)} km²`, l: 'drains' }] : [])],
+        detail: detailBars('Peak flow each year, against normal', years.map((y) => ({ x: y, y: st.peaks[y] / st.median, color: ratioColor(st.peaks[y] / st.median) })), color, (v) => `${v.toFixed(1)}×`, (d) => `<b>${d.x}</b> · ${d.y.toFixed(2)}× normal`),
+        sources: [{ label: 'HYDAT, Environment and Climate Change Canada', url: 'https://wateroffice.ec.gc.ca/' }],
       };
     },
     tooltip(info) {
@@ -1206,6 +1297,24 @@ function climateLayer(data: Data): AtlasLayer {
           hero(3, trend != null ? `${fmt.signed(trend * 10, 2)}°` : '–', 'per decade since 1950');
           setA(time); setB(time);
         },
+      };
+    },
+    describe(info) {
+      const o: any = info.object;
+      if (!o || !info.layer?.id.startsWith('climate')) return null;
+      const st = o.s;
+      const ys = Object.keys(st.temp).map(Number).sort((a, b) => a - b);
+      if (!ys.length) return null;
+      const an = (y: number) => st.temp[y] - st.baseline;
+      const warm = ys.reduce((a, y) => (an(y) > an(a) ? y : a), ys[0]);
+      const recent = ys.filter((y) => y >= ys.at(-1)! - 9);
+      const recentMean = recent.reduce((a, y) => a + an(y), 0) / recent.length;
+      return {
+        layer: 'climate', kind: 'Weather station', lon: st.lon, lat: st.lat, zoom: 9,
+        title: st.name, body: `Annual mean temperature, ${ys[0]}–${ys.at(-1)}, as the difference from this station's 1961–1990 normal of ${st.baseline.toFixed(1)} °C. Blue years ran cool, red years warm.`,
+        stats: [{ v: `${st.baseline.toFixed(1)} °C`, l: '1961–1990 normal' }, { v: `${fmt.signed(recentMean)} °C`, l: `average, last ${recent.length} years` }, { v: String(warm), l: `warmest year (${fmt.signed(an(warm))} °C)` }, { v: String(ys.length), l: 'years of record' }],
+        detail: detailBars('Each year against normal (°C)', ys.map((y) => ({ x: y, y: an(y), color: div(an(y)) })), color, (v) => fmt.signed(v), (d) => `<b>${d.x}</b> · ${fmt.signed(d.y, 2)} °C`),
+        sources: [{ label: 'ECCC Adjusted and Homogenized Canadian Climate Data', url: 'https://api.weather.gc.ca/collections/ahccd-annual' }],
       };
     },
     tooltip(info) {
@@ -1956,6 +2065,24 @@ function smokeLayer(data: Data): AtlasLayer {
         },
       };
     },
+    describe(info) {
+      const o: any = info.object;
+      if (!o || !info.layer?.id.startsWith('smoke')) return null;
+      const st: SmokeStation = o.s ?? o;
+      const ys = Object.keys(st.y).map(Number).filter((y) => st.y[y][3] != null).sort((a, b) => a - b);
+      const worstYear = ys.reduce((a, y) => (st.y[y][3]! > (st.y[a]?.[3] ?? -1) ? y : a), ys[0]);
+      const worstDay = Math.max(0, ...Object.values(st.y).map((v) => v[1] ?? 0));
+      return {
+        layer: 'smoke', kind: 'Air monitor', lon: st.lon, lat: st.lat, zoom: 9.5,
+        title: st.name, body: `Days each fire season (May–October) when fine particles (PM2.5) averaged over ${thr} µg/m³, the provincial objective, at this monitor.`,
+        stats: [
+          ...(ys.length ? [{ v: String(worstYear), l: `smokiest season (${st.y[worstYear][3]} days)` }, { v: `${ys.length}`, l: `full years (${ys[0]}–${ys.at(-1)})` }] : [{ v: 'none', l: 'full years of data' }]),
+          ...(worstDay ? [{ v: `${Math.round(worstDay)} µg/m³`, l: 'worst daily average' }] : []),
+        ],
+        detail: detailBars('Smoky fire-season days, year by year', ys.map((y) => ({ x: y, y: st.y[y][3]!, color: ramp(st.y[y][3]!) })), color, (v) => `${Math.round(v)}`, (d) => `<b>${d.x}</b> · ${d.y} days over ${thr} µg/m³`),
+        sources: [{ label: 'BC verified air quality data (BC Data Catalogue)', url: 'https://catalogue.data.gov.bc.ca/dataset/air-quality-monitoring-verified-hourly-data-and-station-data' }],
+      };
+    },
     tooltip(info) {
       const o: any = info.object;
       if (!o || !info.layer?.id.startsWith('smoke')) return null;
@@ -1972,7 +2099,7 @@ function smokeLayer(data: Data): AtlasLayer {
 // ---------------------------------------------------------------------------------------------
 
 /** Curated events that aren’t derivable from the datasets. */
-export const CURATED_EVENTS: AtlasEvent[] = [
+export const CURATED_EVENTS: TimedEvent[] = [
   {
     t: 1964.24, layer: '*', title: '1964 — Tsunami floods Port Alberni',
     body: 'Waves from the Great Alaska Earthquake funnelled up Alberni Inlet overnight on 27–28 March, damaging hundreds of homes in Port Alberni.',
