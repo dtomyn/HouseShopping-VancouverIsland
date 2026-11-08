@@ -19,7 +19,8 @@ Layer menu → *History on the timeline* → **River floods**.
 - **Elsewhere**: Town Report names the nearest river and how often it reached 1.5× its normal peak.
 
 ## Limits
-High water is not flooding: check regional floodplain maps for a specific property.
+High water is not flooding: check regional floodplain maps for a specific property. The panel links to
+*Floodplains* ([36](36-know-the-mapped-floodplains.md)), BC's designated floodplain maps.
 
 ## Source
 `src/layers.ts` (`riversLayer`), `public/data/rivers.json` from the `rivers` stage.

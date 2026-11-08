@@ -771,3 +771,11 @@ body.cinema .maplibregl-ctrl-bottom-right { top: 8px; bottom: auto !important; r
 @keyframes nd-in { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
 .nd-ring g.nd-cells { transform-origin: 86px 86px; }
 @media (prefers-reduced-motion: reduce) { .nd-ring .nd-cell { animation: none; opacity: 1; } }
+
+/* Water access & camping: kind chips with the map marker as the swatch */
+.od-chips { margin: 10px 0 4px; }
+.od-chips .chip small { color: var(--ink-3); margin-left: 2px; }
+.od-sw { display: inline-block; min-width: 12px; margin-right: 5px; font-size: 11px; line-height: 1; text-align: center; text-shadow: 0 0 2px #060a12; }
+.od-sw.dot, .od-sw.ring { width: 8px; min-width: 8px; height: 8px; border-radius: 50%; vertical-align: 0; }
+.od-sw.dot { background: currentColor; }
+.od-sw.ring { border: 1.5px solid currentColor; }

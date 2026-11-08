@@ -22,42 +22,47 @@ const Q = 1e4; // network coordinates in 1e-4 degree units
 const GRID = 0.01; // trail-density grid cell, degrees
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** fetch with the atlas's User-Agent, retrying; on 429 it honours Retry-After or backs off hard. */
+export async function uaFetch(url, opts = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fetch(url, { ...opts, headers: { ...UA, ...(opts.headers ?? {}) }, signal: AbortSignal.timeout(opts.timeout ?? 240_000) });
+      if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status, wait: +(res.headers.get('retry-after') ?? 0) });
+      return Buffer.from(await res.arrayBuffer());
+    } catch (e) {
+      if (attempt >= (opts.retries ?? 4)) throw new Error(`${e.message} for ${url.slice(0, 120)}`);
+      await sleep(e.status === 429 ? Math.max(e.wait * 1000, 15000 * attempt) : 3000 * attempt);
+    }
+  }
+}
+
+/** An Overpass query runner: tries each mirror (POST, then GET) and caches the answer in `cacheFile` once it is real, complete JSON. */
+export function overpassClient({ log, cached }) {
+  return async (cacheFile, query) => JSON.parse((await cached(cacheFile, async () => {
+    let last;
+    for (let r = 0; r < 4; r++)
+      for (const url of OVERPASS) {
+        try {
+          // some mirrors drop long POSTs; alternate with GET
+          const buf = r % 2 ? await uaFetch(`${url}?data=${encodeURIComponent(query)}`, { retries: 1, timeout: 400_000 }) : await uaFetch(url, { method: 'POST', body: new URLSearchParams({ data: query }), retries: 1, timeout: 400_000 });
+          let j;
+          try { j = JSON.parse(buf.toString('utf8')); } catch { throw new Error('busy (not JSON)'); }
+          if (!Array.isArray(j.elements) || /runtime error|timed out|out of memory/i.test(j.remark ?? '')) throw new Error(`busy (${j.remark ?? 'no elements'})`);
+          return buf;
+        } catch (e) { last = e; log(`  overpass ${cacheFile}: ${e.message}, trying again`); await sleep(8000); }
+      }
+    throw last;
+  })).toString('utf8'));
+}
+
 export async function buildTrails(h) {
   const { log, cached, writeOut, round, distKm, pool, BBOX, getIsland, onIsland, PLACES } = h;
   await getIsland();
   const bbox = `${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east}`;
 
-  const fetchBuf = async (url, opts = {}) => {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        const res = await fetch(url, { ...opts, headers: { ...UA, ...(opts.headers ?? {}) }, signal: AbortSignal.timeout(opts.timeout ?? 240_000) });
-        if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status, wait: +(res.headers.get('retry-after') ?? 0) });
-        return Buffer.from(await res.arrayBuffer());
-      } catch (e) {
-        if (attempt >= (opts.retries ?? 4)) throw new Error(`${e.message} for ${url.slice(0, 120)}`);
-        // rate limited: honour Retry-After, else back off hard
-        await sleep(e.status === 429 ? Math.max(e.wait * 1000, 15000 * attempt) : 3000 * attempt);
-      }
-    }
-  };
-
-  async function overpass(name, query) {
-    return JSON.parse((await cached(`trails/osm-${name}.json`, async () => {
-      let last;
-      for (let r = 0; r < 4; r++)
-        for (const url of OVERPASS) {
-          try {
-            // some mirrors drop long POSTs; alternate with GET
-            const buf = r % 2 ? await fetchBuf(`${url}?data=${encodeURIComponent(query)}`, { retries: 1, timeout: 400_000 }) : await fetchBuf(url, { method: 'POST', body: new URLSearchParams({ data: query }), retries: 1, timeout: 400_000 });
-            let j;
-            try { j = JSON.parse(buf.toString('utf8')); } catch { throw new Error('busy (not JSON)'); }
-            if (!Array.isArray(j.elements) || /runtime error|timed out|out of memory/i.test(j.remark ?? '')) throw new Error(`busy (${j.remark ?? 'no elements'})`);
-            return buf;
-          } catch (e) { last = e; log(`  overpass ${name}: ${e.message}, trying again`); await sleep(8000); }
-        }
-      throw last;
-    })).toString('utf8'));
-  }
+  const fetchBuf = uaFetch;
+  const osm = overpassClient(h);
+  const overpass = (name, query) => osm(`trails/osm-${name}.json`, query);
 
   // ---------------------------------------------------------------------------------------------
   // 1. downloads

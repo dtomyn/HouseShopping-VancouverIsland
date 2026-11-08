@@ -42,6 +42,8 @@ same shape:
 |---|--------|------|
 | 13 | Know how hard the ground could shake | [13-know-how-hard-the-ground-could-shake.md](13-know-how-hard-the-ground-could-shake.md) |
 | 30 | Know where a tsunami could reach | [30-know-where-a-tsunami-could-reach.md](30-know-where-a-tsunami-could-reach.md) |
+| 36 | Know the mapped floodplains | [36-know-the-mapped-floodplains.md](36-know-the-mapped-floodplains.md) |
+| 37 | Check radon | [37-check-radon.md](37-check-radon.md) |
 | 14 | Compare what each place's climate feels like | [14-compare-day-to-day-climates.md](14-compare-day-to-day-climates.md) |
 | 15 | See the climate the next 25 years could bring | [15-see-the-climate-ahead.md](15-see-the-climate-ahead.md) |
 | 16 | Know how far emergency care is | [16-know-how-far-emergency-care-is.md](16-know-how-far-emergency-care-is.md) |
@@ -52,11 +54,15 @@ same shape:
 |---|--------|------|
 | 17 | Find hikes and waterfalls near a place | [17-find-hikes-and-waterfalls.md](17-find-hikes-and-waterfalls.md) |
 | 18 | Fly a trail and orbit a waterfall in 3D | [18-fly-trails-and-orbit-waterfalls.md](18-fly-trails-and-orbit-waterfalls.md) |
+| 33 | Get on the water: beaches, boat launches, marinas | [33-get-on-the-water.md](33-get-on-the-water.md) |
+| 34 | Find a campground | [34-find-a-campground.md](34-find-a-campground.md) |
+| 35 | See the snowpack | [35-see-the-snowpack.md](35-see-the-snowpack.md) |
 
 ### Water and land
 | # | Intent | File |
 |---|--------|------|
 | 29 | Know the well water under a place | [29-know-the-well-water-under-a-place.md](29-know-the-well-water-under-a-place.md) |
+| 38 | See drought and low rivers | [38-see-drought-and-low-rivers.md](38-see-drought-and-low-rivers.md) |
 
 ### Choose a place
 | # | Intent | File |

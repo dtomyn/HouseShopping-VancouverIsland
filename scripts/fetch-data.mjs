@@ -1216,6 +1216,48 @@ const SOURCES = {
     await buildTsunami({ log, cached, writeOut, round, pool, BBOX, getIsland, PLACES, OUT });
   },
 
+  // Floodplains: BC's designated floodplain maps (1978–1997), their study limits and report sheets, per-town and per-parcel
+  // shares inside them (scripts/flood.mjs). Reads land.json, so it runs after land; parcel values go to land-flood.json.
+  async flood() {
+    const { buildFlood } = await import('./flood.mjs');
+    await buildFlood({ log, cached, writeOut, round, WFS, BBOX, getIsland, PLACES, OUT });
+  },
+
+  // Water access: beaches, beach accesses, boat launches and marinas (OpenStreetMap) and DFO small craft harbours,
+  // with each town's nearest (scripts/outdoors.mjs).
+  async water() {
+    const { buildWater } = await import('./outdoors.mjs');
+    await buildWater({ log, cached, writeOut, round, distKm, BBOX, WFS, getIsland, PLACES, ISLAND_COMMUNITIES });
+  },
+
+  // Camping & recreation sites: Recreation Sites and Trails BC, and OpenStreetMap campgrounds sorted by the park they
+  // sit in (scripts/outdoors.mjs).
+  async camping() {
+    const { buildCamping } = await import('./outdoors.mjs');
+    await buildCamping({ log, cached, writeOut, round, distKm, BBOX, WFS, getIsland, PLACES, ISLAND_COMMUNITIES });
+  },
+
+  // Snowpack: BC River Forecast Centre snow courses and snow pillows on the islands, each station's 1 April snow water
+  // equivalent by year against its own normal (scripts/snow.mjs).
+  async snow() {
+    const { buildSnow } = await import('./snow.mjs');
+    await buildSnow({ log, cached, writeOut, round, WFS, BBOX, getIsland, onIsland });
+  },
+
+  // Radon: Health Canada's Cross-Canada Survey of Radon Concentrations in Homes (2009–2011), every home's result by
+  // health area, with the island's three health service delivery areas drawn from the BC Data Catalogue (scripts/radon.mjs).
+  async radon() {
+    const { buildRadon } = await import('./radon.mjs');
+    await buildRadon({ log, cached, writeOut, round, WFS, BBOX, PLACES });
+  },
+
+  // Drought: how low the island's rivers ran each summer (7-day low flow and monthly flows against each gauge's own
+  // record, HYDAT daily means) with each gauge's basin outline (scripts/drought.mjs). Reuses the rivers stage's station list.
+  async drought() {
+    const { buildDrought } = await import('./drought.mjs');
+    await buildDrought({ log, cached, writeOut, round, BBOX, getIsland, onIsland, ogcAll, PLACES });
+  },
+
   // A century of logging: every mapped cutblock with its harvest year, plus blocks approved or being logged now
   // (scripts/neighbours.mjs).
   async logging() {
@@ -1234,7 +1276,7 @@ const SOURCES = {
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'logging', 'neighbours'];
+const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'flood', 'logging', 'neighbours', 'water', 'camping', 'snow', 'radon', 'drought'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};

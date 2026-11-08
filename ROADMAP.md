@@ -29,6 +29,11 @@ The order puts quick wins that reuse existing code first, then the most decision
 | 11 | [Ongoing costs: property tax and rent](#11-ongoing-costs-property-tax-and-rent) | Useful, but rent data may need a manual export step | Medium |
 | 12 | [Indigenous territories and place names](#8-indigenous-territories-and-original-place-names) | Important, but needs the most care with sources, permissions and wording | Medium |
 | 13 | ✅ [Internet and cell coverage](#13-internet-and-cell-coverage) | Rural buyers can't judge working from home without it | Medium |
+| 14 | ✅ [Water access and camping](#14-water-access-and-camping) | A coastal retirement is about getting on the water; two small point layers beside Trails | Small–medium |
+| 15 | ✅ [Snowpack](#15-snowpack) | Ski season, summer rivers and town water start in the mountains; a small timeline layer from open CSVs | Small |
+| 16 | ✅ [Floodplains](#16-floodplains) | Riverside towns and acreages: where the province mapped a 200-year flood, how old the map is, and how much of a town or parcel is inside | Small–medium |
+| 17 | ✅ [Radon](#17-radon) | Every house purchase should include a radon test; shows how low the island is against BC, honestly at health-area grain | Small |
+| 18 | ✅ [Drought and low rivers](#18-drought-and-low-rivers) | Wells, creeks and small reservoirs falter in dry summers; a century of river lows shows how often, and whether it's getting worse | Small–medium |
 
 ### Static layers
 
@@ -112,6 +117,38 @@ Hospitals, seismic hazard and tsunami zones don't change over time. Before addin
 - **Measured:** Ookla open data (CC BY-NC-SA 4.0; fine for this non-commercial personal atlas with attribution; derived data stay under the same licence). The global parquet files are sorted by quadkey, and the island's tiles sit in the first few percent of rows, so hyparquet reads only that prefix of each column chunk over HTTP range requests (20–40 MB per file); the clipped rows are cached per quarter in `.cache/internet/`. Tiles are pooled into the ISED hexagons (nearest centre) so both sources share one grid. If the atlas ever went commercial, the measured views would have to go.
 - **Per parcel:** the Land Finder looks each parcel up in the hexagons in the browser (as it does for trails), so `land.json` is unchanged.
 - **Still open:** address-level availability (the PHH file), upload speeds and latency (in the Ookla rows, not yet shown), and separating Starlink from wired home internet (Ookla's open tiles don't).
+
+### 14. Water access and camping
+
+✅ **Built.** `water` and `camping` stages (`scripts/outdoors.mjs`) → `public/data/water.json` and `camping.json`; static *Water access* and *Camping & rec sites* layers in the *Outdoors* group (`src/outdoors.ts`); *Water access* and *Camping nearby* in the Town Report; Land Finder *A beach nearby* and *A boat launch nearby* in *Outdoors*, worked out per parcel in the browser.
+
+- **Water access:** OpenStreetMap beaches, slipways, marinas and features named “Beach Access” (ODbL), with Fisheries and Oceans Canada's small craft harbours (OGL – Canada). Lake and river beaches are told apart by distance from the coast. Distances are straight lines, own island only for the small islands.
+- **Camping:** Recreation Sites and Trails BC's site points (OGL – BC) and OpenStreetMap campgrounds, merged where they are the same site and sorted by the BC and national park boundaries the `neighbours` stage already downloads.
+- **Still open:** BC Parks doesn't publish its campgrounds (or their capacities, fees and reservations) as open data, so park campgrounds come from OpenStreetMap and only carry what volunteers tagged; municipal beach-access inventories (e.g. Saanich, Nanaimo, the CRD) are separate per-council datasets and only accesses named in OpenStreetMap appear; walking or driving times to the water instead of straight lines; no Town Finder criterion yet.
+
+### 15. Snowpack
+
+✅ **Built.** `snow` stage (`scripts/snow.mjs`) → `public/data/snow.json` (32 KB); time-based *Snowpack* layer in the *Outdoors* group (`src/snow.ts`). The BC River Forecast Centre's manual snow course archive and current season, the automated stations' daily snow water equivalent and hourly snow depth archives, and both station-location layers (all OGL – BC). 22 courses and 5 pillows inside the island outline with 5+ years of 1 April data; each compared with its own normal (median 1 April water, 1991–2020 where it has 15 of those years); the island figure is the median of those shares. Events for the thinnest (2015, 2005, 1981) and deepest (1999, 1974) years.
+
+- **Still open:** coverage is thin (8 stations measured in 2026, 5 of them counted in the island figure; most courses retired) and the early island figure rests on a few stations; no Town Report row, since no town's water or home can honestly be tied to one station; the CRD's Sooke watershed pillows other than Survey Mountain, and BC Wildfire's low weather stations, have no snow water in the archive; mid-winter (1 February, 1 March) and 15 May surveys are in the data but not shown; the River Forecast Centre's published basin indices and normals are not used (the atlas computes its own from the station records).
+
+### 16. Floodplains
+
+✅ **Built.** `flood` stage (`scripts/flood.mjs`, after `land`) → `public/data/flood.json` (7 KB, per study and town), `flood-map.json` (229 KB, loaded on first show) and `land-flood.json` (143 KB, per parcel in `land.json`'s order with a PID hash); static *Floodplains* layer in *Hazard & climate outlook* after Tsunami zones (`src/flood.ts`). Sources: BC's *Mapped Floodplains in BC (Historical)*, its *Study Area Limits* and *Mapsheets Index* with EcoCat report links (all OGL – BC). 17 studies on the islands, designated 1978–1997 (Shawnigan Lake to the Cowichan, Somass and Little Qualicum); one alluvial fan (Oyster River) and one dry island kept out. Town Report *Mapped floodplain* (share of ground within 2 km and which study), Town Finder *Out of mapped floodplains* (weight 0), Land Finder Safety *Mapped floodplain* (room to build outside: an acre / fully outside / any), parcel report tile. Each study is tied to the River floods gauges on its river, and the two layers link to each other.
+
+- **Still open:** newer regional and municipal flood mapping (searched for the Cowichan Valley, Comox Valley, Strathcona/Campbell River, Nanaimo and North Cowichan) turned up only viewer-only web maps or services with no open licence, several of them reusing the provincial layer, so none is shown; coastal flooding (storm surge, sea-level rise; see item 7) and creeks are unmapped here; flood construction levels from the map sheets are not digitized; the town share is a 2 km disc round the centre, not the town's residential area.
+
+### 17. Radon
+
+✅ **Built.** `radon` stage (`scripts/radon.mjs`) → `public/data/radon.json` (5 KB: the island's three health areas with every home's result and tests by postal area, BC's 16 health areas, BC and Canada totals, each town's area) and `radon-map.json` (46 KB of outlines, loaded on first show); static *Radon* layer in *Hazard & climate outlook* after Floodplains (`src/radon.ts`). Sources: Health Canada's *Cross-Canada Survey of Radon Concentrations in Homes* (2009–2011, one row per home, OGL – Canada) and BC's *Health Service Delivery Area Boundaries* (OGL – BC). 270 island homes: 3 over 200 Bq/m³ (1.1%; South 1 of 55, Central 1 of 109, North 1 of 106), against 7.9% across BC and 11% across Canada. Town Report *Radon (area survey)* with the sample size; Town Finder *Low radon (area survey)* (weight 0). No Land Finder filter: three areas can't say anything about a parcel.
+
+- **Still open:** the BCCDC's BC Radon Data Repository (40,000+ tests, behind the BC Radon Map) and BC Lung's community testing summaries would be finer, but the repository releases data only on approved requests and the community results are published only as PDF reports, not open data, so neither is used; postal areas hold 2–30 tests each on the island, too few to map, so they are only listed; no geological proxy (NRCan airborne gamma-ray uranium) is drawn, since it measures rock rather than homes; the survey is 15 years old and volunteer-based.
+
+### 18. Drought and low rivers
+
+✅ **Built.** `drought` stage (`scripts/drought.mjs`) → `public/data/drought.json` (84 KB: 81 gauges with each summer's lowest 7-day flow, the day it ended and its rank in the gauge's own record, the island median by year, each town's nearest long-record gauge) and `drought-map.json` (200 KB: basin outlines and June–October monthly ranks, loaded on first show); time-based *Drought & low rivers* layer in *History on the timeline* after Wells (`src/drought.ts`). Sources: ECCC Water Survey of Canada HYDAT daily mean discharge (`api.weather.gc.ca`) and the Hydrometric Network Basin Polygons (both OGL – Canada). 1913–2025; the driest summers by island median (years with 20+ gauges) are 2023, 2015, 1992, 2014 and 1985. Town Report *Summer river lows* (share of summers the nearest gauge ran nearly dry, under 2% of its average flow; driest-10% summers in the last 20); Town Finder *Rarely in severe drought* (weight 0). Panel links to Wells and Snowpack.
+
+- **Still open:** BC's own Drought Levels (0–5 by basin) and their 2015–2025 archive are published only "Access Only" (Province of BC copyright, no redistribution without written permission), so they are not used and the layer ranks gauge flows instead; watering-restriction stages (CRD, Nanaimo, Comox Valley, etc.) exist only as web pages, not open data, so none are shown; HYDAT ends with its last published year, so the current summer is missing (ECCC's real-time feed keeps only recent weeks); regulated rivers aren't flagged from data (HYDAT's regulation table is only in the full ~1 GB database), only by the usual-low-to-average ratio; no Land Finder filter, since one gauge per basin says little about a parcel's well; the Gulf Islands have no gauges with recent records, so their towns use a Vancouver Island gauge.
 
 ## Explaining the island's history
 

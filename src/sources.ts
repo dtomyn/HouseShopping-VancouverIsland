@@ -91,6 +91,28 @@ const SOURCES: Source[] = [
     rings: (d): Record<number, Ring> => (d.tsunami ? { 2021: { v: 0.55, label: 'Victoria’s hazard zone modelled (2021)' }, [NOW]: { v: 0.9, label: 'Notification zones as published today' } } : {}),
   },
   {
+    id: 'flood', key: 'flood', name: 'Floodplains', color: '#5b8cff', group: 'Hazards',
+    owner: 'BC Ministry of Water, Land and Resource Stewardship', title: 'Mapped Floodplains in BC (Historical), with Study Area Limits and Mapsheets Index', url: 'https://catalogue.data.gov.bc.ca/dataset/mapped-floodplains-in-bc-historical',
+    endpoint: 'WFS openmaps.gov.bc.ca · CWB_FLOODPLAINS_BC_AREA_SVW, CWB_FLOODPLAINS_LIMIT_LINE_SP, FLDP_FLOODPLAIN_PROJ_REPORT_SP', licence: OGL_BC,
+    gives: 'The designated 200-year floodplains on the island’s mapped rivers, each with its study, year and report; the share of each town and parcel inside them.',
+    read: (d) => d.flood && { n: d.flood.studies.length, what: `${d.flood.studies.length} floodplain studies on the islands, ${Object.values(d.flood.towns).filter((t) => t.pct > 0).length} towns with mapped floodplain within 2 km` },
+    rings: (d): Record<number, Ring> => {
+      const out: Record<number, Ring> = {};
+      const by: Record<number, string[]> = {};
+      for (const s of d.flood?.studies ?? []) { const y = s.designated ?? s.published; if (y) (by[y] ??= []).push(s.name); }
+      for (const [y, names] of Object.entries(by)) out[+y] = { v: 0.4 + 0.1 * Math.min(names.length, 4), label: `Floodplain${names.length > 1 ? 's' : ''} mapped (${y}): ${names.join('; ')}` };
+      return out;
+    },
+  },
+  {
+    id: 'radon', key: 'radon', name: 'Radon', color: '#e9c46a', group: 'Hazards',
+    owner: 'Health Canada (survey); BC Ministry of Health (health area outlines)', title: 'Cross-Canada Survey of Radon Concentrations in Homes; Health Service Delivery Area Boundaries', url: 'https://open.canada.ca/data/en/dataset/b3bad1b0-32d4-4656-8a64-59b43900d482',
+    endpoint: 'open.canada.ca · radon-concentration.csv; WFS openmaps.gov.bc.ca · BCHA_HEALTH_SERV_DEL_AREA_SP', licence: `${OGL_CA}; ${OGL_BC}`,
+    gives: 'Every home’s long-term radon test in the 2009–2011 survey, summed up for the island’s three health areas and compared with the rest of BC; each town’s area.',
+    read: (d) => d.radon && { n: d.radon.totals.island.n, what: `${d.radon.totals.island.n} island homes tested in ${d.radon.areas.length} health areas, ${d.radon.totals.island.over200} over ${d.radon.guideline} Bq/m³` },
+    rings: (d): Record<number, Ring> => (d.radon ? { 2009: { v: 0.35, label: 'Radon survey begins (home tests through 2011)' }, 2010: { v: 0.6, label: 'Radon survey: tests through the heating season' }, 2011: { v: 0.45, label: `Radon survey ends: ${d.radon.totals.island.n} island homes tested` } } : {}),
+  },
+  {
     id: 'rivers', key: 'rivers', name: 'River floods', color: '#4cc9f0', group: 'Hazards',
     owner: 'Environment and Climate Change Canada', title: 'HYDAT national water data archive: annual peak flows', url: 'https://api.weather.gc.ca/collections/hydrometric-annual-peaks',
     endpoint: 'api.weather.gc.ca/collections/hydrometric-annual-peaks', licence: OGL_CA,
@@ -104,6 +126,14 @@ const SOURCES: Source[] = [
         return [y, { v: Math.max(0.12, Math.min(1, (m - 0.6) / 0.9)), label: `peaks averaged ${Math.round(m * 100)}% of normal at ${xs.length} gauges` }];
       }));
     },
+  },
+  {
+    id: 'drought', key: 'drought', name: 'Drought & low rivers', color: '#e8743b', group: 'Hazards',
+    owner: 'Environment and Climate Change Canada (Water Survey of Canada)', title: 'HYDAT daily mean discharge; Hydrometric Network Basin Polygons', url: 'https://api.weather.gc.ca/collections/hydrometric-daily-mean',
+    endpoint: 'api.weather.gc.ca/collections/hydrometric-daily-mean; collaboration.cmc.ec.gc.ca · HydrometricNetworkBasinPolygons MDA_ADP_08', licence: OGL_CA,
+    gives: 'Each summer’s lowest 7-day river flow and monthly flows at the island’s gauges, ranked against each gauge’s own record, with the basin above each gauge; each town’s nearest long-record gauge. BC’s own drought levels are not used: they are published “Access Only”.',
+    read: (d) => d.drought && { n: sum(d.drought.gauges.map((g) => g.n)), what: `${fmt.int(sum(d.drought.gauges.map((g) => g.n)))} gauge-summers from ${d.drought.gauges.length} gauges` },
+    rings: (d): Record<number, Ring> => Object.fromEntries(Object.entries(d.drought?.island ?? {}).map(([y, [p, n]]) => [y, { v: Math.max(0.1, Math.min(1, (60 - p) / 50)), label: `summer low flows: median gauge at the ${Math.round(p)}th percentile of its record (${n} gauges)` }])),
   },
   {
     id: 'smoke', key: 'smoke', name: 'Smoke days', color: '#c9a27e', group: 'Hazards',
@@ -267,7 +297,37 @@ const SOURCES: Source[] = [
     read: (d) => d.trails && { n: d.trails.netPaths + d.trails.routes.length + d.trails.falls.length, what: `${fmt.int(d.trails.netPaths)} footpaths (${fmt.int(d.trails.netKm)} km), ${d.trails.routes.length} named routes, ${fmt.int(d.trails.falls.length)} waterfalls (${d.trails.falls.filter((f) => f.img).length} with photos)` },
     // OpenStreetMap is a map of today, so one ring at the bark
     rings: (d) => d.trails ? { [NOW]: { v: 1, label: `${fmt.int(d.trails.netKm)} km of footpath and ${fmt.int(d.trails.falls.length)} waterfalls as mapped today` } } : {},
-  },  {
+  },
+  {
+    id: 'water', key: 'water', name: 'Water access', color: '#38bdf8', group: 'Outdoors',
+    owner: 'OpenStreetMap contributors', title: 'OpenStreetMap beaches, beach accesses, boat launches and marinas', url: 'https://www.openstreetmap.org/copyright',
+    endpoint: 'overpass-api.de · natural=beach, leisure=slipway, leisure=marina, name~"Beach Access"', licence: 'ODbL',
+    gives: 'Every mapped beach (sea or lake), named beach access, public boat launch and marina on the islands, and each town’s nearest.',
+    read: (d) => { const W = d.water; if (!W) return null; const n = (id: string) => fmt.int(W.rows.filter((r) => W.kinds[r[2]].id === id).length); return { n: W.rows.length, what: `${n('beach')} sea beaches, ${n('lake')} lake and river beaches, ${n('access')} beach accesses, ${n('launch')} boat launches, ${n('marina')} marinas and ${n('harbour')} DFO harbours` }; },
+    rings: (d) => d.water ? { [NOW]: { v: 1, label: `${fmt.int(d.water.rows.length)} beaches, launches and moorages as mapped today` } } : {},
+  },
+  {
+    id: 'camping', key: 'camping', name: 'Camping & rec sites', color: '#a3e635', group: 'Outdoors',
+    owner: 'Recreation Sites and Trails BC · OpenStreetMap contributors', title: 'Recreation Sites Subset (information purposes only); OpenStreetMap campgrounds', url: 'https://catalogue.data.gov.bc.ca/dataset/recreation-sites-subset-information-purposes-only',
+    endpoint: 'WFS openmaps.gov.bc.ca · FTEN_REC_SITE_POINTS_SVW; overpass-api.de · tourism=camp_site|caravan_site', licence: `${OGL_BC}; ODbL`,
+    gives: 'Every established recreation site with its campsite count and access, and every mapped campground, sorted into BC Parks, national park, recreation site and other by the park it sits in.',
+    read: (d) => { const C = d.camping; if (!C) return null; const n = (id: string) => fmt.int(C.rows.filter((r) => C.kinds[r[2]].id === id).length); return { n: C.rows.length, what: `${n('park')} BC Parks and ${n('national')} national park campgrounds, ${n('rec')} recreation sites with camping and ${n('day')} for day use, ${n('other')} private, regional and other campgrounds` }; },
+    rings: (d) => d.camping ? { [NOW]: { v: 1, label: `${fmt.int(d.camping.rows.length)} campgrounds and recreation sites today` } } : {},
+  },
+  {
+    id: 'snow', key: 'snow', name: 'Snowpack', color: '#bfe3ff', group: 'Outdoors',
+    owner: 'BC River Forecast Centre (BC Ministry of Water, Land and Resource Stewardship)', title: 'Manual snow survey data and automated snow weather station data, with station locations', url: 'https://catalogue.data.gov.bc.ca/dataset/archive-manual-snow-survey-data',
+    endpoint: 'env.gov.bc.ca/wsd/data_searches/snow/asws/data · allmss_archive.csv, allmss_current.csv, SW_DailyArchive.csv, SD_Archive.csv; WFS openmaps.gov.bc.ca · SSL_SNOW_MSS_LOCS_SP, SSL_SNOW_ASWS_STNS_SP', licence: OGL_BC,
+    gives: 'Each island snow course’s and snow pillow’s 1 April snow water equivalent and depth by year, against the station’s own normal.',
+    read: (d) => {
+      const S = d.snow;
+      if (!S) return null;
+      const n = sum(S.stations.map((s) => Object.keys(s.swe).length));
+      return { n, what: `1 April readings from ${S.stations.filter((s) => s.kind === 'course').length} snow courses and ${S.stations.filter((s) => s.kind === 'pillow').length} snow pillows` };
+    },
+    rings: (d) => Object.fromEntries(Object.entries(d.snow?.island ?? {}).map(([y, [r, n]]) => [y, { v: Math.max(0.08, Math.min(1, r / 1.8)), label: `1 April snowpack ${Math.round(r * 100)}% of normal (median of ${n} stations)` }])),
+  },
+  {
     id: 'logging', key: 'logging', name: 'Logging', color: '#e9b872', group: 'Outdoors',
     owner: 'BC Ministry of Forests', title: 'Harvested Areas of BC (Consolidated Cutblocks) and Forest Tenure Cutblock Polygons', url: 'https://catalogue.data.gov.bc.ca/dataset/harvested-areas-of-bc-consolidated-cutblocks-',
     endpoint: 'WFS openmaps.gov.bc.ca · VEG_CONSOLIDATED_CUT_BLOCKS_SP, FTEN_CUT_BLOCK_POLY_SVW', licence: OGL_BC,
@@ -294,6 +354,7 @@ const BARK: BarkSource[] = [
   { name: 'Roads', key: 'hospitals', owner: 'OpenStreetMap contributors · OSRM', title: 'OSRM demo router on OpenStreetMap roads', url: 'https://www.openstreetmap.org/copyright', licence: 'ODbL', gives: 'The road routes and free-flow drive times to the nearest ER.' },
   { name: 'Tsunami maps', key: 'tsunami', owner: 'Strathcona Regional District · City of Victoria', title: 'West Coast Tsunami Inundation Models; Tsunami Hazard Zone (2021 model)', url: 'https://storymaps.arcgis.com/stories/ee3f568154ed46d8b3ee3b6be04f9c8a', licence: 'OGL – Canada · City of Victoria Open Data Licence', gives: 'Published hazard areas: Cascadia and Alaska scenarios from Nootka Sound to Quatsino Sound, and the City of Victoria’s 2021 hazard zone.', read: (d) => `${d.tsunami?.areas.reduce((a, x) => a + x.polygons, 0) ?? 0} mapped polygons` },
   { name: 'Parks & ownership', key: 'neighbours', owner: 'BC Parks · Parks Canada · BC Ministry of Forests · GeoBC', title: 'Parks, ecological reserves and protected areas; national parks; Generalized Forest Cover Ownership; Freshwater Atlas lakes', url: 'https://catalogue.data.gov.bc.ca/dataset/generalized-forest-cover-ownership', licence: OGL_BC, gives: 'What is next door to every Land Finder parcel and town: parks, Crown land, water and logging, measured on a 50 m grid.', read: (d) => (d.neighbours ? `${d.neighbours.parks.length} named parks and protected areas, ${Object.keys(d.neighbours.towns).length} towns measured` : 'not built yet') },
+  { name: 'Small craft harbours', key: 'water', owner: 'Fisheries and Oceans Canada', title: 'Small Craft Harbours Locations and Information', url: 'https://open.canada.ca/data/en/dataset/262451e7-6416-47b5-8453-f31d212ea657', licence: OGL_CA, gives: 'The public harbours DFO owns (core and non-core fishing, recreational) and the harbour authority that runs each.', read: (d) => `${d.water?.rows.filter((r) => d.water!.kinds[r[2]].id === 'harbour').length ?? 0} harbours on the islands` },
   { name: 'Basemap', owner: 'CARTO · OpenStreetMap contributors', title: 'Dark Matter vector basemap', url: 'https://carto.com/attributions', licence: 'ODbL / CARTO terms', gives: 'The dark map, place names and roads under every layer.' },
   { name: 'Terrain', owner: 'Mapzen · AWS Open Data', title: 'Terrain Tiles (terrarium)', url: 'https://registry.opendata.aws/terrain-tiles/', licence: 'Open, with attribution', gives: 'The shaded relief of the island’s mountains, the 3D terrain for trail flights and waterfall orbits, trail elevations, and the low coastal ground on the tsunami layer.' },
 ];
@@ -305,8 +366,11 @@ const DERIVED = [
   ['Ferry waits', 'add half the gap between weekday sailings to the drive when an island has no ER.'],
   ['Borrowed stations', 'a town without its own sunshine or climate station uses the nearest one within 60 km, and its report names it.'],
   ['Future values', 'come from the model grid cell nearest each town, within 15 km.'],
+  ['Summer low flows', 'are worked out here from daily flows: each summer’s (June–October) lowest 7-day average, ranked against the same gauge’s other summers (0 = its lowest on record); summers missing more than 5% of days are skipped. “Nearly dry” is a 7-day low under 2% of the river’s mean annual flow, a screening line chosen here, not an official threshold.'],
   ['Well prospects', 'for a town are medians of the wells within 5 km (or on the whole island); for a parcel, of the wells within 1 km. A yield under 2 US gallons a minute counts as low.'],
   ['Trail climbing and times', 'are worked out here: elevations sampled from terrain tiles along each route, and walking time by Naismith’s rule (4.5 km/h plus an hour per 600 m up).'],
+  ['Floodplain shares', 'are worked out here: ground within 2 km of a town centre (sea left out) sampled every 50 m, and each parcel sampled every 20 m or finer, against the designated floodplain shapes.'],
+  ['Radon shares', 'are worked out here from the survey’s home-by-home results: the share of tested homes over 200 Bq/m³ in each health area (results under 15 Bq/m³, published as "<15", count as under), and each town placed in the health area its centre is in.'],
   ['Low coastal ground', 'is a tsunami screening measure worked out here from ~100 m terrain: ground under 20 m within 1 km of the sea. Published hazard maps take its place where they exist.'],
   ['Share of the islands logged', 'counts land logged at least once on a 100 m grid, so land logged twice counts once.'],
   ['Next door', 'is measured on a 50 m grid out to 1 km from each parcel; Crown land and parks narrower than 250 m (road allowances, trail corridors) don’t count.'],

@@ -69,6 +69,41 @@ export type Tsunami = {
   areas: TsunamiArea[];
   towns: Record<string, TsunamiTown>;
 };
+/**
+ * Mapped floodplains (scripts/flood.mjs): BC's designated 200-year floodplain maps, 1978–1997. Studies are indexed by
+ * position. Towns: `pct`, the % of ground within `townRadiusM` of the centre inside a mapped floodplain; `studies` by
+ * share; `centre`, the study at the centre; `near`/`nearKm`, the nearest mapped floodplain within 30 km.
+ */
+export type FloodStudy = { name: string; projects: string[]; drawing: string | null; designated: number | null; published: number | null; sheets: number; report: string | null; ha: number; fanHa?: number; centre: [number, number] };
+export type FloodTown = { pct: number; km2: number; studies: number[]; centre?: number; near?: number; nearKm?: number };
+export type Flood = { source: string; townRadiusM: number; studies: FloodStudy[]; towns: Record<string, FloodTown> };
+/** The floodplain layer's shapes, loaded the first time it is shown: polygons with their study index, and study-limit lines. */
+export type FloodMap = { polys: { s: number; fan?: 1; poly: [number, number][][] }[]; limits: [number, number][][] };
+/** The year a floodplain study is dated by: its designation, else its report sheets' publication. */
+export const floodYear = (s: FloodStudy) => s.designated ?? s.published;
+/**
+ * Radon (scripts/radon.mjs): Health Canada's Cross-Canada Survey of Radon Concentrations in Homes (2009–2011), one
+ * long-term test per volunteer home. Areas are the island's three health service delivery areas (South, Central, North
+ * Vancouver Island), in that order; `values` is every home's result in Bq/m³, sorted, with results under `lod` as 0;
+ * `median` likewise (0 means under `lod`). `fsas` counts tests by postal-code prefix ('withheld' where the survey
+ * suppressed it). `bc` is every BC health area for comparison; `towns` maps a town key to its area's index.
+ */
+export type RadonArea = {
+  code: string; name: string; surveyName: string;
+  n: number; over200: number; over600: number; belowLod: number; median: number; p90: number; max: number;
+  values: number[];
+  fsas: { fsa: string; n: number; over200: number; max: number }[];
+  label: [number, number] | null;
+};
+export type Radon = {
+  source: string; url: string; years: string; lod: number; guideline: number;
+  areas: RadonArea[];
+  bc: { code: string; name: string; n: number; over200: number; median: number; island: number }[];
+  totals: Record<'island' | 'bc' | 'canada', { n: number; over200: number }>;
+  towns: Record<string, number>;
+};
+/** The radon areas' outlines, in `Radon.areas` order, loaded the first time the layer is shown. */
+export type RadonMap = { areas: [number, number][][][][] };
 /** The tsunami layer's shapes and cells, loaded the first time it is shown. Cells index a z`z` Web Mercator pixel grid from tile (x0, y0), delta-encoded. */
 export type TsunamiMap = {
   zones: { zone: string; label: string; color: string; polys: [number, number][][][] }[];
@@ -188,6 +223,55 @@ export type Neighbours = {
 
 export type CrimeSeries = { csi?: Record<string, number>; vcsi?: Record<string, number>; nvcsi?: Record<string, number> };
 
+/**
+ * Water access (water.json) and camping (camping.json) points, from scripts/outdoors.mjs. A row is
+ * [lon, lat, kind (index into kinds), island (index into islands; the last is "Other": off the atlas's islands but
+ * near a town), name (null: unnamed), details (only the fields the source has), ref (OSM element, DFO harbour, rec site)].
+ */
+export type OutRow = [number, number, number, number, string | null, Record<string, string | number> | null, string];
+/** [row index, km in a straight line], or null when there's none on the town's island */
+export type Nearest = [number, number] | null;
+export type WaterTown = { beach: Nearest; lake: Nearest; launch: Nearest; moor: Nearest; n10: [number, number, number] };
+export type CampTown = { near: Nearest; park: Nearest; rec: Nearest; n25: number[] };
+type Points<T> = { source: string; asOf: string; islands: string[]; kinds: { id: string; label: string }[]; cols: string[]; rows: OutRow[]; towns: Record<string, T> };
+export type Water = Points<WaterTown> & { townKm: number };
+export type Camping = Points<CampTown> & { townKm: number };
+
+/**
+ * Snow surveys (snow.json, scripts/snow.mjs): BC River Forecast Centre snow courses (measured by hand around 1 April)
+ * and snow pillows (read automatically on 1 April). `swe` is 1 April snow water equivalent in mm by year, `depth` the
+ * snow depth in cm; `date` only lists years when the reading wasn't taken on 1 April ('MM-DD'), `flag` the survey
+ * code when there was one ('problem', 'early/late', 'trace'…). `normal` is the station's own median 1 April SWE over
+ * `normalPeriod` (null with under 10 years of record).
+ */
+export type SnowStation = {
+  id: string; kind: 'course' | 'pillow'; name: string; elev: number; lon: number; lat: number; active: boolean; operator: string | null;
+  from: number; to: number; n: number; normal: number | null; normalPeriod: string | null;
+  swe: Record<string, number>; depth: Record<string, number>; date?: Record<string, string>; flag?: Record<string, string>;
+};
+/** `island`: year -> [median of the stations' 1 April SWE ÷ their own normal, stations counted] */
+export type Snow = { source: string; asOf: string; normalYears: [number, number]; minNormalMm: number; stations: SnowStation[]; island: Record<string, [number, number]> };
+
+/**
+ * Drought from the river gauges (drought.json, scripts/drought.mjs): Water Survey of Canada daily flows summed up per
+ * summer (1 June – 31 October). `years`: year -> [lowest 7-day average flow in m³/s, the day of the year that week
+ * ended, where that low ranks in the gauge's own record (0 = lowest on record, 100 = highest)]. `mad` is the mean annual
+ * flow (null without 5 complete years), `normalLow` the median summer low. `rhbn` marks Reference Hydrometric Basin
+ * Network gauges (natural, unregulated basins). `island`: year -> [median rank of the gauges with 20+ summers, gauges
+ * counted]; `towns`: town key -> [index of the nearest long-record gauge still measured lately, km].
+ */
+export type DroughtGauge = {
+  id: string; name: string; lon: number; lat: number; area: number | null; rhbn: 0 | 1; active: 0 | 1;
+  from: number; to: number; n: number; mad: number | null; madYears: number; normalLow: number;
+  years: Record<string, [number, number, number]>;
+};
+export type Drought = {
+  source: string; lastYear: number; window: string; minSummers: number; townMinSummers: number;
+  gauges: DroughtGauge[]; island: Record<string, [number, number]>; towns: Record<string, [number, number]>;
+};
+/** Basin outlines by gauge id and each summer month's (Jun–Oct) flow rank by gauge and year, loaded on first show. */
+export type DroughtMap = { basins: Record<string, [number, number][][][]>; months: Record<string, Record<string, (number | null)[]>> };
+
 export type Data = {
   island: GeoJSON.Feature | null;
   munis: Muni[];
@@ -202,6 +286,7 @@ export type Data = {
   hospitals: { facilities: Facility[]; towns: Record<string, Trip[]>; source: string; routing: string; routingSource: string | null } | null;
   seismic: Seismic | null;
   tsunami: Tsunami | null;
+  flood: Flood | null;
   smoke: Smoke | null;
   future: Future | null;
   trails: Trails | null;
@@ -210,6 +295,11 @@ export type Data = {
   internet: Internet | null;
   logging: Logging | null;
   neighbours: Neighbours | null;
+  water: Water | null;
+  camping: Camping | null;
+  snow: Snow | null;
+  radon: Radon | null;
+  drought: Drought | null;
   manifest: Record<string, { ok: boolean; updated?: string; lastError?: string }>;
 };
 
@@ -227,6 +317,8 @@ async function load<T>(name: string): Promise<T | null> {
 
 export async function loadAll(): Promise<Data> {
   const internet = load<Internet>('internet');
+  const flood = load<Flood>('flood');
+  const water = load<Water>('water'), camping = load<Camping>('camping'), snow = load<Snow>('snow'), radon = load<Radon>('radon'), drought = load<Drought>('drought');
   const [island, munis, fires, quakes, rivers, climate, normals, population, housing, crime, hospitals, seismic, smoke, future, trails, ferries, wells, logging, neighbours, manifest, tsunami] = await Promise.all([
     load<GeoJSON.Feature>('island'),
     load<Muni[]>('municipalities'),
@@ -266,7 +358,7 @@ export async function loadAll(): Promise<Data> {
   // Crime is only useful if at least one municipality matched.
   const crimeOk = crime && Object.keys(crime.munis ?? {}).length > 0 ? crime : null;
 
-  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, manifest: manifest ?? {} };
+  return { island, munis: munis ?? [], fires, quakes, rivers, climate, normals, population, housing, crime: crimeOk, hospitals, seismic, tsunami: tsunami?.towns ? tsunami : null, flood: (await flood)?.studies?.length ? await flood : null, smoke: smoke?.island?.length ? smoke : null, future: future?.grid?.cells?.length ? future : null, trails: trails?.routes?.length || trails?.falls?.length ? trails : null, ferries, wells: wells?.rows?.length ? wells : null, internet: (await internet)?.hexes?.length ? await internet : null, logging: logging?.footprint?.length ? logging : null, neighbours, water: (await water)?.rows?.length ? await water : null, camping: (await camping)?.rows?.length ? await camping : null, snow: (await snow)?.stations?.length ? await snow : null, radon: (await radon)?.areas?.length ? await radon : null, drought: (await drought)?.gauges?.length ? await drought : null, manifest: manifest ?? {} };
 }
 
 let netPromise: Promise<TrailNet | null> | null = null;
@@ -275,6 +367,18 @@ export const loadTrailNet = () => (netPromise ??= load<TrailNet>('trails-net'));
 let blocksPromise: Promise<LoggingBlocks | null> | null = null;
 /** Every cutblock's shape is a few MB, so it loads the first time the logging layer is shown. */
 export const loadLoggingBlocks = () => (blocksPromise ??= load<LoggingBlocks>('logging-blocks'));
+
+let floodMapPromise: Promise<FloodMap | null> | null = null;
+/** The floodplain shapes and study limits (~230 KB), loaded the first time the layer is shown. */
+export const loadFloodMap = () => (floodMapPromise ??= load<FloodMap>('flood-map'));
+
+let radonMapPromise: Promise<RadonMap | null> | null = null;
+/** The radon health areas' outlines (~50 KB), loaded the first time the layer is shown. */
+export const loadRadonMap = () => (radonMapPromise ??= load<RadonMap>('radon-map'));
+
+let droughtMapPromise: Promise<DroughtMap | null> | null = null;
+/** The drought layer's basin outlines and monthly flow ranks (~200 KB), loaded the first time the layer is shown. */
+export const loadDroughtMap = () => (droughtMapPromise ??= load<DroughtMap>('drought-map'));
 
 let tsunamiMapPromise: Promise<TsunamiMap | null> | null = null;
 /** The tsunami layer's shapes and low-ground cells (~1.5 MB), loaded the first time the layer is shown. */
