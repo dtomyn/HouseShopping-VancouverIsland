@@ -128,6 +128,14 @@ const SOURCES: Source[] = [
     },
   },
   {
+    id: 'drought', key: 'drought', name: 'Drought & low rivers', color: '#e8743b', group: 'Hazards',
+    owner: 'Environment and Climate Change Canada (Water Survey of Canada)', title: 'HYDAT daily mean discharge; Hydrometric Network Basin Polygons', url: 'https://api.weather.gc.ca/collections/hydrometric-daily-mean',
+    endpoint: 'api.weather.gc.ca/collections/hydrometric-daily-mean; collaboration.cmc.ec.gc.ca · HydrometricNetworkBasinPolygons MDA_ADP_08', licence: OGL_CA,
+    gives: 'Each summer’s lowest 7-day river flow and monthly flows at the island’s gauges, ranked against each gauge’s own record, with the basin above each gauge; each town’s nearest long-record gauge. BC’s own drought levels are not used: they are published “Access Only”.',
+    read: (d) => d.drought && { n: sum(d.drought.gauges.map((g) => g.n)), what: `${fmt.int(sum(d.drought.gauges.map((g) => g.n)))} gauge-summers from ${d.drought.gauges.length} gauges` },
+    rings: (d): Record<number, Ring> => Object.fromEntries(Object.entries(d.drought?.island ?? {}).map(([y, [p, n]]) => [y, { v: Math.max(0.1, Math.min(1, (60 - p) / 50)), label: `summer low flows: median gauge at the ${Math.round(p)}th percentile of its record (${n} gauges)` }])),
+  },
+  {
     id: 'smoke', key: 'smoke', name: 'Smoke days', color: '#c9a27e', group: 'Hazards',
     owner: 'BC Ministry of Environment', title: 'Air Quality and Climate Monitoring: verified hourly PM2.5', url: 'https://catalogue.data.gov.bc.ca/dataset/air-quality-and-climate-monitoring-verified-hourly-air-quality-and-meteorological-data',
     endpoint: 'ftp.env.gov.bc.ca/pub/outgoing/AIR/AnnualSummary · PM25.csv', licence: OGL_BC,
@@ -358,6 +366,7 @@ const DERIVED = [
   ['Ferry waits', 'add half the gap between weekday sailings to the drive when an island has no ER.'],
   ['Borrowed stations', 'a town without its own sunshine or climate station uses the nearest one within 60 km, and its report names it.'],
   ['Future values', 'come from the model grid cell nearest each town, within 15 km.'],
+  ['Summer low flows', 'are worked out here from daily flows: each summer’s (June–October) lowest 7-day average, ranked against the same gauge’s other summers (0 = its lowest on record); summers missing more than 5% of days are skipped. “Nearly dry” is a 7-day low under 2% of the river’s mean annual flow, a screening line chosen here, not an official threshold.'],
   ['Well prospects', 'for a town are medians of the wells within 5 km (or on the whole island); for a parcel, of the wells within 1 km. A yield under 2 US gallons a minute counts as low.'],
   ['Trail climbing and times', 'are worked out here: elevations sampled from terrain tiles along each route, and walking time by Naismith’s rule (4.5 km/h plus an hour per 600 m up).'],
   ['Floodplain shares', 'are worked out here: ground within 2 km of a town centre (sea left out) sampled every 50 m, and each parcel sampled every 20 m or finer, against the designated floodplain shapes.'],

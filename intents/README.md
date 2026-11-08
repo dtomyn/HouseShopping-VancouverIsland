@@ -62,6 +62,7 @@ same shape:
 | # | Intent | File |
 |---|--------|------|
 | 29 | Know the well water under a place | [29-know-the-well-water-under-a-place.md](29-know-the-well-water-under-a-place.md) |
+| 38 | See drought and low rivers | [38-see-drought-and-low-rivers.md](38-see-drought-and-low-rivers.md) |
 
 ### Choose a place
 | # | Intent | File |

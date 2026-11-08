@@ -1251,6 +1251,13 @@ const SOURCES = {
     await buildRadon({ log, cached, writeOut, round, WFS, BBOX, PLACES });
   },
 
+  // Drought: how low the island's rivers ran each summer (7-day low flow and monthly flows against each gauge's own
+  // record, HYDAT daily means) with each gauge's basin outline (scripts/drought.mjs). Reuses the rivers stage's station list.
+  async drought() {
+    const { buildDrought } = await import('./drought.mjs');
+    await buildDrought({ log, cached, writeOut, round, BBOX, getIsland, onIsland, ogcAll, PLACES });
+  },
+
   // A century of logging: every mapped cutblock with its harvest year, plus blocks approved or being logged now
   // (scripts/neighbours.mjs).
   async logging() {
@@ -1269,7 +1276,7 @@ const SOURCES = {
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'flood', 'logging', 'neighbours', 'water', 'camping', 'snow', 'radon'];
+const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'flood', 'logging', 'neighbours', 'water', 'camping', 'snow', 'radon', 'drought'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};

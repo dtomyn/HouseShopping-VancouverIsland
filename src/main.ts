@@ -28,7 +28,7 @@ const MUNI_WHEN_FOCUSED = new Set(['hospitals', 'seismic', 'tsunami', 'flood', '
 // layer menu sections; any layer not listed lands in the last group
 const LAYER_GROUPS: { name: string; ids: string[] }[] = [
   { name: 'Base map', ids: ['island'] },
-  { name: 'History on the timeline', ids: ['fires', 'logging', 'quakes', 'rivers', 'climate', 'smoke', 'wells'] },
+  { name: 'History on the timeline', ids: ['fires', 'logging', 'quakes', 'rivers', 'climate', 'smoke', 'wells', 'drought'] },
   { name: 'Towns & living', ids: ['population', 'housing', 'crime', 'hospitals', 'internet'] },
   { name: 'Outdoors', ids: ['trails', 'water', 'camping', 'snow'] },
   { name: 'Hazard & climate outlook', ids: ['seismic', 'tsunami', 'flood', 'radon', 'normals', 'future'] },

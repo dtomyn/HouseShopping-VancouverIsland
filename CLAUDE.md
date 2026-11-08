@@ -13,7 +13,7 @@ npm run preview           # serve dist/ at http://localhost:4173
 npm run data [stage…]     # rebuild public/data/*.json from the original sources
 ```
 
-Data stages (in run order): `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails internet land wells tsunami flood logging neighbours water camping snow radon`. Raw downloads cache in `.cache/`; a failing source keeps its old JSON and records the error in `public/data/manifest.json` (shown in the app's Data & sources view). `public/data/` is committed, so the app runs without the pipeline.
+Data stages (in run order): `island ferries fires quakes rivers climate normals population housing crime hospitals seismic smoke future trails internet land wells tsunami flood logging neighbours water camping snow radon drought`. Raw downloads cache in `.cache/`; a failing source keeps its old JSON and records the error in `public/data/manifest.json` (shown in the app's Data & sources view). `public/data/` is committed, so the app runs without the pipeline.
 
 Videos (Windows only, needs Edge + `.venv` with Kokoro; see README):
 
@@ -70,6 +70,7 @@ Videos (Windows only, needs Edge + `.venv` with Kokoro; see README):
 - **`src/radon.ts`:** the Radon layer (static): Health Canada's 2009–2011 home radon survey summed up for the island's three health areas (outlines in `radon-map.json`, loaded on first show), with BC's health areas for comparison. Also the Town Report's radon row (`radonTownRow`). Built by `scripts/radon.mjs`.
 - **`src/logging.ts` + `src/nextdoor.ts`:** the Logging layer (cutblock shapes load on first show) and the Town Report's logging row; `nextdoor.ts` loads `land-neighbours.json` (aligned to `land.json` by order, checked by a PID hash) and draws a parcel's surroundings ring. Both stages live in `scripts/neighbours.mjs`.
 - **`src/outdoors.ts`:** the Water access and Camping & rec sites layers (static points from `water.json` and `camping.json`, one shared point-layer builder with kind chips), their Town Report rows, and `nearestFor`, which the Land Finder uses for each parcel's nearest beach, boat launch and moorage on its own island. Both stages live in `scripts/outdoors.mjs`; the camping stage reuses the `neighbours` stage's park-boundary WFS cache.
+- **`src/drought.ts`:** the Drought & low rivers layer: each island gauge's basin shaded by how its summer low (or, June–October, that month's flow) ranks in its own HYDAT record; basin outlines and monthly ranks (`drought-map.json`) load on first show. Also the Town Report's summer-lows row and `townDrought`, behind the Town Finder's drought criterion. Built by `scripts/drought.mjs` (reuses the `rivers` stage's station list). BC's own drought levels are "Access Only" and not used.
 - **`src/snow.ts`:** the Snowpack layer: BC River Forecast Centre snow courses and pillows as columns of 1 April snow water by year, coloured by % of each station's own normal; the island's median % of normal is the sparkline. Built by `scripts/snow.mjs` (CSV archives plus WFS station locations; reuses the `neighbours.mjs` WFS pager).
 - **`src/land.ts`:** Land Finder, a separate `mode` with its own deck layers, filters and panel, built on `public/data/land.json`.
 - **`src/panels.ts` + `src/metrics.ts`:**

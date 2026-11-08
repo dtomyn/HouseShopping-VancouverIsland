@@ -16,7 +16,8 @@ or a "closest towns" link in any details panel.
     tsunami notification zone and low coastal ground nearby ([30](30-know-where-a-tsunami-could-reach.md));
     share of the ground within 2 km in a mapped floodplain and which study, or the nearest one
     ([36](36-know-the-mapped-floodplains.md)); the share of tested homes over the radon guideline in the town's
-    health area, with the sample size ([37](37-check-radon.md));
+    health area, with the sample size ([37](37-check-radon.md)); how often the nearest long-record river gauge ran
+    nearly dry in summer and its recent driest-10% summers ([38](38-see-drought-and-low-rivers.md));
   - climate (nearest station, warming trend); sunshine, rain days, frost days and snowfall from the 1981–2010
     normals; smoky days a year;
   - the drive to the nearest 24/7 emergency room (and a closer limited-hours option); for islands, the ferry
