@@ -25,6 +25,7 @@ Videos (Windows only, needs Edge + `.venv` with Kokoro; see README):
 ## Rules for this repo
 
 - `main` is protected: work on a branch and open a PR.
+- Data published "Access Only" (no redistribution) never goes into a committed file: the `land` stage writes the BC Wildfire Service fire-threat ratings to the git-ignored `land-threat.json`, which the app loads only if present.
 - All data comes from `npm run data` stages, never manual downloads or hand-edited JSON (the only hand-typed data is in `scripts/municipalities.mjs`). A data change must work from an empty `.cache/`.
 - Anything from outside the code (OSM names, quake places, data strings) goes through `esc()` / `safeUrl()` in `src/html.ts` before reaching `innerHTML`. The production build ships a CSP (`vite.config.ts`, build only): scripts only from the site itself; images and fetches from any `https:` host.
 - Explainer videos render at 1440p (2560×1440) at most; don't go higher.

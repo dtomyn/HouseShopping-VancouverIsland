@@ -36,7 +36,7 @@ export function setLandWater(w: Water | null) { water = w; }
 type Cat = 'care' | 'er' | 'grocery' | 'gas';
 type Poi = [string, number, number];
 type LandJson = {
-  source: string; count: number; threat: string[]; waterKinds: string[];
+  source: string; count: number; waterKinds: string[];
   names: { place: string[]; island: string[]; water: string[] };
   pois: Record<Cat, Poi[]>;
   cols: Record<string, (number | null)[]> & { pid: string[] };
@@ -57,7 +57,7 @@ type Land = {
 let L: Land | null = null;
 let loading: Promise<Land> | null = null;
 
-const NUM = ['acres', 'lon', 'lat', 'place', 'island', 'town', 'townKm', 'water', 'front', 'waterM', 'waterName', 'elevLo', 'elevHi', 'slope', 'threat', 'flood', 'alr', 'pga', 'fires5', 'burn5', 'roadKm', 'airKm', 'indKm', 'sun', 'frost', 'care', 'careI', 'er', 'erI', 'grocery', 'groceryI', 'gas', 'gasI'];
+const NUM = ['acres', 'lon', 'lat', 'place', 'island', 'town', 'townKm', 'water', 'front', 'waterM', 'waterName', 'elevLo', 'elevHi', 'slope', 'flood', 'alr', 'pga', 'fires5', 'burn5', 'roadKm', 'airKm', 'indKm', 'sun', 'frost', 'care', 'careI', 'er', 'erI', 'grocery', 'groceryI', 'gas', 'gasI'];
 
 async function load(): Promise<Land> {
   const res = await fetch(`${import.meta.env.BASE_URL}data/land.json`);
@@ -137,6 +137,7 @@ async function load(): Promise<Land> {
   num.net50 = net50; num.cell = cell; num.netMbps = netMbps;
   await loadTsunami(json, num);
   await loadFlood(json, num);
+  await loadThreat(json, num);
   await loadFire(json, num);
   await loadSun(json, num);
   // next door: parks, Crown land and logging around each parcel (optional; NaN where missing)
@@ -209,6 +210,28 @@ async function loadFlood(json: LandJson, num: Record<string, Float32Array>) {
   } catch { /* optional data */ }
 }
 const pidCheck = async (json: LandJson) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-1', new TextEncoder().encode(json.cols.pid.join('|'))))).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 12);
+
+/**
+ * Wildfire threat (land-threat.json, written by the `land` stage, aligned with land.json and checked by a PID hash):
+ * the worst BC Wildfire Service PSTA rating on or within 500 m of the parcel (0 none … 4 extreme; NaN not rated). The
+ * PSTA is published "Access Only", so the file is git-ignored and never deployed: on the public site threatOk stays
+ * false and the filter lets every parcel through. A local `npm run data land` fills it in.
+ */
+let threatOk = false;
+let threatNames = ['None', 'Low', 'Moderate', 'High', 'Extreme'];
+async function loadThreat(json: LandJson, num: Record<string, Float32Array>) {
+  const n = json.count;
+  num.threat = new Float32Array(n).fill(NaN);
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}data/land-threat.json`);
+    if (!res.ok || !(res.headers.get('content-type') ?? '').includes('json')) return;
+    const t = (await res.json()) as { count: number; check: string; names: string[]; threat: (number | null)[] };
+    if (t.count !== n || t.check !== (await pidCheck(json))) { console.warn('land-threat.json is out of step with land.json: run `npm run data land`'); return; }
+    for (let i = 0; i < n; i++) if (t.threat[i] != null) num.threat[i] = t.threat[i]!;
+    threatNames = t.names ?? threatNames;
+    threatOk = true;
+  } catch { /* local-only data: absent on the public site */ }
+}
 
 /**
  * Fire protection (the `firehalls` stage, land-fire.json, aligned with land.json's order and checked by a PID hash):
@@ -374,7 +397,7 @@ function maskOf(i: number): number {
   if (n.airKm[i] < f.air) m += BV.air;
   if (n.indKm[i] < f.ind) m += BV.ind;
   const t = n.threat[i];
-  if (Number.isNaN(t) ? !f.unrated : t > f.threat) m += BV.threat;
+  if (threatOk && (Number.isNaN(t) ? !f.unrated : t > f.threat)) m += BV.threat;
   if (f.flood !== 'any' && (f.flood === 'clear' ? n.floodPct[i] > 0 : floodDry(i) < FLOOD_ROOM_ACRES)) m += BV.flood;
   if (f.high > 0 && !(n.elevHi[i] >= f.high)) m += BV.high;
   // missing values (data not built) pass, never penalized
@@ -832,6 +855,11 @@ function renderWater(el: HTMLElement) {
 }
 
 function renderThreat(el: HTMLElement) {
+  if (!threatOk) {
+    el.innerHTML = `<div class="lr-lab"><span>Wildfire threat</span></div>
+      <div class="lr-hint">Not on the public site: BC Wildfire Service publishes its fire-threat rating “Access Only” (no redistribution), so it isn’t shared here. Run the atlas locally with <code>npm run data land</code> to use it. Fire history nearby and the Wildfires layer are open data and work everywhere.</div>`;
+    return;
+  }
   const names = ['Low', 'Moderate', 'High', 'Any'];
   el.innerHTML = `
     <div class="lr-lab"><span title="BC Wildfire Service Provincial Strategic Threat Analysis: the worst rating on the parcel or in the forest within 500 m of it">Wildfire threat, at most</span></div>
@@ -1152,7 +1180,7 @@ function renderDetail(i: number) {
   const sh = shortlist[k];
   const s = masks[i] === 0 ? scores[i] : scoreOf(i);
   const pr = parts(i);
-  const threat = Number.isNaN(n.threat[i]) ? 'Not rated' : J.threat[n.threat[i]];
+  const threat = Number.isNaN(n.threat[i]) ? 'Not rated' : threatNames[n.threat[i]];
   const m = (label: string, dot: string, v: string, sub: string, good?: boolean | null) =>
     `<div class="metric${good === false ? ' warn' : ''}"><div class="mk"><span class="dot" style="background:${dot}"></span>${label}</div><div class="mv">${v}</div><div class="ms">${sub}</div></div>`;
   const trip = (cat: Cat) => {
@@ -1206,7 +1234,7 @@ function renderDetail(i: number) {
     <h3>Safety</h3>
     <div class="metric-grid">
       ${fireOk ? fireTile(i, m) : ''}
-      ${m('Wildfire threat', '#fb923c', threat, 'worst rating on or within 500 m of the parcel (BCWS)', Number.isNaN(n.threat[i]) ? null : n.threat[i] <= f.threat)}
+      ${threatOk ? m('Wildfire threat', '#fb923c', threat, 'worst rating on or within 500 m of the parcel (BCWS; local copy only)', Number.isNaN(n.threat[i]) ? null : n.threat[i] <= f.threat) : ''}
       ${m('Fire history', '#f97316', `${n.fires5[i]} starts`, `within 5 km since 1990; ${fmt.ha(n.burn5[i])} burned within 5 km since 1950`)}
       ${floodTile(i, m)}
       ${m('Earthquake shaking', '#e86cff', Number.isNaN(n.pga[i]) ? '—' : `${n.pga[i]}% g`, '2% chance in 50 years (NRCan 2020)')}
