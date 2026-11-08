@@ -1,39 +1,80 @@
 # Island Atlas — Vancouver Island in data
 
-An animated, WebGL-powered atlas of a century of Vancouver Island history, built to help answer one question: **where on the island should we retire?**
+An animated, WebGL-powered atlas of a century of Vancouver Island history, built to help answer one question: **where on the island should we live?**
 
-Press play and watch 100+ years unfold: wildfires flare and leave burn scars, earthquakes ripple out from their true depth beneath the island, rivers surge in flood years, weather stations redden as the climate warms, and towns grow, age, get pricier and (sometimes) safer.
+**▶ Try it: <https://dtomyn.github.io/HouseShopping-VancouverIsland/>** (nothing to install)
+
+Press play and watch 100+ years unfold: wildfires flare and leave burn scars, earthquakes ripple out from their true depth beneath the island, rivers surge in flood years, weather stations redden as the climate warms, and towns grow, age, get pricier and (sometimes) safer. Click any town for its report card, rank the towns by what matters to you, or search every large rural parcel on the island.
+
+## Run it on your own machine
+
+It's a static web app with all of its data committed to the repository, so it runs locally in a couple of minutes. There's no backend, database or API key.
+
+**You need:** [Git](https://git-scm.com/downloads) and [Node.js](https://nodejs.org/) **22 or newer** (the version the published site is built with; check with `node -v`). It works on Windows, macOS and Linux.
+
+```bash
+git clone https://github.com/dtomyn/HouseShopping-VancouverIsland.git
+cd HouseShopping-VancouverIsland
+npm install
+npm run dev
+```
+
+Then open **<http://localhost:5173>** in a current browser with WebGL (Chrome, Edge, Firefox or Safari). The page reloads as you edit the code.
+
+- **An internet connection is still needed while you use it**, for the basemap, terrain, satellite imagery and waterfall photos. Those are streamed from public tile servers; the atlas's own data is local.
+- **The production build** is what GitHub Pages serves. To try it locally, run `npm run build`, then `npm run preview`, and open <http://localhost:4173>.
+- **If port 5173 is taken**, Vite picks the next free port and prints the address. An error mentioning `Node.js version` means Node is older than 22.
+
+Optional extras, all covered below:
+- **Refresh the data** from the original sources: `npm run data`. It needs `curl` on your PATH, which Windows 10+, macOS and Linux all include.
+- **The dev container**, for a ready-made Linux environment in VS Code.
+- **The explainer videos**, which are rendered from the app. This works on Windows only, and needs Microsoft Edge and Python.
 
 ## Features
 
-- **Seven historical layers**, all from open government data:
+- **Thirteen layers**, from open government data and OpenStreetMap:
+
   | Layer | What you see | Years |
   |---|---|---|
   | 🔥 Wildfires | Every mapped fire perimeter + every recorded ignition, flaring then cooling to burn scars | 1919 → today |
-  | ◉ Earthquakes | M2.5+ quakes drawn at their real depth (×3), with surface shockwaves | 1900 → today |
-  | ∿ Shaking hazard | NRCan 2020 building-code hazard model as a colour surface: peak shaking with a 2% chance in 50 years, % of gravity, contoured every 10%; town values when focused | 2020 model (static) |
-  | ≋ River floods | Annual peak flow at ~60 river gauges vs. each river's normal peak | 1950s → today |
+  | ◉ Earthquakes | M2.5+ quakes drawn at their real depth (×3), with surface shockwaves; tilt the map to look underground | 1900 → today |
+  | ∿ Shaking hazard | NRCan 2020 building-code hazard model as a colour surface: peak shaking with a 2% chance in 50 years, % of gravity, contoured every 10%; town values while it's the picked layer | 2020 model (static) |
+  | ≋ River floods | Annual peak flow at 64 river gauges vs. each river's normal peak | 1958 → today |
   | ☁ Wildfire smoke | Air monitors as columns: fire-season (May–Oct) days with 24-hour PM2.5 over BC's 25 µg/m³ objective; a brown haze over the map in the smokiest years | 1998 → 2025 |
-  | 🌡 Climate | Homogenized temperature anomalies at 20 long-record stations + warming stripes | 1900 → 2020 |
+  | 🌡 Climate | Homogenized temperature anomalies at 20 long-record stations + warming stripes | 1902 → 2020 |
   | ☀ Climate normals | 30-year averages per station, switchable: sunshine hours, rain days, frost days, snowfall | 1981–2010 average |
   | ⇡ Future climate | Downscaled CMIP6 projections as a hatched colour surface (marked “projection, not a record”): hot days over 30 °C, mean temperature, frost days or summer rain, for a moderate (SSP2-4.5) or high (SSP5-8.5) scenario, as a value or as change from the same models' 1991–2020; towns ranked with 10th–90th-percentile model range bars | 2021–2050 and 2041–2070 projections (static) |
   | ◍ Population & age | Municipal population with share aged 65+, including projections | 2001 → 2046 |
   | ⌂ Home prices | Monthly median sale value from BC Property Transfer Tax data | 2017 → today |
   | ◆ Crime severity | Statistics Canada Crime Severity Index by police service | 1998 → today |
-  | ✚ Hospital access | Hospitals and ERs (24/7 highlighted); town columns = drive minutes to the nearest 24/7 ER; hover/click a town for its road routes | today (static) |
-  | ⛰ Trails & waterfalls | Every mapped footpath as a glowing web with hikers moving along it; named hiking routes coloured by effort; waterfalls as beams of falling water, as tall as their drop where it's known. Click a route for its elevation profile and a **3D flight** along it over satellite imagery on real terrain; click a waterfall to **orbit it in 3D**; **Waterfall tour** flies to each photographed fall in turn | mapped today (static) |
-- **Starts on just the island** — nothing is overlaid until you turn a layer on. In the Layer menu each layer's switch puts it on the map or takes it off, and clicking a layer's name shows its story and timeline while the others stay on. Switching off the picked layer takes its timeline away too; *Clear the map* at the top turns everything off.
-- **Static layers** (Hospital access, Climate normals, Shaking hazard, Future climate, Trails & waterfalls) don't change over time: focusing one dims the timeline, and any other visible layers keep playing underneath.
-- **Timeline** with play/pause, speeds, a sparkline of the focused layer, and clickable historic events (the 1946 M7.3 quake, the 1964 Port Alberni tsunami, the 2021 heat dome…). Click a marker, or **Details** on the line that appears above the timeline as playback passes an event, and the event opens in the side panel: its story and headline numbers, the layer year by year with that moment marked, what else was happening on other layers at the time, the closest towns, the moments before and after, sources, and a button that puts its layers on the map at that date. Each layer's panel also lists its key moments. **Anything you can point at on the map opens the same kind of panel when clicked**: an earthquake, a fire perimeter or ignition, a river gauge, a weather or air-quality station, a hospital, or a spot on the hazard and future-climate maps, each with its own numbers and, for gauges and stations, a chart of its record. Towns open their report, as before.
-- **Town Report** — click any town for a report card: prices, population, 65+ share, crime, nearby wildfire and quake history, official earthquake shaking hazard, local climate and warming trend, nearest river's flood record, drive time to the nearest 24/7 emergency room, projected hot days, temperature, frost and summer rain for the 2050s (with model ranges), and the trails and waterfalls nearby (each opens on the map).
-- **Town Finder** — weight what matters to you (affordability, safety, wildfire exposure, shaking hazard, past quakes, warmth, sunshine, snow & frost, hospital access, mild future summers, trails & waterfalls nearby, retiree community, services) and every municipality is ranked and raised as 3D columns on the map. Weights persist in your browser.
-- **Gulf and Discovery islands** — Salt Spring, Galiano, Thetis, Gabriola, Lasqueti, Denman and Quadra are included alongside the island's municipalities (list in `scripts/municipalities.mjs`). Every map layer is clipped to them too. They are unincorporated, so a few figures come from other sources and are labelled in their reports:
+  | ✚ Hospital access | Hospitals and ERs (24/7 highlighted); town columns = drive minutes to the nearest 24/7 ER; hover a town for its road routes | today (static) |
+  | ⛰ Trails & waterfalls | Every mapped footpath as a glowing web with hikers moving along it; named hiking routes coloured by effort; waterfalls as beams of falling water, as tall as their drop where it's known. Click a route or any footpath for its elevation profile and a **3D flight** along it over satellite imagery on real terrain; click a waterfall to **orbit it in 3D**; **Waterfall tour** flies to each photographed fall in turn; a **Satellite** switch lays imagery over the map | mapped today (static) |
+
+- **The Layer menu**: the atlas starts on just the island. Each layer's switch puts it on the map or takes it off. Clicking a layer's name makes it the *picked* layer, whose story fills the side panel and whose years drive the timeline; the other layers stay on. Switching off the picked layer takes its timeline away too, and *Clear the map* at the top turns everything off. The `+N` on the Layer button counts the other layers on the map.
+- **Static layers** (Shaking hazard, Climate normals, Future climate, Hospital access, Trails & waterfalls) don't change over time. While one is the picked layer the timeline dims, and any time-based layers that are on keep playing underneath.
+- **The timeline** has play/pause, speeds, a sparkline of the picked layer, and markers for key moments: big fires, the 1946 Vancouver Island earthquake, the 1964 Port Alberni tsunami, the 2021 heat dome and more. As playback passes one, a line with **Details** appears above the timeline.
+- **Click anything for details.** A timeline marker, an event's **Details**, a layer's **Key moments**, or anything you can point at on the map opens a panel on the right. Map features include an earthquake, a fire, a river gauge, a weather or air-quality station, a hospital, a footpath, or a spot on the hazard and future-climate maps. Each panel has:
+  - its own numbers and, for gauges and stations, a chart of its record;
+  - the layer year by year with that moment marked, and what else was happening on other layers at the time;
+  - the closest towns, and the moments before and after;
+  - sources, and a button that puts its layers on the map at that date.
+
+  Towns open their report.
+- **Town Report**: click any town for a report card. It covers:
+  - prices, population, the 65+ share and crime;
+  - nearby wildfire and quake history, the official earthquake shaking hazard, and smoke days;
+  - local climate and warming trend, and the nearest river's flood record;
+  - the drive to the nearest 24/7 emergency room;
+  - projected hot days, temperature, frost and summer rain for the 2050s, with model ranges;
+  - the trails and waterfalls nearby, each opening on the map.
+- **Town Finder**: weight what matters to you and every municipality is ranked and raised as 3D columns on the map. The criteria are affordability, low crime, low wildfire exposure, lower shaking hazard, low quake activity, mild & warm, sunnier, little snow & frost, close to a hospital, not ferry-dependent, clean air, mild future summers, trails & waterfalls nearby, retiree community, and services & amenities. Presets set them all at once, and your weights are remembered in your browser.
+- **Gulf and Discovery islands**: Salt Spring, Galiano, Thetis, Gabriola, Lasqueti, Denman and Quadra are included alongside the island's municipalities (list in `scripts/municipalities.mjs`). Every map layer is clipped to them too. They are unincorporated, so a few figures come from other sources and are labelled in their reports:
   - population and 65+ share from the 2021 Census (dissemination areas on each island)
   - crime from the island's rural RCMP detachment (Salt Spring, Gabriola, Quadra; Galiano shares the Outer Gulf Islands detachment)
   - sale prices are estimates: each island's 2021 Census average home value, scaled to match transfer-tax medians and moved since with its rural area's sales
   - ER access through the ferry route when there is no ER on the island; the Town Finder adds half the gap between sailings for the wait
-  - ferry links (weekday sailings, last boat home, crossing time, car ferry or not) feed a *Not ferry-dependent* factor in the Town Finder. BC Ferries links are counted from the operator's GTFS timetable feed on a typical weekday in the next two weeks, so `npm run data ferries` picks up each new season; Lasqueti's passenger ferry has no feed and is typed into `scripts/municipalities.mjs`
-- **Land Finder** (button top right, or `#land` in the URL) — every private parcel of 5+ acres on Vancouver Island and the shortlisted islands (about 29,000, from ParcelMap BC), filtered live. Every criterion is a slider or switch, starting from our brief: 10+ acres, waterfront, within 45 minutes' drive of health care, groceries and gas, quiet, and safe:
+  - ferry links (weekday sailings, last boat home, crossing time, car ferry or not) feed the *Not ferry-dependent* criterion. BC Ferries links are counted from the operator's GTFS timetable feed on a typical weekday in the next two weeks, so `npm run data ferries` picks up each new season; Lasqueti's passenger ferry has no feed and is typed into `scripts/municipalities.mjs`
+- **Land Finder** (button top right, or `#land` in the URL): every private parcel of 5+ acres on Vancouver Island and the shortlisted islands (about 29,000, from ParcelMap BC), filtered live. Every criterion is a slider or switch, starting from our brief: 10+ acres, waterfront, within 45 minutes' drive of health care, groceries and gas, quiet, and safe:
   - **The land**: size, slope, Agricultural Land Reserve share, Vancouver Island or the small islands
   - **Waterfront**: ocean, lake or river frontage (boundary within 35 m of the Freshwater Atlas shoreline) and how much, or distance to water
   - **Within reach**: drive minutes to the nearest clinic or hospital (or 24/7 ER), grocery store and gas station (OSRM on OpenStreetMap roads)
@@ -42,83 +83,94 @@ Press play and watch 100+ years unfold: wildfires flare and leave burn scars, ea
   - **Trails & waterfalls**: km of mapped footpath within 3 km, and distance to the nearest waterfall (both off by default)
   - **Budget**: BC publishes no per-parcel prices, so the budget checks the asking prices you add to shortlisted parcels; each parcel links to listings near it
 
-  Behind every slider is a histogram of the parcels that value would let through given all the other filters, and a funnel along the bottom shows how each step narrows the island and which one cuts the most. Matches glow on the map and rank by a score; a parcel's report has a radar of its strengths, drive-time arcs to the places it relies on, satellite imagery, and a shortlist with your notes and asking price (kept in the browser).
+  Behind every slider is a histogram of the parcels that value would let through given all the other filters, and a funnel along the bottom shows how each step narrows the island and which one cuts the most. Matches glow on the map and rank by a score. A parcel's report has a radar chart of its strengths, drive-time arcs to the places it relies on, satellite imagery, and a shortlist for your notes and asking price, kept in the browser.
 - **Data & sources** (button top right, `S`, or `#sources` in the URL): every source drawn as a cedar round. Each wedge is a source, each ring a year from 1900 at the pith to today at the bark, lit by that source's own record for the year, with projections as a hatched halo out to 2070. Cards give each source's publisher, dataset, the endpoint read, record counts (counted from the loaded data), licence and refresh status, plus what the atlas works out itself.
-- Overlay multiple layers, hover anything for details, tilt/rotate the 3D map (right-drag or Ctrl-drag), keyboard: `Space` play/pause, `←`/`→` step.
+- **Getting around**: drag to pan, scroll to zoom, right-drag (or Ctrl-drag) to tilt and turn the map.
+  - **Keys:** `L` opens the Layer menu, `Space` plays and pauses, `←`/`→` step a year (or a month), `P` hides the side panel, `S` opens Data & sources, and `Esc` closes things.
+  - **Links:** `#trails`, `#land` and `#sources` in the URL open straight to those views.
 
 ## Tech
 
-- [MapLibre GL JS](https://maplibre.org/) basemap (CARTO Dark Matter) with shaded relief from open terrain tiles
-- [deck.gl](https://deck.gl/) interleaved WebGL layers — GPU time filtering (`DataFilterExtension`), additive-blended glows, extruded columns and polygons
+- [MapLibre GL JS](https://maplibre.org/) basemap (CARTO Dark Matter) with shaded relief from open terrain tiles, and 3D terrain with Esri satellite imagery for the trail flights
+- [deck.gl](https://deck.gl/) interleaved WebGL layers: GPU time filtering (`DataFilterExtension`), additive-blended glows, extruded columns and polygons
 - [d3](https://d3js.org/) for the panel charts
-- Vite + TypeScript, no backend — the site is fully static
+- Vite + TypeScript, no backend: the site is fully static
 
-## Getting started
-
-```bash
-npm install
-npm run dev
-```
-
-The pre-built data in `public/data/` is committed, so the app runs immediately.
-
-### Dev container (optional)
-
-`.devcontainer/devcontainer.json` gives you a ready-made Linux environment with Node 22 (the version the GitHub Pages build uses) and `curl` for the data pipeline. With Docker Desktop running, open the folder in VS Code and run **Dev Containers: Reopen in Container**. It installs dependencies with `npm ci` into its own `node_modules` volume, so the Windows copy is left alone. `npm run dev`, `npm run build` and `npm run data` all work inside it, and port 5173 is forwarded to your browser. The explainer video isn't set up in the container because it needs Microsoft Edge with a real GPU, so render it on Windows as described below.
+| Command | What it does |
+|---|---|
+| `npm run dev` | Development server at <http://localhost:5173> |
+| `npm run build` | Type-checks and builds the static site into `dist/` |
+| `npm run preview` | Serves the built `dist/` at <http://localhost:4173> |
+| `npm run data [stage…]` | Rebuilds `public/data/` from the original sources (see below) |
 
 ### Refreshing the data
 
+The data in `public/data/` (about 10 MB) is committed, so this is only needed to pull in newer records:
+
 ```bash
-npm run data              # all sources
+npm run data              # every source
 npm run data fires crime  # just some
 npm run data trails       # trails, routes and waterfalls (about 7 minutes from an empty cache)
 npm run data ferries      # ferry links from BC Ferries' timetable feed (re-run when the season changes)
 ```
 
-`scripts/fetch-data.mjs` downloads from the sources below, clips everything to Vancouver Island, and writes compact JSON to `public/data/`. Raw downloads are cached in `.cache/` (delete it to force a refresh). If a source is down, that layer is left as it was and the app shows its status in **Data & sources**.
+The stages are `island`, `ferries`, `fires`, `quakes`, `rivers`, `climate`, `normals`, `population`, `housing`, `crime`, `hospitals`, `seismic`, `smoke`, `future`, `trails` and `land`. `scripts/fetch-data.mjs` downloads from the sources below, clips everything to the island, and writes compact JSON to `public/data/`.
+
+- **Caching:** raw downloads are cached in `.cache/`, so re-runs are quick. Delete it to fetch everything fresh.
+- **When a source is down:** that layer keeps its existing data, and **Data & sources** in the app shows its status.
+- **First run:** a full run from an empty cache downloads several gigabytes and takes a while. The smoke stage alone streams about 100 MB a year from the province's FTP server through `curl`.
+
+### Dev container (optional)
+
+`.devcontainer/devcontainer.json` gives you a ready-made Linux environment with Node 22 and `curl` for the data pipeline. With Docker Desktop running, open the folder in VS Code and run **Dev Containers: Reopen in Container**.
+- It installs dependencies with `npm ci` into its own `node_modules` volume, so your local copy is left alone.
+- `npm run dev`, `npm run build` and `npm run data` all work inside it, and port 5173 is forwarded to your browser.
+- The explainer videos can't be rendered in the container; they need Windows with Edge and a GPU.
 
 ### Deploying to GitHub Pages
 
-A workflow is included at `.github/workflows/deploy.yml`. In your repo's **Settings → Pages**, set the source to **GitHub Actions**, then push to `main`.
+A workflow is included at `.github/workflows/deploy.yml`. In your repository's **Settings → Pages**, set the source to **GitHub Actions**, then push to `main`. It builds with Node 22 and publishes `dist/`. The build is relative to its folder, so it works from any Pages sub-path.
 
-### The explainer video
+## The explainer videos
 
-A narrated, step-by-step how-to video is filmed from the real app by script, so it can be re-rendered after any change to the app or the data. It walks through where to click (the screen, moving the map, layers, the timeline, town reports, Town Finder, Land Finder, sources and shortcuts) without commenting on the data. The scenes, narration, camera moves and sounds are in `video/storyboard.py`; `video/render.py` plays them against the built app inside a framed "stage" (`video/stage/`) with a virtual clock stepped one frame at a time. It adds a moving cursor with click sounds, Screen Studio–style zooms, titles, step tags and on-screen click hints, and a synthesized music bed that ducks under the voice. The narration is read by [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) running locally.
+Narrated how-to films are recorded from the real app by script, so they can be re-rendered after any change to the app or the data. `video/render.py` plays each film's scenes against the built app inside a framed "stage" (`video/stage/`), with a virtual clock stepped one frame at a time. It adds:
+- a moving cursor with click sounds, Screen Studio–style zooms, titles, step tags and on-screen click hints;
+- a synthesized music bed that ducks under the voice;
+- narration read by [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) running locally.
 
-One-time setup (needs Microsoft Edge for GPU rendering):
+The films:
+- **How to use Island Atlas** (`video/storyboard.py`, the default): where to click. It covers the screen, moving the map, layers, the timeline and events, town reports, Town Finder, Land Finder, sources and shortcuts.
+- **Trails & waterfalls** (`video/storyboard_trails.py`, `--film trails`): the trails layer in depth, from 3D flights to the waterfall tour.
+- **A film for every layer** (`video/storyboard_layers.py`, `--film layer-<id>`): about a minute each, with a "wow" moment of its own. Examples are a century of fire sweeping the island, earthquakes hanging at their true depths, and the 2021 atmospheric river spiking the gauges.
+- **The overview** (`--film overview`): every layer for a few seconds, each pointing to its own film.
+
+The overview and `--film all` read the app's own layer list as they film. A layer added later gets a generic film built from its name, headline and numbers; add an entry to `SPECS` for a proper hook and wow scene. The narration's numbers are computed from the app's data by `video/layer_facts.js`.
+
+**Setup (Windows, once).** You need [Microsoft Edge](https://www.microsoft.com/edge) (it renders the WebGL map on the GPU) and [uv](https://docs.astral.sh/uv/) for Python:
 
 ```bash
 uv venv .venv --python 3.12
 uv pip install --python .venv/Scripts/python.exe playwright imageio-ffmpeg kokoro-onnx soundfile numpy
 ```
 
-Put `kokoro-v1.0.onnx` and `voices-v1.0.bin` from the kokoro-onnx releases in `.venv/kokoro`. Then:
+Put `kokoro-v1.0.onnx` and `voices-v1.0.bin` from the [kokoro-onnx releases](https://github.com/thewh1teagle/kokoro-onnx/releases) in `.venv/kokoro`. Then:
 
 ```bash
-.venv/Scripts/python.exe video/render.py --storyboard   # storyboard page with real frames, script, captions, YouTube text
-.venv/Scripts/python.exe video/render.py --preview      # quick 960×540 cut with sound
-.venv/Scripts/python.exe video/render.py                # 2560×1440 master + 1080p copy
+.venv/Scripts/python.exe video/render.py --check                    # fill in every narration line from the data, without filming (seconds)
+.venv/Scripts/python.exe video/render.py --storyboard               # storyboard page with real frames, script, captions, YouTube text
+.venv/Scripts/python.exe video/render.py --preview                  # quick 960×540 cut with sound
+.venv/Scripts/python.exe video/render.py                            # 2560×1440 master + 1080p copy + all of the above
+.venv/Scripts/python.exe video/render.py --film overview            # any film: main, trails, overview, layer-<id>, or all
+.venv/Scripts/python.exe video/render.py --film layer-fires,layer-quakes --video-only   # several films, master only (still writes captions and script)
 ```
 
-Everything lands in `video/out/`: `island-atlas-explainer.mp4` (1440p), `-1080p.mp4`, `storyboard.html`, `script.md`, `.srt` captions and `youtube.txt`. `--only finder` renders one scene, `--stills 10,60` saves test frames, `--url` puts the site's address on the end card. A line's voice is only regenerated when its text changes; drop a real recording at `video/out/vo/recorded/<line-id>.wav` and the picture retimes to fit it. The app exposes `window.atlas` for the renderer only when loaded with `?film`.
+Rendering takes about 15–25 seconds of real time per second of film, so a one-minute layer film takes 20–30 minutes.
 
-A supplemental film covers just the Trails & waterfalls layer (turning it on, reading the map, opening and orbiting a waterfall, a route's elevation profile, the 3D trail flight, the waterfall tour, and trails in town reports and both finders), in the same voice and style. Its scenes are in `video/storyboard_trails.py`; every option above works with `--film trails`, and its files are named `island-atlas-trails*`:
-
-```bash
-.venv/Scripts/python.exe video/render.py --film trails            # 1440p master, 1080p copy, storyboard, script, captions
-.venv/Scripts/python.exe video/render.py --film trails --preview  # quick 960×540 cut with sound
-```
-
-**A film for every layer, and an overview.** Each data layer has a short film (about a minute) with a "wow" moment of its own: a century of fire sweeping the island, earthquakes hanging at their true depths beneath it, the 2021 atmospheric river spiking the gauges, a hundred years of weather stations turning red, prices climbing month by month, and so on. Each film turns the layer on, counts up its headline numbers, plays its wow scene(s), reads its side panel and ends by pointing to the overview. The **overview** shows every layer for a few seconds, each with an on-screen chip naming its own film, and closes by sending viewers to them. Trails & waterfalls keeps its longer film above.
-
-```bash
-.venv/Scripts/python.exe video/render.py --film overview                # the overview
-.venv/Scripts/python.exe video/render.py --film layer-fires             # one layer's film (any layer id)
-.venv/Scripts/python.exe video/render.py --film all --storyboard        # storyboards for the overview and every layer film
-.venv/Scripts/python.exe video/render.py --film all                     # render them all (hours)
-```
-
-They're defined in `video/storyboard_layers.py`, with their numbers computed from the app's data by `video/layer_facts.js`. **New layers are picked up automatically**: the overview, `--film all` and the YouTube descriptions read the app's own layer list as they film, and a layer with no hand-written entry in `SPECS` gets a generic film (its timeline played, or a slow orbit, then its panel) built from its name, headline and headline numbers. Add a `SPECS` entry for a proper hook and wow scene. Put each film's YouTube link in `video/films.json` (`{"island-atlas-fires": "https://…"}`) and the overview's and layer films' descriptions link to one another.
+- **Output:** everything lands in `video/out/`. That's `island-atlas-explainer.mp4` (1440p) and its `-1080p.mp4` copy, plus `storyboard.html`, `script.md`, `.srt` captions and `youtube.txt`. The other films are named `island-atlas-<film>*`.
+- **Other options:** `--only <scene>` renders one scene, `--stills 10,60` saves test frames, and `--url` puts the site's address on the end card.
+- **Narration:** a line's voice is only regenerated when its text changes. Drop a real recording at `video/out/vo/recorded/<line-id>.wav`, and the picture retimes to fit it.
+- **YouTube links:** put each published film's link in `video/films.json` (`{"island-atlas-fires": "https://…"}`), and the films' YouTube descriptions link to one another.
+- **The `?film` handle:** the app exposes `window.atlas` for the renderer only when loaded with `?film`.
 
 ## Data sources
 
@@ -140,15 +192,21 @@ They're defined in `video/storyboard_layers.py`, with their numbers computed fro
 | Ferries | BC Ferries GTFS timetable feed, maintained by Trillium Solutions (`data.trilliumtransit.com/gtfs/bcferries-bc-ca/bcferries-bc-ca.zip`, re-fetched each month); Lasqueti from Western Pacific Marine's timetable, typed by hand | Public feed, no licence stated |
 | Land Finder parcels | ParcelMap BC parcel fabric (private parcels of 5+ acres) | OGL – British Columbia |
 | Land Finder water, hazards and rules | Freshwater Atlas coastline, lakes and rivers; BC Wildfire Service Provincial Strategic Threat Analysis; BC floodplain maps; Agricultural Land Reserve; BC airports | OGL – British Columbia |
-| Trails & waterfalls | OpenStreetMap via Overpass: `route=hiking`/`foot` relations, footpaths (`highway=path`, `bridleway` and unpaved `footway`), `waterway=waterfall`; photos and heights from Wikidata (P18, P2048) and photos geotagged on Wikimedia Commons whose file name matches the fall; elevations from Mapzen / AWS terrain tiles; 3D-view imagery from Esri World Imagery | ODbL; Wikidata CC0; photos under their own Commons licences; imagery © Esri, Maxar, Earthstar Geographics |
+| Trails & waterfalls | OpenStreetMap via Overpass: `route=hiking`/`foot` relations, footpaths (`highway=path`, `bridleway` and unpaved `footway`), `waterway=waterfall`; photos and heights from Wikidata (P18, P2048) and photos geotagged on Wikimedia Commons whose file name matches the fall; elevations from Mapzen / AWS terrain tiles; satellite imagery from Esri World Imagery | ODbL; Wikidata CC0; photos under their own Commons licences; imagery © Esri, Maxar, Earthstar Geographics |
 | Land Finder services and roads | OpenStreetMap via Overpass (grocery stores, gas, clinics, busy roads, industry); drive times from the OSRM demo router; terrain from Mapzen / AWS terrain tiles | ODbL; public terrain tiles |
 
 Basemap © OpenStreetMap contributors © CARTO. Terrain tiles: Mapzen / AWS Open Data.
 
 ## Roadmap
 
-Planned additions (hospital access, future climate, logging history, sea level, story mode and more) and a suggested build order are in [ROADMAP.md](ROADMAP.md).
+Built so far from the original plan: climate normals, hospital access, wildfire smoke, future climate and earthquake shaking hazard. Still open: a century of logging, a guided story mode, sea level, tsunami zones and a Cascadia scenario, ongoing costs (property tax and rent), and Indigenous territories and place names. The details and a suggested build order are in [ROADMAP.md](ROADMAP.md). [MAP-ATLAS-BLUEPRINT.md](MAP-ATLAS-BLUEPRINT.md) describes how to build a new atlas in the same style for another region.
 
 ## Caveats
 
-This is an exploration tool, not professional advice. Property-transfer medians include all property types (so they run below single-family listing prices); river-gauge ratios describe high water, not flooded area; hazard counts describe history, not risk forecasts. For a specific property, check official floodplain, tsunami and wildfire-interface maps.
+This is an exploration tool, not professional advice:
+- Property-transfer medians include all property types, so they run below single-family listing prices.
+- River-gauge ratios describe high water, not flooded area.
+- Hazard counts describe history, not risk forecasts.
+- Trails can be closed, overgrown, on private land or seasonal.
+
+For a specific property, check the official floodplain, tsunami and wildfire-interface maps.
