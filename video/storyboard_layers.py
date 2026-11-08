@@ -85,9 +85,9 @@ def set_speed(f, speed):
 
 def play_years(f, start, end, speed, extra=600):
     """Plays the timeline from `start` at `speed` years a second until it reaches `end` (or the end of the layer's range)."""
-    # At speed, every event crossed would pile a card over the map: hide them while playing, clear them after.
-    # Slow playback (an event you want to see happen) keeps its card.
-    quiet = speed >= 4
+    # Playing through the years, every event crossed would pile a card over the map: hide them while playing,
+    # clear them after. Slow playback (under a year a second, through one event you want to see) keeps its card.
+    quiet = speed >= 1
     f.run(f"() => {{ atlas.setPlaying(false); atlas.setTime({start}); {'document.getElementById(`toast-stack`).style.visibility = `hidden`;' if quiet else ''} }}")
     set_speed(f, speed)
     f.click({"sel": "#play"})
