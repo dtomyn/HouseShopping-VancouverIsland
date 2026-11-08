@@ -3,7 +3,7 @@
 // of fetch-data.mjs (after island, fires, hospitals, seismic and normals, whose outputs it reads).
 //
 // Sources: ParcelMap BC parcel fabric; Freshwater Atlas coastline, lakes and rivers; BC Wildfire
-// Service Provincial Strategic Threat Analysis; BC floodplain maps; Agricultural Land Reserve;
+// Service Provincial Strategic Threat Analysis (local use only, see below); BC floodplain maps; Agricultural Land Reserve;
 // BC airports; Mapzen terrain tiles; OpenStreetMap (busy roads, industry, groceries, gas, clinics)
 // via Overpass; drive times from the public OSRM demo router.
 
@@ -25,6 +25,10 @@ const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.k
 const OSRM = 'https://router.project-osrm.org';
 const UA = { 'User-Agent': 'IslandAtlas/1.0 (open-data retirement atlas; personal use)', Accept: 'application/json' };
 const THREAT = { 'No Threat': 0, Water: 0, Low: 1, Moderate: 2, High: 3, Extreme: 4 };
+// The Provincial Strategic Threat Analysis fire-threat rating is published "Access Only" (Province of BC copyright,
+// no redistribution without permission), so the per-parcel ratings derived from it go to their own file,
+// land-threat.json, which .gitignore keeps out of the repository and so out of the published site. land.json, which
+// is published, carries no threat column. A local `npm run data land` fills the Land Finder's wildfire threat filter.
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -507,7 +511,7 @@ export async function buildLand(h) {
   const cols = {
     pid: [], acres: [], lon: [], lat: [], place: [], island: [], town: [], townKm: [],
     water: [], front: [], waterM: [], waterName: [], elevLo: [], elevHi: [], slope: [],
-    threat: [], flood: [], alr: [], pga: [], fires5: [], burn5: [],
+    flood: [], alr: [], pga: [], fires5: [], burn5: [],
     roadKm: [], airKm: [], indKm: [], sun: [], frost: [],
     care: [], careI: [], er: [], erI: [], grocery: [], groceryI: [], gas: [], gasI: [],
   };
@@ -522,7 +526,7 @@ export async function buildLand(h) {
     cols.town.push(placeId(p.town)); cols.townKm.push(p.townKm);
     cols.water.push(p.waterKind); cols.front.push(p.front); cols.waterM.push(p.waterM); cols.waterName.push(p.waterName);
     cols.elevLo.push(p.elevLo); cols.elevHi.push(p.elevHi); cols.slope.push(p.slope);
-    cols.threat.push(p.threat); cols.flood.push(p.flood ? 1 : 0); cols.alr.push(p.alr); cols.pga.push(p.pga);
+    cols.flood.push(p.flood ? 1 : 0); cols.alr.push(p.alr); cols.pga.push(p.pga);
     cols.fires5.push(p.fires5); cols.burn5.push(p.burn5);
     cols.roadKm.push(p.roadKm); cols.airKm.push(p.airKm); cols.indKm.push(p.indKm); cols.sun.push(p.sun); cols.frost.push(p.frost);
     for (const cat of ['care', 'er', 'grocery', 'gas']) { cols[cat].push(p.origin[cat] ?? null); cols[`${cat}I`].push(p.origin[`${cat}I`] ?? null); }
@@ -541,14 +545,21 @@ export async function buildLand(h) {
   log(`  ${count((p) => p.sqm >= 10 * SQM_PER_ACRE)} of 10+ acres, ${count((p) => p.waterKind && p.sqm >= 10 * SQM_PER_ACRE)} of them waterfront; ${count((p) => p.threat == null)} not fire-threat rated`);
 
   await writeOut('land', {
-    source: 'ParcelMap BC parcel fabric (private parcels of 5+ acres); Freshwater Atlas coastline, lakes and rivers; BC Wildfire Service Provincial Strategic Threat Analysis; BC floodplain maps; Agricultural Land Commission ALR; BC airports; Mapzen terrain tiles; OpenStreetMap via Overpass (ODbL); drive times from the OSRM demo router',
+    source: 'ParcelMap BC parcel fabric (private parcels of 5+ acres); Freshwater Atlas coastline, lakes and rivers; BC floodplain maps; Agricultural Land Commission ALR; BC airports; Mapzen terrain tiles; OpenStreetMap via Overpass (ODbL); drive times from the OSRM demo router',
     count: parcels.length,
-    threat: ['None', 'Low', 'Moderate', 'High', 'Extreme'],
     waterKinds: ['', 'Ocean', 'Lake', 'River'],
     names: { place: placeNames, island: islandNames, water: waterNames },
     pois: POIS,
     cols,
     shapes,
+  });
+  // local use only (see THREAT above): never committed, never deployed
+  await writeOut('land-threat', {
+    source: 'BC Wildfire Service, Provincial Strategic Threat Analysis fire threat rating (Access Only: Province of BC copyright, no redistribution without permission). Local use only.',
+    count: parcels.length,
+    check: crypto.createHash('sha1').update(cols.pid.join('|')).digest('hex').slice(0, 12),
+    names: ['None', 'Low', 'Moderate', 'High', 'Extreme'],
+    threat: parcels.map((p) => p.threat),
   });
 }
 

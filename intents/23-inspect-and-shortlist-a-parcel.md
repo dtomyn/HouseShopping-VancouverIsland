@@ -20,7 +20,12 @@ Land Finder → a parcel in the **Matches** list or on the map; the **Shortlist*
 ## Behaviour (as implemented)
 - The parcel report: rank and score, PID, size, and every measure behind the filters; a **radar chart** of its
   strengths (size, water, reach, quiet, safety, sun); **drive-time arcs** on the map to the clinic, grocery store and
-  gas station it relies on, with their names and minutes. Its Safety measures include **Tsunami**: the share of the
+  gas station it relies on (and, where built, a red arc to its fire hall), with their names and minutes. With two
+  or more parcels shortlisted, the shortlist tab can plan a day of viewings ([42](42-plan-a-viewing-trip.md)). *The land*
+  includes **Winter sun**: hours of direct sun at the sunniest spot on 21 December and bars for four dates against
+  daylight on flat ground ([40](40-find-winter-sun.md)). Its Safety measures include **Fire hall**: the road distance
+  and drive to the nearest hall and what it means for a home insurance rating ([39](39-check-fire-protection.md));
+  **Tsunami**: the share of the
   parcel in a published hazard map or on low coastal ground, the notification zone, and the acres outside it
   ([30](30-know-where-a-tsunami-could-reach.md)), and **Floodplain**: the share inside a mapped floodplain, the study
   and its year, and the acres outside it ([36](36-know-the-mapped-floodplains.md)).

@@ -44,6 +44,7 @@ same shape:
 | 30 | Know where a tsunami could reach | [30-know-where-a-tsunami-could-reach.md](30-know-where-a-tsunami-could-reach.md) |
 | 36 | Know the mapped floodplains | [36-know-the-mapped-floodplains.md](36-know-the-mapped-floodplains.md) |
 | 37 | Check radon | [37-check-radon.md](37-check-radon.md) |
+| 41 | See the windstorms | [41-see-windstorms.md](41-see-windstorms.md) |
 | 14 | Compare what each place's climate feels like | [14-compare-day-to-day-climates.md](14-compare-day-to-day-climates.md) |
 | 15 | See the climate the next 25 years could bring | [15-see-the-climate-ahead.md](15-see-the-climate-ahead.md) |
 | 16 | Know how far emergency care is | [16-know-how-far-emergency-care-is.md](16-know-how-far-emergency-care-is.md) |
@@ -73,6 +74,9 @@ same shape:
 | 22 | Search every large parcel for the land we want | [22-search-for-land.md](22-search-for-land.md) |
 | 23 | Inspect a parcel and keep a shortlist | [23-inspect-and-shortlist-a-parcel.md](23-inspect-and-shortlist-a-parcel.md) |
 | 32 | Check what's next door (parks, Crown land, logging) | [32-check-whats-next-door.md](32-check-whats-next-door.md) |
+| 39 | Check fire protection (and what it means for insurance) | [39-check-fire-protection.md](39-check-fire-protection.md) |
+| 40 | Find land that gets the winter sun | [40-find-winter-sun.md](40-find-winter-sun.md) |
+| 42 | Plan a day of viewings from the shortlist | [42-plan-a-viewing-trip.md](42-plan-a-viewing-trip.md) |
 
 ### Trust it and use it anywhere
 | # | Intent | File |

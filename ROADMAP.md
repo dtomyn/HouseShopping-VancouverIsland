@@ -34,6 +34,10 @@ The order puts quick wins that reuse existing code first, then the most decision
 | 16 | ✅ [Floodplains](#16-floodplains) | Riverside towns and acreages: where the province mapped a 200-year flood, how old the map is, and how much of a town or parcel is inside | Small–medium |
 | 17 | ✅ [Radon](#17-radon) | Every house purchase should include a radon test; shows how low the island is against BC, honestly at health-area grain | Small |
 | 18 | ✅ [Drought and low rivers](#18-drought-and-low-rivers) | Wells, creeks and small reservoirs falter in dry summers; a century of river lows shows how often, and whether it's getting worse | Small–medium |
+| 19 | ✅ [Fire protection](#19-fire-protection) | Rural home insurance starts from the drive to a fire hall; past ~13 km a house is usually rated unprotected | Small |
+| 20 | ✅ [Winter sun](#20-winter-sun) | A lot in a ridge's shadow can go weeks without sun in midwinter; no listing says so | Small–medium |
+| 21 | ✅ [Windstorms](#21-windstorms) | Southeasterly gales bring down trees and power; how often depends on where you are | Small–medium |
+| 22 | ✅ [Viewing trip planner](#22-viewing-trip-planner) | Turns the shortlist into a day of viewings in a sensible order | Small |
 
 ### Static layers
 
@@ -149,6 +153,30 @@ Hospitals, seismic hazard and tsunami zones don't change over time. Before addin
 ✅ **Built.** `drought` stage (`scripts/drought.mjs`) → `public/data/drought.json` (84 KB: 81 gauges with each summer's lowest 7-day flow, the day it ended and its rank in the gauge's own record, the island median by year, each town's nearest long-record gauge) and `drought-map.json` (200 KB: basin outlines and June–October monthly ranks, loaded on first show); time-based *Drought & low rivers* layer in *History on the timeline* after Wells (`src/drought.ts`). Sources: ECCC Water Survey of Canada HYDAT daily mean discharge (`api.weather.gc.ca`) and the Hydrometric Network Basin Polygons (both OGL – Canada). 1913–2025; the driest summers by island median (years with 20+ gauges) are 2023, 2015, 1992, 2014 and 1985. Town Report *Summer river lows* (share of summers the nearest gauge ran nearly dry, under 2% of its average flow; driest-10% summers in the last 20); Town Finder *Rarely in severe drought* (weight 0). Panel links to Wells and Snowpack.
 
 - **Still open:** BC's own Drought Levels (0–5 by basin) and their 2015–2025 archive are published only "Access Only" (Province of BC copyright, no redistribution without written permission), so they are not used and the layer ranks gauge flows instead; watering-restriction stages (CRD, Nanaimo, Comox Valley, etc.) exist only as web pages, not open data, so none are shown; HYDAT ends with its last published year, so the current summer is missing (ECCC's real-time feed keeps only recent weeks); regulated rivers aren't flagged from data (HYDAT's regulation table is only in the full ~1 GB database), only by the usual-low-to-average ratio; no Land Finder filter, since one gauge per basin says little about a parcel's well; the Gulf Islands have no gauges with recent records, so their towns use a Vancouver Island gauge.
+
+### 19. Fire protection
+
+✅ **Built.** `firehalls` stage (`scripts/firehalls.mjs`, after `land`) → `public/data/land-fire.json` (~270 KB, per parcel in `land.json`'s order with a PID hash). Land Finder *Safety* → *Fire hall by road* (within 8 km / within 13 km / any; off by default), a parcel report tile with the insurance reading, and a red arc to the hall. 115 halls from OpenStreetMap (`amenity=fire_station`; wildfire bases, forestry and airport crews dropped); road distance from each parcel's ~400 m cell to the four nearest halls on its own island with the OSRM demo router. 84% of parcels are within 8 km by road, 7% between 8 and 13 km, 8% beyond.
+
+- **Still open:** fire protection areas (the house must be inside one for a protected rating) are published unevenly by the regional districts and not at all by the province (the BC Data Catalogue's candidates are "Access Only"), so none is used; hydrants and water supply aren't mapped; no Town Report row, since every town has a hall.
+
+### 20. Winter sun
+
+✅ **Built.** `sun` stage (`scripts/sun.mjs`, after `land`) → `public/data/land-sun.json` (~380 KB) and `sun.json` (~4 KB). One z11 Terrarium mosaic of the box (~860 tiles, shared with the Land Finder's terrain cache); each spot's skyline along 61 rays (east through south to west, out to 25 km, curvature and refraction), then the sun walked across the sky in 4-minute steps on 21 December, late January/November, late February/October and the equinoxes. Parcels: the sunniest of the centre and up to six lattice spots. Towns: the median over the ground within 1.5 km. Land Finder *The land* → *Winter sun* slider and a parcel report tile with four bars against flat-ground daylight (the score's sun part blends it in); Town Report *Winter sun*; Town Finder *Winter sun* (weight 0). Median parcel 7.3 h on 21 December; Zeballos, Sayward and Tahsis lowest of the towns.
+
+- **Still open:** trees and buildings (often the bigger shade on a wooded lot) aren't in open data at this scale; ~50 m terrain smooths small knolls; a sun-hours map layer for the whole island (the per-spot code would draw one) isn't built.
+
+### 21. Windstorms
+
+✅ **Built.** `wind` stage (`scripts/wind.mjs`) → `public/data/wind.json` (~130 KB). ECCC daily peak gusts (`climate-daily`) at every station on or just off the islands that has recorded a gust (found by probing days across the network), with records of one site under different names joined. 20 stations, 1957–2025. Time-based *Windstorms* layer in *History on the timeline* (`src/wind.ts`): columns of storm days (90+ km/h) by year, rings on each storm day, lighthouses hollow; events for the days the most stations hit storm force and the named storms the stations caught (Columbus Day 1962, December 2018). Town Report *Windstorms*; Town Finder *Sheltered from windstorms* (weight 0).
+
+- **Still open:** since mid-2018 ECCC leaves calm days blank, so a year counts on 300 readings or 11 months with readings; the airports' storm days fall sharply through the 1980s–90s with instrument and reporting changes, so the layer says plainly it is not a trend (ECCC's homogenized wind series, if published openly for these stations, would fix that); BC Hydro outage history isn't open data; the Hanukkah Eve storm of 2006 is mostly missing from the island records.
+
+### 22. Viewing trip planner
+
+✅ **Built.** `src/trip.ts`, in the Land Finder's shortlist tab: start town, departure time, minutes at each parcel and round trip; the public OSRM demo router's `trip` service orders up to 12 parcels and times the drives (called from the browser only when the user presses *Plan the route*, which the panel discloses); an itinerary with arrival times, ferry legs and a note when it runs past 4:30 pm; the route on the map in pink; a Google Maps link (up to nine stops in between) and a copy-as-text button.
+
+- **Still open:** splitting a long list over two days automatically; sunset times by date instead of a fixed 4:30 pm note; ferry sailings from `ferries.json` for island stops (the router times the crossing only); the parcel's road access point instead of its centre.
 
 ## Explaining the island's history
 

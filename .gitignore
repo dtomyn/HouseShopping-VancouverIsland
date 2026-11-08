@@ -6,3 +6,6 @@ dist
 .venv/
 video/out/
 __pycache__/
+
+# Land Finder wildfire threat ratings: derived from BC's "Access Only" PSTA data, local use only (scripts/land.mjs)
+public/data/land-threat.json

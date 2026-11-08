@@ -1223,6 +1223,20 @@ const SOURCES = {
     await buildFlood({ log, cached, writeOut, round, WFS, BBOX, getIsland, PLACES, OUT });
   },
 
+  // Fire protection: road distance from every Land Finder parcel to the nearest fire hall on its island (OpenStreetMap
+  // halls, OSRM routes), the start of a home's insurance rating (scripts/firehalls.mjs). Reads land.json; writes land-fire.json.
+  async firehalls() {
+    const { buildFireHalls } = await import('./firehalls.mjs');
+    await buildFireHalls({ log, cached, writeOut, round, distKm, BBOX, getIsland, OUT });
+  },
+
+  // Winter sun: hours of direct sun on the shortest days at every Land Finder parcel and around every town, with the
+  // hills' shadows worked out from terrain tiles (scripts/sun.mjs). Reads land.json; writes land-sun.json and sun.json.
+  async sun() {
+    const { buildSun } = await import('./sun.mjs');
+    await buildSun({ log, cached, writeOut, round, pool, BBOX, getIsland, onIsland, OUT, PLACES });
+  },
+
   // Water access: beaches, beach accesses, boat launches and marinas (OpenStreetMap) and DFO small craft harbours,
   // with each town's nearest (scripts/outdoors.mjs).
   async water() {
@@ -1258,6 +1272,13 @@ const SOURCES = {
     await buildDrought({ log, cached, writeOut, round, BBOX, getIsland, onIsland, ogcAll, PLACES });
   },
 
+  // Windstorms: every island station's daily peak gust (ECCC climate-daily), storm and gale days by year, the biggest
+  // storm days across the network and each town's nearest sheltered record (scripts/wind.mjs).
+  async wind() {
+    const { buildWind } = await import('./wind.mjs');
+    await buildWind({ log, writeOut, round, distKm, BBOX, getIsland, onIsland, ogcAll, PLACES });
+  },
+
   // A century of logging: every mapped cutblock with its harvest year, plus blocks approved or being logged now
   // (scripts/neighbours.mjs).
   async logging() {
@@ -1276,7 +1297,7 @@ const SOURCES = {
 // ---------------------------------------------------------------------------------------------
 
 const wanted = process.argv.slice(2);
-const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'flood', 'logging', 'neighbours', 'water', 'camping', 'snow', 'radon', 'drought'];
+const order = ['island', 'ferries', 'fires', 'quakes', 'rivers', 'climate', 'normals', 'population', 'housing', 'crime', 'hospitals', 'seismic', 'smoke', 'future', 'trails', 'internet', 'land', 'wells', 'tsunami', 'flood', 'firehalls', 'sun', 'logging', 'neighbours', 'water', 'camping', 'snow', 'radon', 'drought', 'wind'];
 const run = wanted.length ? order.filter((n) => wanted.includes(n)) : order;
 
 let manifest = {};

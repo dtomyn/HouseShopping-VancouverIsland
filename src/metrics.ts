@@ -28,6 +28,8 @@ export type TownMetrics = {
   quakes75km: number; // M4+ within 75 km since 1970
   shaking: { pga2: number; pga10: number } | null; // NRCan 2020 hazard at the town centre, g (site class C)
   radon: { area: string; n: number; over200: number; pct: number } | null; // the town's health area in Health Canada's 2009–2011 home survey (area-wide, ~55–110 homes)
+  wind: { name: string; km: number; exposed: boolean; storm: number; gale: number; years: number } | null; // the nearest sheltered gust record's storm (90+ km/h) and gale (70+) days a year, last 30 years (wind.json)
+  winterSun: { dec: number; flat: number; under1: number | null } | null; // median hours of direct sun on 21 Dec within 1.5 km, terrain shading only (sun.json)
   drought: TownDrought | null; // the nearest long-record river gauge's summer lows (Water Survey of Canada): share of summers nearly dry, recent driest-10% summers
   flood: FloodTown | null; // % of ground within 2 km in a mapped (BC designated, 1978–1997) floodplain, and which study
   tsunami: TsunamiTown | null; // BC notification zone, % low coastal ground within 2 km, published hazard map if any
@@ -221,9 +223,16 @@ export function townMetrics(data: Data): TownMetrics[] {
     const outdoors = data.trails?.towns[m.key] ?? null;
     const internet = data.internet ? townNet(data.internet, m) : null;
 
-    return { muni: m, price, priceYear, priceChange5y, pop, popYear, popGrowth10y, s65, csi, csiYear: cy ? String(cy) : null, fires15km, burnedHa25km, quakes75km, shaking, tsunami, flood, radon, drought, climate, river, feels, er, care, smoke, future, outdoors, internet };
+    return { muni: m, price, priceYear, priceChange5y, pop, popYear, popGrowth10y, s65, csi, csiYear: cy ? String(cy) : null, fires15km, burnedHa25km, quakes75km, shaking, tsunami, flood, radon, drought, wind: windOf(data, m.key), winterSun: data.sun?.towns[m.key] ? { dec: data.sun.towns[m.key].dec, flat: data.sun.towns[m.key].flat, under1: data.sun.towns[m.key].under1 } : null, climate, river, feels, er, care, smoke, future, outdoors, internet };
   });
   return cache;
+}
+
+function windOf(data: Data, key: string): TownMetrics['wind'] {
+  const W = data.wind, t = W?.towns[key];
+  if (!W || !t) return null;
+  const s = W.stations[t.st];
+  return { name: s.name, km: t.km, exposed: s.exposed, storm: t.storm, gale: t.gale, years: t.years };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -286,12 +295,17 @@ export const CRITERIA: Criterion[] = [
   { id: 'radon', label: 'Low radon (area survey)', hint: 'Smaller share of tested homes over 200 Bq/m³ in the town’s health area (Health Canada, 2009–2011; three areas, ~55–110 homes each, so it can’t tell towns in one area apart)', value: (t) => t.radon?.pct ?? null, higherIsBetter: false, defaultWeight: 0 },
   // The nearest gauged river, not the town's own supply, and many island rivers are dam- or lake-fed: off by default.
   { id: 'drought', label: 'Rarely in severe drought', hint: 'Fewer summers when the nearest long-record river gauge (within 40 km) ran nearly dry: its lowest 7-day flow under 2% of its average flow (Water Survey of Canada; a screening measure, not the town’s water supply)', value: (t) => t.drought?.nearDry ?? null, higherIsBetter: false, defaultWeight: 0 },
+  // The nearest gust record is often an airport or a lighthouse some way off, and exposure varies street by street: off by default.
+  { id: 'wind', label: 'Sheltered from windstorms', hint: 'Fewer days a year with gusts of 90 km/h or more at the nearest sheltered weather station that measures gusts (within 40 km; last 30 years; ECCC daily records)', value: (t) => t.wind?.storm ?? null, higherIsBetter: false, defaultWeight: 0 },
   { id: 'quake', label: 'Low quake activity', hint: 'Fewer M4+ quakes within 75 km since 1970 (past record)', value: (t) => t.quakes75km, higherIsBetter: false, defaultWeight: 0 },
   { id: 'warm', label: 'Mild & warm', hint: 'Higher mean annual temperature (1991+)', value: (t) => t.climate?.meanTemp ?? null, higherIsBetter: true, defaultWeight: 2 },
   // Sunshine hours from the nearest of the 8 island stations that measure it (within 60 km). That
   // covers all but a few remote villages (which are skipped, not penalized) and separates the sunny
   // east coast from the cloudy west and north better than rainfall did, so no rainfall fallback.
   { id: 'dry', label: 'Sunnier', hint: 'More bright-sunshine hours a year (nearest of 8 stations that measure it; remote villages skipped)', value: (t) => t.feels.sun?.v ?? null, higherIsBetter: true, defaultWeight: 2 },
+  // Terrain only: valley towns under a south ridge (Port Alberni, Lake Cowichan, the inlets) lose most of the winter day.
+  // Off by default, since the yearly sunshine criterion already favours the sunny east coast.
+  { id: 'winterSun', label: 'Winter sun', hint: 'More of the 21 December day in direct sun once the hills are in the way (median over the ground within 1.5 km of the centre; terrain only, not cloud or trees)', value: (t) => (t.winterSun ? t.winterSun.dec / t.winterSun.flat : null), higherIsBetter: true, defaultWeight: 0 },
   { id: 'snow', label: 'Little snow & frost', hint: 'Fewer frost days + cm of snowfall a year (30-yr normals)', value: (t) => (t.feels.frostDays && t.feels.snow ? t.feels.frostDays.v + t.feels.snow.v : null), higherIsBetter: false, defaultWeight: 1 },
   // The router times the crossing but not the wait for a sailing, so ferry trips add half the gap between boats.
   { id: 'hospital', label: 'Close to a hospital', hint: 'Fewer minutes’ drive to the nearest 24/7 emergency room (trips needing a ferry add the average wait for a sailing)', value: (t) => (t.er ? (t.er.min ?? t.er.km) + (t.er.ferry ? erFerryWait(t.muni) : 0) : null), higherIsBetter: false, defaultWeight: 2 },

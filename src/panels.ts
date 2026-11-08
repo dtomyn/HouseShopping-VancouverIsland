@@ -11,6 +11,7 @@ import { CASCADIA_OUTER_COAST_MIN } from './tsunami';
 import { floodTownRow } from './flood';
 import { radonTownRow } from './radon';
 import { droughtTownRow } from './drought';
+import { windTownRow } from './wind';
 import { campingTownRow, waterTownRow } from './outdoors';
 
 const STORE_KEY = 'island-atlas:weights';
@@ -60,6 +61,8 @@ export function renderTownReport(el: HTMLElement, data: Data, key: string, opts:
       ${floodTownRow(data, key, metric)}
       ${radonTownRow(data, key, metric)}
       ${droughtTownRow(data, key, metric)}
+      ${winterSunMetric(t, metric)}
+      ${windTownRow(t, metric)}
       ${metric('Climate', '#f25f5c', t.climate ? `${t.climate.meanTemp.toFixed(1)} °C` : na, t.climate ? `${t.climate.precip ? `${Math.round(t.climate.precip)} mm/yr · ` : ''}${t.climate.name} (${Math.round(t.climate.dist)} km)` : '')}
       ${erMetric(t, data, metric, na)}
       ${smokeMetric(t, data, metric, na)}
@@ -179,6 +182,15 @@ function smokeMetric(t: TownMetrics, data: Data, metric: (l: string, dot: string
 }
 
 /** "What it feels like": 30-year climate normals, each from the nearest station that reports it. */
+/** Winter sun: how much of the shortest day the hills around the town let through. */
+function winterSunMetric(t: TownMetrics, metric: (l: string, dot: string, v: string, sub: string) => string) {
+  const w = t.winterSun;
+  if (!w) return '';
+  const share = w.dec / w.flat;
+  const how = share >= 0.9 ? 'the hills hardly shade it' : share >= 0.6 ? 'the hills take some of the day' : 'the hills take most of the day';
+  return metric('Winter sun', '#fde047', `${w.dec.toFixed(1)} h`, `of ${w.flat.toFixed(1)} h of daylight on 21 Dec: ${how}${w.under1 ? `; ${w.under1}% of the ground within 1.5 km gets under an hour` : ''} (terrain only, not cloud or trees)`);
+}
+
 function feelsRow(t: TownMetrics, data: Data, metric: (l: string, dot: string, v: string, sub: string) => string, na: string) {
   if (!data.normals) return '';
   const f = t.feels;
