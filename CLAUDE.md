@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Island Atlas: a static, no-backend Vite + TypeScript web app that animates a century of Vancouver Island open data on a 3D map (MapLibre basemap + deck.gl layers + d3 charts). Live at <https://dtomyn.github.io/HouseShopping-VancouverIsland/>; deployed by `.github/workflows/deploy.yml` (Node 22) on push to `main`.
+Island Atlas: a static, no-backend Vite + TypeScript web app that animates a century of Vancouver Island open data on a 3D map (MapLibre basemap + deck.gl layers + d3 charts). Live at <https://dtomyn.github.io/vancouver-island-atlas/>; deployed by `.github/workflows/deploy.yml` (Node 22) on push to `main`.
 
 ## Commands
 

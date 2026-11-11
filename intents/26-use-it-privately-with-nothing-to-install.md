@@ -5,7 +5,7 @@ As anyone, I want to open the atlas from a link and use it without an account or
 on my machine, so that I can explore freely and share it easily.
 
 ## Where
-<https://dtomyn.github.io/HouseShopping-VancouverIsland/>, or a local copy (`npm run dev`).
+<https://dtomyn.github.io/vancouver-island-atlas/>, or a local copy (`npm run dev`).
 
 ## Behaviour (as implemented)
 - **Fully static**: HTML, JavaScript and JSON on GitHub Pages; no backend, database or API key. All the atlas's own
