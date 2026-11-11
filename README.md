@@ -2,7 +2,7 @@
 
 An animated, WebGL-powered atlas of a century of Vancouver Island history, built to help answer one question: **where on the island should we live?**
 
-**▶ Try it: <https://dtomyn.github.io/HouseShopping-VancouverIsland/>** (nothing to install)
+**▶ Try it: <https://dtomyn.github.io/vancouver-island-atlas/>** (nothing to install)
 
 Press play and watch 100+ years unfold: wildfires flare and leave burn scars, earthquakes ripple out from their true depth beneath the island, rivers surge in flood years, weather stations redden as the climate warms, and towns grow, age, get pricier and (sometimes) safer. Click any town for its report card, rank the towns by what matters to you, or search every large rural parcel on the island.
 
@@ -13,8 +13,8 @@ It's a static web app with all of its data committed to the repository, so it ru
 **You need:** [Git](https://git-scm.com/downloads) and [Node.js](https://nodejs.org/) **22 or newer** (the version the published site is built with; check with `node -v`). It works on Windows, macOS and Linux.
 
 ```bash
-git clone https://github.com/dtomyn/HouseShopping-VancouverIsland.git
-cd HouseShopping-VancouverIsland
+git clone https://github.com/dtomyn/vancouver-island-atlas.git
+cd vancouver-island-atlas
 npm install
 npm run dev
 ```
